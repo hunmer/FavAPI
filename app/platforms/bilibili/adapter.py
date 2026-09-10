@@ -26,6 +26,7 @@ logger = logging.getLogger("favapi.bilibili")
 class BilibiliAdapter(BasePlatformAdapter):
     platform = constants.PLATFORM
     display_name = constants.DISPLAY_NAME
+    home_url = constants.HOME_URL
     implemented = True
     supported_actions = ("list_favorites",)
 

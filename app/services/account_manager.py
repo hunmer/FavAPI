@@ -1,5 +1,6 @@
-"""账号（Session）管理：CRUD + 登录流程状态。"""
+"""账号（Session）管理：CRUD + 登录流程状态 + cookie 快照。"""
 import json
+import logging
 import shutil
 
 from app import config
@@ -7,6 +8,8 @@ from app.database import db
 from app.platforms import registry
 from app.platforms.base import AccountContext
 from app.utils import new_id, now_iso
+
+logger = logging.getLogger("favapi.accounts")
 
 # 内存态：正在走登录流程的账号（服务重启即清空）
 _login_in_progress: set[str] = set()
@@ -107,3 +110,40 @@ async def delete_account(account_id: str) -> bool:
     if row.get("profile_path"):
         shutil.rmtree(row["profile_path"], ignore_errors=True)
     return True
+
+
+async def save_cookie_snapshot(account_id: str, cookies: list[dict] | None = None) -> dict | None:
+    """把 cookie 快照写入 accounts.extra.cookies，返回快照（失败返回 None，不抛异常）。
+
+    - cookies 提供时直接存（调用方仍持有浏览器会话时免二次打开）
+    - 不提供则无头打开该账号 profile 读取
+    """
+    account = await get_account(account_id)
+    if account is None:
+        return None
+    try:
+        if cookies is None:
+            from app.services import browser  # 延迟导入避免循环依赖
+
+            async with browser.session(account["profile_path"], headless=True) as ctx:
+                cookies = await ctx.cookies()
+        snap = {
+            "captured_at": now_iso(),
+            "cookies": [
+                {
+                    "name": c.get("name"),
+                    "value": c.get("value"),
+                    "domain": c.get("domain"),
+                    "path": c.get("path"),
+                    "expires": c.get("expires"),
+                }
+                for c in cookies or []
+            ],
+        }
+        extra = account.get("extra") or {}
+        extra["cookies"] = snap
+        await update_account(account_id, extra=json.dumps(extra, ensure_ascii=False))
+        return snap
+    except Exception as exc:
+        logger.warning("账号 %s cookie 快照保存失败：%s", account_id, exc)
+        return None

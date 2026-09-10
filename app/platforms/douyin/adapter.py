@@ -45,6 +45,7 @@ def _merge_batches(batches: list[dict]) -> list[dict]:
 class DouyinAdapter(BasePlatformAdapter):
     platform = constants.PLATFORM
     display_name = constants.DISPLAY_NAME
+    home_url = constants.HOME_URL
     implemented = True
     # list_collects / get_collect_videos 为 PRD 预留的后续 action
     supported_actions = ("list_favorites",)

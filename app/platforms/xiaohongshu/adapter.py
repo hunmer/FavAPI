@@ -82,6 +82,7 @@ async def _open_page(ctx):
 class XiaohongshuAdapter(BasePlatformAdapter):
     platform = constants.PLATFORM
     display_name = constants.DISPLAY_NAME
+    home_url = constants.HOME_URL
     implemented = True
     supported_actions = ("list_favorites",)
 
@@ -103,17 +104,30 @@ class XiaohongshuAdapter(BasePlatformAdapter):
         return extract_user_id(str(params.get("url") or "")) or str(params.get("user_id") or "").strip()
 
     async def _current_user_id(self, ctx, page) -> str | None:
-        """解析当前登录用户 id（参考 B 站读 DedeUserID）：先查 cookie，再从首页导航头像链接提取。
+        """解析当前登录用户 id（参考 B 站读 DedeUserID）。
 
         小红书 /user/profile 不带 id 是 404 页，必须先拿到自己的 id 才能进收藏 tab。
+        优先签名调 /user/me 接口（快且权威，含 guest 判据）；失败回退导航头像链接 DOM。
         """
-        for c in await ctx.cookies():
-            if c.get("name") == "customerClientId" and is_user_id(c.get("value") or ""):
-                logger.info("从 cookie customerClientId 解析当前用户：%s", c["value"])
-                return c["value"]
         try:
             await page.goto(constants.HOME_URL, wait_until="domcontentloaded")
-            await page.wait_for_timeout(1500)
+        except Exception as exc:
+            logger.warning("访问首页失败：%s", exc)
+            return None
+
+        try:
+            uid = await self._me_user_id(ctx, page)
+            if uid:
+                logger.info("从 user/me 接口解析当前用户：%s", uid)
+                return uid
+        except Exception as exc:
+            logger.warning("user/me 接口调用失败，回退 DOM 解析：%s", exc)
+
+        # 回退：登录态水合后导航栏才由"登录"按钮变为用户头像组件（头像链接异步填充）
+        try:
+            await page.wait_for_selector(
+                '.user.side-bar-component a[href*="/user/profile/"]', timeout=10_000
+            )
             href = await page.evaluate(
                 """() => {
                     const a = document.querySelector('.user.side-bar-component a[href*="/user/profile/"]');
@@ -121,12 +135,44 @@ class XiaohongshuAdapter(BasePlatformAdapter):
                 }"""
             )
         except Exception as exc:
-            logger.warning("访问首页解析当前用户失败：%s", exc)
+            logger.warning("DOM 解析当前用户失败：%s", exc)
             return None
         uid = extract_user_id(href or "")
         if uid:
             logger.info("从首页导航头像链接解析当前用户：%s", uid)
         return uid
+
+    @staticmethod
+    async def _me_user_id(ctx, page) -> str | None:
+        """等待页面签名函数可用后，签名调用 /user/me 取 user_id；游客（guest）返回 None。"""
+        sig = await page.evaluate(
+            """async () => {
+                for (let i = 0; i < 20; i++) {  // 最多等签名函数 10s
+                    if (typeof window._webmsxyw === 'function') break;
+                    await new Promise(r => setTimeout(r, 500));
+                }
+                if (typeof window._webmsxyw !== 'function') return null;
+                return await window._webmsxyw('/api/sns/web/v2/user/me', '');
+            }"""
+        )
+        if not isinstance(sig, dict) or not (sig.get("X-s") and sig.get("X-t")):
+            return None
+        resp = await ctx.request.get(
+            constants.USER_ME_API,
+            headers={
+                "Origin": "https://www.xiaohongshu.com",
+                "Referer": "https://www.xiaohongshu.com/",
+                "x-s": sig["X-s"],
+                "x-t": str(sig["X-t"]),
+            },
+        )
+        if resp.status != 200:
+            return None
+        data = (await resp.json()).get("data") or {}
+        if data.get("guest"):
+            return None
+        uid = str(data.get("user_id") or "")
+        return uid if is_user_id(uid) else None
 
     async def login(self, account: AccountContext, timeout: float | None = None) -> bool:
         """打开有头浏览器等待扫码；以 DOM 判据检测成功（游客也会被种 web_session，cookie 会误报）。"""
@@ -174,9 +220,6 @@ class XiaohongshuAdapter(BasePlatformAdapter):
     ) -> FetchResult:
         self.validate_params(params)
         user_id = self._target_user_id(params)
-        target_url = (
-            constants.PROFILE_URL.format(user_id=user_id) if user_id else constants.FAVORITES_URL
-        )
         raw_count = params.get("count")
         if raw_count in (None, ""):
             count = constants.DEFAULT_COUNT
@@ -191,6 +234,17 @@ class XiaohongshuAdapter(BasePlatformAdapter):
         batches: list[dict] = []
         async with browser.session(account.profile_path, headless=config.HEADLESS) as ctx:
             page, closing = await _open_page(ctx)
+
+            if not user_id:  # 未指定目标 → 解析当前登录用户（小红书 profile 不带 id 是 404）
+                user_id = await self._current_user_id(ctx, page)
+                if not user_id:
+                    closing["closing"] = True
+                    raise LoginExpiredError(
+                        "未指定目标用户，且无法获取当前登录用户 id（cookie/首页均未解析到）："
+                        "请先扫码登录，或在参数中传入主页链接 / 用户 id"
+                    )
+
+            target_url = constants.PROFILE_URL.format(user_id=user_id)
 
             async def _on_response(response):
                 if constants.COLLECT_PAGE_API not in response.url:

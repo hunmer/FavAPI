@@ -7,8 +7,20 @@
   <div class="row" style="margin-top:14px">
     <button class="btn" id="btn-check">检查登录状态</button>
     <button class="btn primary" id="btn-login">打开登录窗口</button>
+    <button class="btn" id="btn-cookies">获取 Cookies</button>
+    <button class="btn" id="btn-browse">打开浏览器</button>
     <button class="btn" id="btn-toggle-disable">禁用</button>
     <button class="btn danger" id="btn-delete">删除账号</button>
+  </div>
+</div>
+
+<div class="card" id="cookies-card" style="display:none">
+  <h2>Cookies <span class="muted" id="cookies-meta" style="font-size:13px"></span></h2>
+  <div style="max-height:320px;overflow:auto">
+    <table>
+      <thead><tr><th style="width:180px">名称</th><th>值</th><th style="width:170px">域</th><th style="width:150px">过期</th></tr></thead>
+      <tbody id="cookies-body"></tbody>
+    </table>
   </div>
 </div>
 
@@ -81,6 +93,8 @@ async function loadAccount() {
     document.getElementById('acc-info').innerHTML = rows;
     document.getElementById('bili-params').style.display = a.platform === 'bilibili' ? '' : 'none';
     document.getElementById('xhs-params').style.display = a.platform === 'xiaohongshu' ? '' : 'none';
+    const snap = (a.extra || {}).cookies;   // 已有快照直接展示（上次获取的存库结果）
+    if (snap && snap.cookies) renderCookies(snap);
     const btn = document.getElementById('btn-toggle-disable');
     btn.textContent = a.status === 'disabled' ? '启用' : '禁用';
   } catch (e) {
@@ -101,6 +115,36 @@ async function loadTasks() {
       <td class="err" title="${esc(t.error_message || '')}">${esc((t.error_message || '').slice(0, 60))}</td>
     </tr>`).join('') : '<tr><td colspan="6" class="empty">暂无任务</td></tr>';
 }
+
+function renderCookies(snap) {
+  document.getElementById('cookies-card').style.display = '';
+  document.getElementById('cookies-meta').textContent =
+    `（${snap.cookies.length} 项 · ${snap.captured_at} · 已存库）`;
+  document.getElementById('cookies-body').innerHTML = snap.cookies.map(c => `
+    <tr><td>${esc(c.name || '')}</td>
+        <td class="muted" style="word-break:break-all" title="${esc(c.value || '')}">${esc((c.value || '').slice(0, 48))}${(c.value || '').length > 48 ? '…' : ''}</td>
+        <td class="muted">${esc(c.domain || '')}</td>
+        <td class="muted">${c.expires > 0 ? new Date(c.expires * 1000).toLocaleString() : '会话'}</td></tr>`).join('')
+    || '<tr><td colspan="4" class="empty">无 cookie（未打开过浏览器）</td></tr>';
+}
+
+document.getElementById('btn-browse').onclick = async () => {
+  try {
+    const r = await api(`/api/v1/accounts/${accountId}/browse`, { method: 'POST' });
+    document.getElementById('btn-browse').textContent = r.opened ? '关闭浏览器' : '打开浏览器';
+    toast(r.opened ? '浏览器已打开，不会自动关闭；手动关窗或再次点击按钮结束'
+         : (r.closed ? '浏览器已关闭' : '浏览器未在打开状态'));
+  } catch (e) { toast(e.message, true); }
+};
+
+document.getElementById('btn-cookies').onclick = async () => {
+  toast('正在读取浏览器 Cookies…');
+  try {
+    const d = await api(`/api/v1/accounts/${accountId}/cookies`);
+    renderCookies(d);
+    toast(`已获取 ${d.cookies.length} 项 cookie 并存库`);
+  } catch (e) { toast(e.message, true); }
+};
 
 document.getElementById('btn-check').onclick = async () => {
   toast('正在打开浏览器检查登录态…');
@@ -254,6 +298,13 @@ async function streamFetch(body, resultEl, table, itemRow, isBili) {
   return result;
 }
 
-(async () => { await loadAccount(); await loadTasks(); })();
+(async () => {
+  await loadAccount();
+  await loadTasks();
+  try {   // 恢复手动浏览器按钮状态（服务重启/页面刷新后窗口可能仍在）
+    const s = await api(`/api/v1/accounts/${accountId}/browse`);
+    document.getElementById('btn-browse').textContent = s.opened ? '关闭浏览器' : '打开浏览器';
+  } catch (e) {}
+})();
 </script>
 {% endblock %}

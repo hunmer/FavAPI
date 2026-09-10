@@ -29,6 +29,7 @@ class LoginExpiredError(Exception):
 class BasePlatformAdapter(ABC):
     platform: str = ""
     display_name: str = ""
+    home_url: str = ""             # 平台首页（手动浏览窗口的起始页）
     implemented: bool = True          # False = 占位平台
     supported_actions: tuple[str, ...] = ()
 

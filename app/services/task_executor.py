@@ -73,6 +73,10 @@ async def start_fetch(
     """校验请求并执行；async_run=true 立即返回 pending 任务，否则等待完成返回结果。"""
     account, _adapter = await validate_fetch(platform, account_id, action, params)
 
+    from app.services import browser
+
+    await browser.close_manual(account_id)  # 手动浏览窗口让位
+
     task_id = new_id("task")
     await data_store.create_task(task_id, account_id, platform, action, params)
 
@@ -129,6 +133,7 @@ async def _run_task(task_id: str, account: dict, action: str, params: dict) -> d
         await data_store.update_task(
             task_id, status="success", result_count=summary["result_count"], finished_at=now_iso()
         )
+        await account_manager.save_cookie_snapshot(account_id)  # 抓取成功自动刷新快照
         return payload
     except asyncio.CancelledError:
         raise
@@ -167,6 +172,10 @@ async def stream_fetch_events(task_id: str, account: dict, adapter, action: str,
     account_id = account["account_id"]
     await data_store.update_task(task_id, status="running", started_at=now_iso())
     await account_manager.update_account(account_id, last_used_at=now_iso())
+
+    from app.services import browser
+
+    await browser.close_manual(account_id)  # 手动浏览窗口让位
 
     queue: asyncio.Queue = asyncio.Queue()
     seen: set[str] = set()
@@ -210,6 +219,7 @@ async def stream_fetch_events(task_id: str, account: dict, adapter, action: str,
                 task_id, status="success", result_count=saved_count, finished_at=now_iso()
             )
             await queue.put(payload)
+            await account_manager.save_cookie_snapshot(account_id)  # 抓取成功自动刷新快照
         except asyncio.CancelledError:
             raise
         except LoginExpiredError as exc:

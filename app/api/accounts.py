@@ -83,6 +83,9 @@ async def start_login(account_id: str):
     adapter = _require_adapter(account["platform"])
     if account["status"] == "disabled":
         raise HTTPException(status_code=400, detail=f"账号 {account_id} 已禁用，请先启用")
+    from app.services import browser
+
+    await browser.close_manual(account_id)  # 手动浏览窗口让位
     if not account_manager.mark_login_started(account_id):
         raise HTTPException(status_code=409, detail="该账号正在登录流程中，请勿重复发起")
 
@@ -101,11 +104,54 @@ async def _do_login(account_id: str, adapter):
         ok = await adapter.login(account_manager.to_context(account))
         if ok:
             await account_manager.update_account(account_id, status="active", last_login_at=now_iso())
+            await account_manager.save_cookie_snapshot(account_id)  # 登录成功自动刷新快照
     except Exception as exc:  # 浏览器异常（如内核未安装）不改动账号状态，仅日志
         from app.services.task_executor import logger
         logger.error("登录流程异常（%s）：%s", account_id, friendly_error(exc))
     finally:
         account_manager.clear_login_started(account_id)
+
+
+@router.post("/{account_id}/browse")
+async def toggle_browser(account_id: str):
+    """打开/关闭手动浏览窗口：不自动关闭（区别于登录窗口），用户关窗或再次调用结束。"""
+    account = await _get_account_or_404(account_id)
+    _require_adapter(account["platform"])
+    from app.services import browser
+
+    if browser.is_busy(account.get("profile_path") or "") and not browser.is_manual_open(account_id):
+        raise HTTPException(status_code=409, detail="浏览器正被登录/抓取占用，请稍后再试")
+    adapter = registry.get_adapter(account["platform"])
+    result = await browser.open_manual(account_id, account["profile_path"], adapter.home_url)
+    return {"account_id": account_id, **result}
+
+
+@router.get("/{account_id}/browse")
+async def browser_status(account_id: str):
+    """手动浏览窗口是否打开（前端恢复按钮状态用）。"""
+    await _get_account_or_404(account_id)
+    from app.services import browser
+
+    return {"account_id": account_id, "opened": browser.is_manual_open(account_id)}
+
+
+@router.get("/{account_id}/cookies")
+async def get_account_cookies(account_id: str):
+    """读取浏览器 profile 的 cookie 列表（通用，不依赖平台适配器）并存快照到 sqlite。"""
+    account = await _get_account_or_404(account_id)
+    from app.services import browser
+
+    if browser.is_busy(account.get("profile_path") or ""):
+        raise HTTPException(status_code=409, detail="浏览器正被登录/抓取占用，请稍后再试")
+    try:
+        snap = await asyncio.wait_for(
+            account_manager.save_cookie_snapshot(account_id), timeout=90
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=friendly_error(exc))
+    if snap is None:
+        raise HTTPException(status_code=503, detail="cookie 读取失败，详见服务日志")
+    return {"account_id": account_id, **snap, "saved": True}
 
 
 @router.get("/{account_id}/status")

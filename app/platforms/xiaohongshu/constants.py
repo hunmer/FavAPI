@@ -4,16 +4,17 @@ PLATFORM = "xiaohongshu"
 DISPLAY_NAME = "小红书"
 
 HOME_URL = "https://www.xiaohongshu.com/"
-# 个人主页收藏 tab（不带用户 id 时由站点跳转到当前登录用户主页）
-FAVORITES_URL = "https://www.xiaohongshu.com/user/profile?tab=fav&subTab=note"
-# 指定目标用户时使用：/user/profile/{user_id}?tab=fav&subTab=note
+# 收藏 tab 页面（必须带 user_id：/user/profile 不带 id 是 404 页，当前登录用户 id 由 adapter 解析）
 PROFILE_URL = "https://www.xiaohongshu.com/user/profile/{user_id}?tab=fav&subTab=note"
 
 # 收藏列表接口（响应拦截匹配用）；edith 接口有 x-s/x-t 签名校验，只能拦截页面自身请求
 COLLECT_PAGE_API = "/api/sns/web/v2/note/collect/page"
+# 当前用户信息接口（需页面内 _webmsxyw 函数签名后请求）
+USER_ME_API = "https://edith.xiaohongshu.com/api/sns/web/v2/user/me"
 
-# 判定已登录的 cookie（任一存在且非空即视为登录）
-LOGIN_COOKIE_KEYS = ("web_session",)
+# 判定已登录的 cookie（任一存在且非空即视为登录）。
+# 注意：web_session 游客也有（实测游客前缀 03/登录 04，不可靠）；id_token 仅登录后存在。
+LOGIN_COOKIE_KEYS = ("id_token",)
 
 DEFAULT_COUNT = 20
 MAX_COUNT = 500
