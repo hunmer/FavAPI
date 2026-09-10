@@ -76,11 +76,17 @@ class DouyinAdapter(BasePlatformAdapter):
             logger.info("[%s] 登录态检查：%s", account.account_id, "有效" if ok else "无效")
             return ok
 
-    async def fetch_favorites(self, account: AccountContext, params: dict) -> FetchResult:
-        count = max(1, min(int(params.get("count") or constants.DEFAULT_COUNT), constants.MAX_COUNT))
+    async def fetch_favorites(
+        self, account: AccountContext, params: dict, on_batch=None
+    ) -> FetchResult:
+        raw_count = params.get("count")
+        if raw_count in (None, ""):
+            count = constants.DEFAULT_COUNT
+        else:
+            count = max(0, min(int(raw_count), constants.MAX_COUNT))  # 0 = 全部
         skip = max(0, int(params.get("cursor") or 0))
         logger.info(
-            "[%s] 开始抓取收藏：count=%d cursor=%d", account.account_id, count, skip
+            "[%s] 开始抓取收藏：count=%s cursor=%d", account.account_id, count or "全部", skip
         )
 
         batches: list[dict] = []
@@ -101,6 +107,8 @@ class DouyinAdapter(BasePlatformAdapter):
                     "捕获 listcollection 批次 #%d：%d 条，cursor=%s has_more=%s",
                     len(batches), len(batch["items"]), batch["cursor"], batch["has_more"],
                 )
+                if on_batch and batch["items"]:
+                    await on_batch({"page": len(batches), "items": batch["items"]})
 
             page.on("response", _on_response)
             await page.goto(constants.FAVORITES_URL, wait_until="domcontentloaded")
@@ -117,7 +125,7 @@ class DouyinAdapter(BasePlatformAdapter):
             while rounds < constants.MAX_SCROLL_ROUNDS:
                 merged = _merge_batches(batches)
                 has_more = batches[-1]["has_more"] if batches else True
-                if len(merged) >= count + skip:
+                if count and len(merged) >= count + skip:
                     logger.info("已收集 %d 条（目标 %d），停止滚动", len(merged), count + skip)
                     break
                 if not has_more:
@@ -148,7 +156,7 @@ class DouyinAdapter(BasePlatformAdapter):
             await page.wait_for_timeout(1200)
 
         merged = _merge_batches(batches)
-        window = merged[skip: skip + count]
+        window = merged[skip:] if not count else merged[skip: skip + count]
         last_has_more = bool(batches and batches[-1]["has_more"])
         logger.info(
             "[%s] 抓取完成：捕获批次 %d，去重 %d 条，返回 [%d:%d] 共 %d 条，has_more=%s",
@@ -158,7 +166,7 @@ class DouyinAdapter(BasePlatformAdapter):
         return FetchResult(
             items=window,
             cursor=skip + len(window),
-            # 返回满页且服务端提示还有更多 → 认为仍有余量
-            has_more=last_has_more and len(merged) >= skip + count,
+            # 返回满页且服务端提示还有更多 → 认为仍有余量；count=0 抓完全部，以接口 has_more 为准
+            has_more=last_has_more and (not count or len(merged) >= skip + count),
             total=batches[0].get("total") if batches else 0,
         )

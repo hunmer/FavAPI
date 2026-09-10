@@ -9,6 +9,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from app.platforms.bilibili.adapter import BilibiliAdapter  # noqa: E402
 from app.platforms.bilibili.parser import (  # noqa: E402
     extract_mid,
     parse_folder_list,
@@ -118,6 +119,19 @@ def test_parse_folder_list():
 def test_parse_folder_list_empty():
     parsed = parse_folder_list({})
     assert parsed["folders"] == [] and parsed["owner"]["mid"] == ""
+
+
+def test_validate_params():
+    adapter = BilibiliAdapter()
+    adapter.validate_params({})  # 不传 → 默认当前登录用户，合法
+    adapter.validate_params({"mid": "388116545"})
+    adapter.validate_params({"url": "https://space.bilibili.com/388116545/favlist?spm_id_from=333.1387.0.0"})
+    for bad in ({"mid": "abc"}, {"url": "https://example.com/not-bilibili"}):
+        try:
+            adapter.validate_params(bad)
+            raise AssertionError(f"应抛 ValueError：{bad}")
+        except ValueError:
+            pass
 
 
 if __name__ == "__main__":

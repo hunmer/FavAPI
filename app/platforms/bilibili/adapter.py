@@ -14,6 +14,7 @@ from app.platforms.base import (
     AccountContext,
     BasePlatformAdapter,
     FetchResult,
+    LoginExpiredError,
 )
 from app.services import browser
 from . import constants
@@ -29,12 +30,16 @@ class BilibiliAdapter(BasePlatformAdapter):
     supported_actions = ("list_favorites",)
 
     def validate_params(self, params: dict) -> None:
-        mid = self._target_mid(params)
-        if not mid:
+        raw_url = str(params.get("url") or "").strip()
+        raw_mid = str(params.get("mid") or "").strip()
+        if not raw_url and not raw_mid:
+            return  # 未指定 → 默认抓当前登录用户自己的收藏夹
+        mid = extract_mid(raw_url) or raw_mid
+        if not (mid and mid.isdigit()):
             raise ValueError(
-                "缺少目标用户：params.url 需为 "
+                "目标用户无效：url 需为 "
                 "https://space.bilibili.com/{用户id}/favlist 形式的收藏夹主页链接，"
-                "或 params.mid 直接传用户 id"
+                "或 mid 传纯数字用户 id；留空则默认当前登录用户"
             )
 
     @staticmethod
@@ -68,15 +73,29 @@ class BilibiliAdapter(BasePlatformAdapter):
             logger.info("[%s] 登录态检查：%s", account.account_id, "有效" if ok else "无效")
             return ok
 
-    async def fetch_favorites(self, account: AccountContext, params: dict) -> FetchResult:
+    async def fetch_favorites(
+        self, account: AccountContext, params: dict, on_batch=None
+    ) -> FetchResult:
         self.validate_params(params)
         mid = self._target_mid(params)
-        count = max(1, min(int(params.get("count") or constants.DEFAULT_COUNT), constants.MAX_COUNT))
+        raw_count = params.get("count")
+        if raw_count in (None, ""):
+            count = constants.DEFAULT_COUNT
+        else:
+            count = max(0, min(int(raw_count), constants.MAX_COUNT))  # 0 = 全部
         skip = max(0, int(params.get("cursor") or 0))
+        # count=0 表示不设条数上限，翻完所有收藏夹所有页
+        target = skip + count if count else None
         media_id = str(params.get("media_id") or "").strip()  # 可选：只抓指定收藏夹
+        raw_interval = params.get("interval_ms")
+        interval_ms = (
+            constants.PAGE_INTERVAL_MS if raw_interval in (None, "")
+            else max(0, min(int(raw_interval), 10000))  # 可选：翻页请求间隔（ms）
+        )
         logger.info(
-            "[%s] 开始抓取收藏夹：mid=%s count=%d cursor=%d media_id=%s",
-            account.account_id, mid, count, skip, media_id or "全部",
+            "[%s] 开始抓取收藏夹：mid=%s count=%s cursor=%d media_id=%s interval=%dms",
+            account.account_id, mid or "当前登录用户", count or "全部", skip,
+            media_id or "全部", interval_ms,
         )
 
         items: list[dict] = []
@@ -86,6 +105,18 @@ class BilibiliAdapter(BasePlatformAdapter):
         stopped_early = False
 
         async with browser.session(account.profile_path, headless=config.HEADLESS) as ctx:
+            if not mid:
+                cookies = await ctx.cookies()
+                mid = next(
+                    (c["value"] for c in cookies if c.get("name") == "DedeUserID" and c.get("value")),
+                    "",
+                )
+                if not mid:
+                    raise LoginExpiredError(
+                        "未指定目标用户，且账号未登录（Bilibili cookie 中无 DedeUserID）："
+                        "请先扫码登录，或在参数中传入收藏夹主页 URL / 用户 id"
+                    )
+                logger.info("[%s] 未指定用户，默认当前登录用户 mid=%s", account.account_id, mid)
             headers = {"Referer": f"https://space.bilibili.com/{mid}/favlist"}
 
             if media_id:
@@ -124,6 +155,7 @@ class BilibiliAdapter(BasePlatformAdapter):
                         folder["title"] = batch["favorite"]["title"]
 
                     new_count = 0
+                    page_items: list[dict] = []
                     for it in batch["items"]:
                         key = (it["content_id"], folder["media_id"])
                         if key not in seen:
@@ -131,16 +163,24 @@ class BilibiliAdapter(BasePlatformAdapter):
                             it["fav_media_id"] = folder["media_id"]
                             it["fav_title"] = folder["title"] or ""
                             items.append(it)
+                            page_items.append(it)
                             new_count += 1
                     logger.info(
                         "[%s] 收藏夹「%s」第 %d 页：%d 条（新增 %d，累计去重 %d），has_more=%s",
                         account.account_id, folder["title"] or folder["media_id"], pn,
                         len(batch["items"]), new_count, len(items), batch["has_more"],
                     )
+                    if on_batch and page_items:
+                        await on_batch({
+                            "folder": {"media_id": folder["media_id"], "title": folder["title"]},
+                            "page": pn,
+                            "items": page_items,
+                            "total_fetched": len(items),
+                        })
 
                     if not batch["has_more"]:
                         break  # 该收藏夹已到底
-                    if len(items) >= skip + count:
+                    if target is not None and len(items) >= target:
                         stopped_early = True
                         break  # 已凑够窗口，该夹仍有剩余
                     if pn >= constants.MAX_PAGES:
@@ -148,11 +188,11 @@ class BilibiliAdapter(BasePlatformAdapter):
                         stopped_early = True
                         break
                     pn += 1
-                    await asyncio.sleep(constants.PAGE_INTERVAL_MS / 1000)
+                    await asyncio.sleep(interval_ms / 1000)
                 if stopped_early:
                     break
 
-        window = items[skip: skip + count]
+        window = items[skip:] if target is None else items[skip:target]
         meta = {"owner": owner, "folders": folders_meta}
         await self._save_owner(account.account_id, meta)
         logger.info(

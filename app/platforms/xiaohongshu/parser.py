@@ -1,0 +1,70 @@
+"""小红书 collect/page 响应 → 通用 content 行的解析。"""
+import json
+import re
+
+# 个人主页 URL：xiaohongshu.com/user/profile/{24 位十六进制用户 id}
+_PROFILE_USER_RE = re.compile(r"xiaohongshu\.com/user/profile/([0-9a-fA-F]{16,32})")
+_USER_ID_RE = re.compile(r"[0-9a-fA-F]{16,32}")
+
+
+def _as_int(value) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def extract_user_id(url: str) -> str | None:
+    """从个人主页 URL 提取用户 id。"""
+    m = _PROFILE_USER_RE.search(url or "")
+    return m.group(1) if m else None
+
+
+def is_user_id(value: str) -> bool:
+    return bool(_USER_ID_RE.fullmatch(value or ""))
+
+
+def _cover_url(cover: dict) -> str | None:
+    """cover.url_default / url_pre，缺失时回退 info_list 的 WB_DFT。"""
+    if not cover:
+        return None
+    url = cover.get("url_default") or cover.get("url_pre")
+    if url:
+        return url
+    infos = cover.get("info_list") or []
+    for info in infos:
+        if info.get("image_scene") == "WB_DFT" and info.get("url"):
+            return info["url"]
+    return infos[0].get("url") if infos else None
+
+
+def parse_note(note: dict) -> dict:
+    """单个 note → contents 表字段（不含 platform / account_id，由写入方补）。"""
+    user = note.get("user") or {}
+    interact = note.get("interact_info") or {}
+    return {
+        "content_id": str(note.get("note_id") or ""),
+        "title": note.get("display_title") or None,
+        "description": None,
+        "author_id": str(user.get("user_id") or "") or None,
+        "author_name": user.get("nickname"),
+        "cover_url": _cover_url(note.get("cover")),
+        "duration": None,
+        "statistics": json.dumps(
+            {"liked_count": _as_int(interact.get("liked_count"))}, ensure_ascii=False
+        ),
+        "raw_data": json.dumps(note, ensure_ascii=False),
+        "collected_at": None,  # 收藏列表接口不含收藏时间
+    }
+
+
+def parse_collect_page(data: dict) -> dict:
+    """collect/page 响应 JSON → {items, cursor, has_more, total}。cursor 为不透明字符串。"""
+    payload = (data.get("data") if isinstance(data, dict) else None) or {}
+    notes = payload.get("notes") or []
+    return {
+        "items": [parse_note(n) for n in notes if n.get("note_id")],
+        "cursor": payload.get("cursor"),
+        "has_more": bool(payload.get("has_more")),
+        "total": 0,  # 接口不返回总数
+    }

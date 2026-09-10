@@ -44,5 +44,10 @@ class BasePlatformAdapter(ABC):
         """抓取前参数校验（可选覆写）；不合法抛 ValueError，由任务执行器转为 400。"""
 
     @abstractmethod
-    async def fetch_favorites(self, account: AccountContext, params: dict) -> FetchResult:
-        """抓取收藏列表，params 支持 count / cursor 等。"""
+    async def fetch_favorites(self, account: AccountContext, params: dict, on_batch=None) -> FetchResult:
+        """抓取收藏列表，params 支持 count / cursor 等。
+
+        on_batch 提供时（流式抓取）：每抓到一批 items 调用一次
+        await on_batch({"folder": ..., "page": ..., "items": [...], "total_fetched": ...})，
+        便于调用方增量入库 / SSE 推送；不提供时行为与原同步抓取一致。
+        """

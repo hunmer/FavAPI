@@ -74,6 +74,7 @@ async def _checks(client: httpx.AsyncClient) -> int:
     platforms = {p["platform"]: p for p in r.json()["platforms"]}
     check("platforms.douyin_implemented", platforms["douyin"]["implemented"] is True)
     check("platforms.bilibili_implemented", platforms["bilibili"]["implemented"] is True)
+    check("platforms.xiaohongshu_implemented", platforms["xiaohongshu"]["implemented"] is True)
 
     # 2. 创建账号
     r = await client.post("/api/v1/accounts", json={"platform": "douyin", "name": "主号"})
@@ -111,13 +112,21 @@ async def _checks(client: httpx.AsyncClient) -> int:
     r = await client.post("/api/v1/fetch", json={**base, "action": "list_collects"})
     check("fetch.unsupported_action_400", r.status_code == 400 and "不支持" in r.json()["detail"])
 
-    # 5. Bilibili 账号的抓取参数校验（不触浏览器；带 url 的真实抓取需浏览器内核，另行验证）
+    # 5. Bilibili 账号的抓取参数校验（不触浏览器；合法参数的真实抓取需浏览器内核，另行验证）
     r = await client.post("/api/v1/accounts", json={"platform": "bilibili", "name": "B站抓取"})
     bili_acc_id = r.json()["account_id"]
     r = await client.post("/api/v1/fetch", json={
         "platform": "bilibili", "account_id": bili_acc_id, "action": "list_favorites",
+        "params": {"url": "https://example.com/not-bilibili"},
     })
-    check("fetch.bilibili_missing_mid_400", r.status_code == 400 and "目标用户" in r.json()["detail"], r.text)
+    check("fetch.bilibili_invalid_mid_400", r.status_code == 400 and "目标用户" in r.json()["detail"], r.text)
+
+    # 5.1 SSE 流式端点：参数校验同样生效（真实流式抓取需浏览器内核，另行验证）
+    r = await client.post("/api/v1/fetch/stream", json={
+        "platform": "bilibili", "account_id": bili_acc_id, "action": "list_favorites",
+        "params": {"url": "https://example.com/not-bilibili", "count": 0},
+    })
+    check("fetch.stream_invalid_params_400", r.status_code == 400 and "目标用户" in r.json()["detail"], r.text)
     await client.delete(f"/api/v1/accounts/{bili_acc_id}")
 
     # 6. 任务记录生命周期

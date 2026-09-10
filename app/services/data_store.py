@@ -70,6 +70,7 @@ async def save_fetch_result(account: dict, items: list[dict]) -> dict:
 _CONTENT_URL_TEMPLATES = {
     "douyin": "https://www.douyin.com/video/{content_id}",
     "bilibili": "https://www.bilibili.com/video/{content_id}",
+    "xiaohongshu": "https://www.xiaohongshu.com/explore/{content_id}",
 }
 
 

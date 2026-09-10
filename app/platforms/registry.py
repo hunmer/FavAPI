@@ -31,9 +31,11 @@ def _info(adapter: BasePlatformAdapter) -> dict:
     }
 
 
-# 导入即注册（抖音完整实现 + Bilibili 占位）
+# 导入即注册（抖音 / Bilibili / 小红书）
 from app.platforms.bilibili.adapter import BilibiliAdapter  # noqa: E402
 from app.platforms.douyin.adapter import DouyinAdapter  # noqa: E402
+from app.platforms.xiaohongshu.adapter import XiaohongshuAdapter  # noqa: E402
 
 register(DouyinAdapter())
 register(BilibiliAdapter())
+register(XiaohongshuAdapter())

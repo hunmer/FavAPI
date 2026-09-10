@@ -16,14 +16,22 @@
   <h2>手动触发抓取</h2>
   <div class="row" id="bili-params" style="display:none">
     <label>收藏夹主页 / 用户ID
-      <input type="text" id="f-mid" placeholder="https://space.bilibili.com/{用户id}/favlist 或纯数字 id" style="width:340px">
+      <input type="text" id="f-mid" placeholder="留空 = 当前登录用户；或粘贴收藏夹主页 / 用户id" style="width:340px">
     </label>
     <label>收藏夹 media_id
       <input type="text" id="f-media-id" placeholder="可选，默认全部收藏夹" style="width:170px">
     </label>
+    <label>翻页间隔(ms)
+      <input type="number" id="f-interval" placeholder="800" min="0" max="10000" style="width:80px" title="翻页请求间隔，留空默认 800ms，越小越快（风控风险越高）">
+    </label>
+  </div>
+  <div class="row" id="xhs-params" style="display:none">
+    <label>主页链接 / 用户ID
+      <input type="text" id="f-xhs-user" placeholder="留空 = 当前登录用户；或粘贴个人主页链接 / 用户id" style="width:340px">
+    </label>
   </div>
   <div class="row">
-    <label>数量 <input type="number" id="f-count" value="20" min="1" max="500"></label>
+    <label>数量 <input type="number" id="f-count" value="20" min="0" max="500" title="0 = 捕获全部"></label>
     <label>游标 <input type="number" id="f-cursor" placeholder="0" min="0"></label>
     <label><input type="checkbox" id="f-async"> 异步执行</label>
     <button class="btn primary" id="btn-fetch">开始抓取</button>
@@ -47,8 +55,9 @@ let loginPoller = null;
 let currentPlatform = '';
 
 function videoUrl(id) {
-  return currentPlatform === 'bilibili'
-    ? `https://www.bilibili.com/video/${id}` : `https://www.douyin.com/video/${id}`;
+  if (currentPlatform === 'bilibili') return `https://www.bilibili.com/video/${id}`;
+  if (currentPlatform === 'xiaohongshu') return `https://www.xiaohongshu.com/explore/${id}`;
+  return `https://www.douyin.com/video/${id}`;
 }
 
 async function loadAccount() {
@@ -71,6 +80,7 @@ async function loadAccount() {
     }
     document.getElementById('acc-info').innerHTML = rows;
     document.getElementById('bili-params').style.display = a.platform === 'bilibili' ? '' : 'none';
+    document.getElementById('xhs-params').style.display = a.platform === 'xiaohongshu' ? '' : 'none';
     const btn = document.getElementById('btn-toggle-disable');
     btn.textContent = a.status === 'disabled' ? '启用' : '禁用';
   } catch (e) {
@@ -102,6 +112,7 @@ document.getElementById('btn-check').onclick = async () => {
 };
 
 document.getElementById('btn-login').onclick = async () => {
+  if (loginPoller) { clearInterval(loginPoller); loginPoller = null; }  // 防多次点击堆积轮询
   try {
     const res = await api(`/api/v1/accounts/${accountId}/login`, { method: 'POST' });
     toast(res.message || '登录窗口已打开，请扫码');
@@ -141,50 +152,107 @@ document.getElementById('btn-delete').onclick = async () => {
 document.getElementById('btn-fetch').onclick = async () => {
   const btn = document.getElementById('btn-fetch');
   btn.disabled = true; btn.textContent = '抓取中…';
-  document.getElementById('fetch-result').innerHTML = '<div class="muted">正在执行，浏览器窗口可能弹出，请勿关闭…</div>';
-  const params = { count: +document.getElementById('f-count').value || 20,
+  const resultEl = document.getElementById('fetch-result');
+  resultEl.innerHTML = '<div class="muted">正在执行，浏览器窗口可能弹出，请勿关闭…</div>';
+  const rawCount = document.getElementById('f-count').value;
+  const params = { count: rawCount === '' ? 20 : +rawCount,   // 0 = 全部（SSE 流式），空串回退默认
                    cursor: +document.getElementById('f-cursor').value || 0 };
   if (currentPlatform === 'bilibili') {
     const target = document.getElementById('f-mid').value.trim();
     if (target) { if (/^\d+$/.test(target)) params.mid = target; else params.url = target; }
     const mediaId = document.getElementById('f-media-id').value.trim();
     if (mediaId) params.media_id = mediaId;
+    const interval = document.getElementById('f-interval').value;
+    if (interval !== '') params.interval_ms = +interval;
+  }
+  if (currentPlatform === 'xiaohongshu') {
+    const target = document.getElementById('f-xhs-user').value.trim();
+    if (target) { if (/^[0-9a-fA-F]{16,32}$/.test(target)) params.user_id = target; else params.url = target; }
   }
   const body = { platform: currentPlatform, account_id: accountId, action: 'list_favorites',
-                 params, async_run: document.getElementById('f-async').checked };
+                 params, async_run: false };
+  const isBili = currentPlatform === 'bilibili';
+  const favCol = isBili ? '<th>收藏夹</th>' : '';
+  const table = rows => `<table><thead><tr><th>标题</th><th>作者</th><th>时长</th>${favCol}<th>收藏时间</th></tr></thead><tbody>${rows || ''}</tbody></table>`;
+  const itemRow = i => `
+    <tr><td style="max-width:380px"><a class="link" target="_blank" href="${videoUrl(esc(i.content_id))}">${esc(i.title || i.content_id)}</a></td>
+    <td>${esc(i.author_name || '-')}</td><td>${fmtDuration(i.duration)}</td>
+    ${isBili ? `<td class="muted">${esc(i.fav_title || '-')}</td>` : ''}
+    <td class="muted">${esc(i.collected_at || '-')}</td></tr>`;
   try {
-    let r = await api('/api/v1/fetch', { method: 'POST', body: JSON.stringify(body) });
-    if (r.status === 'pending') {
-      document.getElementById('fetch-result').innerHTML = `<div class="muted">任务 ${esc(r.task_id)} 已提交，执行中…</div>`;
-      while (true) {
-        await new Promise(res => setTimeout(res, 3000));
-        r = await api(`/api/v1/tasks/${r.task_id}`);
-        if (r.status !== 'pending' && r.status !== 'running') break;
-      }
-    }
-    if (r.status === 'success') {
-      const isBili = currentPlatform === 'bilibili';
-      const favCol = isBili ? '<th>收藏夹</th>' : '';
-      const rows = (r.items || []).map(i => `
-        <tr><td style="max-width:380px"><a class="link" target="_blank" href="${videoUrl(esc(i.content_id))}">${esc(i.title || i.content_id)}</a></td>
-        <td>${esc(i.author_name || '-')}</td><td>${fmtDuration(i.duration)}</td>
-        ${isBili ? `<td class="muted">${esc(i.fav_title || '-')}</td>` : ''}
-        <td class="muted">${esc(i.collected_at || '-')}</td></tr>`).join('');
-      const owner = (r.meta || {}).owner;
-      const ownerInfo = isBili && owner ? `，主人：${esc(owner.name || '')}(${esc(owner.mid || '')})` : '';
-      document.getElementById('fetch-result').innerHTML = `
-        <p>✅ 成功：共 <b>${r.result_count}</b> 条（新增收藏 ${r.new_favorites}）${ownerInfo}${r.has_more ? '，还有更多可翻页（cursor=' + r.cursor + '）' : ''}</p>
-        <table><thead><tr><th>标题</th><th>作者</th><th>时长</th>${favCol}<th>收藏时间</th></tr></thead><tbody>${rows || ''}</tbody></table>`;
+    let r;
+    if (params.count === 0) {
+      r = await streamFetch(body, resultEl, table, itemRow, isBili);   // 全量 → SSE 流式
     } else {
-      document.getElementById('fetch-result').innerHTML = `<div class="err">❌ 失败：${esc(r.error_message || '未知错误')}</div>`;
+      r = await api('/api/v1/fetch', { method: 'POST', body: JSON.stringify(body) });
+      if (r.status === 'pending') {
+        resultEl.innerHTML = `<div class="muted">任务 ${esc(r.task_id)} 已提交，执行中…</div>`;
+        while (true) {
+          await new Promise(res => setTimeout(res, 3000));
+          r = await api(`/api/v1/tasks/${r.task_id}`);
+          if (r.status !== 'pending' && r.status !== 'running') break;
+        }
+      }
+      if (r.status === 'success') {
+        const owner = (r.meta || {}).owner;
+        const ownerInfo = isBili && owner ? `，主人：${esc(owner.name || '')}(${esc(owner.mid || '')})` : '';
+        resultEl.innerHTML = `
+          <p>✅ 成功：共 <b>${r.result_count}</b> 条（新增收藏 ${r.new_favorites}）${ownerInfo}${r.has_more ? '，还有更多可翻页（cursor=' + r.cursor + '）' : ''}</p>
+          ${table((r.items || []).map(itemRow).join(''))}`;
+      } else {
+        resultEl.innerHTML = `<div class="err">❌ 失败：${esc(r.error_message || '未知错误')}</div>`;
+      }
     }
     loadTasks(); loadAccount();
   } catch (e) {
-    document.getElementById('fetch-result').innerHTML = `<div class="err">${esc(e.message)}</div>`;
+    resultEl.innerHTML = `<div class="err">${esc(e.message)}</div>`;
   } finally {
     btn.disabled = false; btn.textContent = '开始抓取';
   }
 };
+
+async function streamFetch(body, resultEl, table, itemRow, isBili) {
+  const res = await fetch('/api/v1/fetch/stream', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const d = await res.json().catch(() => ({}));
+    throw new Error(d.detail || res.statusText);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '', rows = '', count = 0, result = null;
+  const render = status => { resultEl.innerHTML = `<p class="muted">${status}</p>` + table(rows); };
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf('\n\n')) >= 0) {
+      const chunk = buf.slice(0, idx);
+      buf = buf.slice(idx + 2);
+      const line = chunk.split('\n').find(l => l.startsWith('data: '));
+      if (!line) continue;
+      const ev = JSON.parse(line.slice(6));
+      if (ev.type === 'items') {
+        count += ev.items.length;
+        const folder = ev.folder ? (ev.folder.title || ev.folder.media_id || '') : '';
+        rows += ev.items.map(itemRow).join('');
+        render(`⏳ 已抓取 <b>${count}</b> 条${folder ? `（${esc(folder)} 第 ${ev.page} 页）` : `（第 ${ev.page} 批）`}…`);
+      } else if (ev.type === 'done') {
+        const owner = (ev.meta || {}).owner;
+        const ownerInfo = isBili && owner ? `，主人：${esc(owner.name || '')}(${esc(owner.mid || '')})` : '';
+        resultEl.innerHTML = `
+          <p>✅ 成功：入库 <b>${ev.result_count}</b> 条（新增收藏 ${ev.new_favorites}）${ownerInfo}</p>
+          ${table(rows)}`;
+        result = ev;
+      } else if (ev.type === 'error') {
+        throw new Error(ev.error_message || '抓取失败');
+      }
+    }
+  }
+  return result;
+}
 
 (async () => { await loadAccount(); await loadTasks(); })();
 </script>

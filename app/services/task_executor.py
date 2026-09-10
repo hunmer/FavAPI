@@ -38,10 +38,10 @@ def _item_summaries(items: list[dict]) -> list[dict]:
     ]
 
 
-async def start_fetch(
-    platform: str, account_id: str, action: str, params: dict, async_run: bool = False
-) -> dict:
-    """校验请求并执行；async_run=true 立即返回 pending 任务，否则等待完成返回结果。"""
+async def validate_fetch(
+    platform: str, account_id: str, action: str, params: dict
+) -> tuple[dict, object]:
+    """抓取前置校验；不合法抛 FetchValidationError（API 层转 400）。返回 (account, adapter)。"""
     account = await account_manager.get_account(account_id)
     if account is None:
         raise FetchValidationError(f"账号不存在：{account_id}")
@@ -64,6 +64,14 @@ async def start_fetch(
         raise FetchValidationError(str(exc))
     if account["status"] == "disabled":
         raise FetchValidationError(f"账号 {account_id} 已禁用，请先启用")
+    return account, adapter
+
+
+async def start_fetch(
+    platform: str, account_id: str, action: str, params: dict, async_run: bool = False
+) -> dict:
+    """校验请求并执行；async_run=true 立即返回 pending 任务，否则等待完成返回结果。"""
+    account, _adapter = await validate_fetch(platform, account_id, action, params)
 
     task_id = new_id("task")
     await data_store.create_task(task_id, account_id, platform, action, params)
@@ -149,3 +157,95 @@ async def _fail_task(
         "error_message": message[:2000],
         "items": [],
     }
+
+
+async def stream_fetch_events(task_id: str, account: dict, adapter, action: str, params: dict):
+    """SSE 流式抓取：adapter 每批回调 → 增量入库 + 队列推送；结束推 done/error。
+
+    消费方（API 层）断开时 generator 被 close，worker 取消并把任务标记为失败。
+    """
+    account_id = account["account_id"]
+    await data_store.update_task(task_id, status="running", started_at=now_iso())
+    await account_manager.update_account(account_id, last_used_at=now_iso())
+
+    queue: asyncio.Queue = asyncio.Queue()
+    seen: set[str] = set()
+    saved_count = 0
+    new_count = 0
+
+    async def on_batch(batch: dict):
+        nonlocal saved_count, new_count
+        fresh = [it for it in batch.get("items") or [] if it.get("content_id") not in seen]
+        if not fresh:
+            return
+        seen.update(it["content_id"] for it in fresh)
+        summary = await data_store.save_fetch_result(account, fresh)
+        saved_count += summary["result_count"]
+        new_count += summary["new_favorites"]
+        await queue.put({
+            "type": "items",
+            "folder": batch.get("folder"),
+            "page": batch.get("page"),
+            "new_count": len(fresh),
+            "total_fetched": batch.get("total_fetched") or len(seen),
+            "items": _item_summaries(fresh),
+        })
+
+    async def _worker():
+        try:
+            result = await adapter.fetch_favorites(
+                account_manager.to_context(account), params or {}, on_batch=on_batch
+            )
+            payload = {
+                "type": "done",
+                "result_count": saved_count,
+                "new_favorites": new_count,
+                "cursor": result.cursor,
+                "has_more": result.has_more,
+                "total": result.total,
+            }
+            if result.meta:
+                payload["meta"] = result.meta
+            await data_store.update_task(
+                task_id, status="success", result_count=saved_count, finished_at=now_iso()
+            )
+            await queue.put(payload)
+        except asyncio.CancelledError:
+            raise
+        except LoginExpiredError as exc:
+            await _stream_fail(task_id, account_id, queue, str(exc), expired=True)
+        except Exception as exc:
+            logger.exception("流式抓取任务 %s 失败", task_id)
+            await _stream_fail(task_id, account_id, queue, friendly_error(exc))
+
+    runner = asyncio.create_task(_worker())
+    try:
+        while True:
+            msg = await queue.get()
+            yield msg
+            if msg["type"] in ("done", "error"):
+                break
+    finally:
+        if not runner.done():
+            runner.cancel()
+            try:
+                await runner
+            except (asyncio.CancelledError, Exception):
+                pass
+            await data_store.update_task(
+                task_id,
+                status="failed",
+                error_message="客户端断开，流式抓取中止",
+                finished_at=now_iso(),
+            )
+
+
+async def _stream_fail(
+    task_id: str, account_id: str, queue: asyncio.Queue, message: str, expired: bool = False
+):
+    if expired:
+        await account_manager.update_account(account_id, status="expired")
+    await data_store.update_task(
+        task_id, status="failed", error_message=message[:2000], finished_at=now_iso()
+    )
+    await queue.put({"type": "error", "error_message": message[:2000]})
