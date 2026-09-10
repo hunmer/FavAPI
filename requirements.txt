@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+aiosqlite
+playwright
+jinja2
+httpx

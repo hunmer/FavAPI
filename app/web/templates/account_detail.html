@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}账号详情{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>账号信息 <span id="acc-badge"></span></h2>
+  <table id="acc-info"><tbody><tr><td colspan="2" class="empty">加载中…</td></tr></tbody></table>
+  <div class="row" style="margin-top:14px">
+    <button class="btn" id="btn-check">检查登录状态</button>
+    <button class="btn primary" id="btn-login">打开登录窗口</button>
+    <button class="btn" id="btn-toggle-disable">禁用</button>
+    <button class="btn danger" id="btn-delete">删除账号</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>手动触发抓取</h2>
+  <div class="row">
+    <label>数量 <input type="number" id="f-count" value="20" min="1" max="500"></label>
+    <label>游标 <input type="number" id="f-cursor" placeholder="0" min="0"></label>
+    <label><input type="checkbox" id="f-async"> 异步执行</label>
+    <button class="btn primary" id="btn-fetch">开始抓取</button>
+  </div>
+  <div id="fetch-result" style="margin-top:12px"></div>
+</div>
+
+<div class="card">
+  <h2>最近任务</h2>
+  <table>
+    <thead><tr><th>任务</th><th>时间</th><th>操作</th><th>状态</th><th>数量</th><th>错误</th></tr></thead>
+    <tbody id="tasks-body"><tr><td colspan="6" class="empty">加载中…</td></tr></tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const accountId = '{{ account_id }}';
+let loginPoller = null;
+
+async function loadAccount() {
+  try {
+    const a = await api(`/api/v1/accounts/${accountId}`);
+    document.getElementById('acc-badge').innerHTML = badge(a.status);
+    document.getElementById('acc-info').innerHTML = `
+      <tr><th style="width:120px">账号 ID</th><td>${esc(a.account_id)}</td></tr>
+      <tr><th>名称</th><td>${esc(a.name)}</td></tr>
+      <tr><th>平台</th><td>${esc(a.platform)}</td></tr>
+      <tr><th>最后登录</th><td>${esc(a.last_login_at || '-')}</td></tr>
+      <tr><th>最后使用</th><td>${esc(a.last_used_at || '-')}</td></tr>
+      <tr><th>Profile</th><td class="muted">${esc(a.profile_path || '-')}</td></tr>`;
+    const btn = document.getElementById('btn-toggle-disable');
+    btn.textContent = a.status === 'disabled' ? '启用' : '禁用';
+  } catch (e) {
+    document.getElementById('acc-info').innerHTML = `<tr><td colspan="2" class="err">${esc(e.message)}</td></tr>`;
+  }
+}
+
+async function loadTasks() {
+  const data = await api(`/api/v1/tasks?account_id=${accountId}&limit=10`);
+  const tbody = document.getElementById('tasks-body');
+  tbody.innerHTML = data.tasks.length ? data.tasks.map(t => `
+    <tr>
+      <td class="muted">${esc(t.task_id)}</td>
+      <td class="muted">${esc(t.started_at || t.finished_at || '-')}</td>
+      <td>${esc(t.action)}</td>
+      <td>${badge(t.status)}</td>
+      <td>${t.result_count ?? '-'}</td>
+      <td class="err" title="${esc(t.error_message || '')}">${esc((t.error_message || '').slice(0, 60))}</td>
+    </tr>`).join('') : '<tr><td colspan="6" class="empty">暂无任务</td></tr>';
+}
+
+document.getElementById('btn-check').onclick = async () => {
+  toast('正在打开浏览器检查登录态…');
+  try {
+    const s = await api(`/api/v1/accounts/${accountId}/status`);
+    toast(s.logged_in ? `登录有效（${s.status}）` : `登录无效（${s.status}）`, !s.logged_in);
+    loadAccount();
+  } catch (e) { toast(e.message, true); }
+};
+
+document.getElementById('btn-login').onclick = async () => {
+  try {
+    const res = await api(`/api/v1/accounts/${accountId}/login`, { method: 'POST' });
+    toast(res.message || '登录窗口已打开，请扫码');
+    document.getElementById('acc-badge').innerHTML = badge('login_pending');
+    loginPoller = setInterval(async () => {
+      try {
+        const s = await api(`/api/v1/accounts/${accountId}/status`);
+        if (s.busy) return;   // 浏览器正被登录/抓取占用，继续等待
+        if (!s.logging_in) {
+          clearInterval(loginPoller); loginPoller = null;
+          toast(s.logged_in ? '登录成功' : '未完成登录（超时或未扫码）', !s.logged_in);
+          loadAccount();
+        }
+      } catch (e) { clearInterval(loginPoller); loginPoller = null; }
+    }, 4000);
+  } catch (e) { toast(e.message, true); }
+};
+
+document.getElementById('btn-toggle-disable').onclick = async () => {
+  const a = await api(`/api/v1/accounts/${accountId}`);
+  const status = a.status === 'disabled' ? 'active' : 'disabled';
+  try {
+    await api(`/api/v1/accounts/${accountId}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+    toast(status === 'disabled' ? '已禁用' : '已启用');
+    loadAccount();
+  } catch (e) { toast(e.message, true); }
+};
+
+document.getElementById('btn-delete').onclick = async () => {
+  if (!confirm('确定删除该账号？收藏关系与浏览器 Profile 将一并删除（内容主表保留）。')) return;
+  try {
+    await api(`/api/v1/accounts/${accountId}`, { method: 'DELETE' });
+    location.href = '/';
+  } catch (e) { toast(e.message, true); }
+};
+
+document.getElementById('btn-fetch').onclick = async () => {
+  const btn = document.getElementById('btn-fetch');
+  btn.disabled = true; btn.textContent = '抓取中…';
+  document.getElementById('fetch-result').innerHTML = '<div class="muted">正在执行，浏览器窗口可能弹出，请勿关闭…</div>';
+  const body = {
+    platform: null, account_id: accountId, action: 'list_favorites',
+    params: { count: +document.getElementById('f-count').value || 20,
+              cursor: +document.getElementById('f-cursor').value || 0 },
+    async_run: document.getElementById('f-async').checked,
+  };
+  try {
+    const a = await api(`/api/v1/accounts/${accountId}`);
+    body.platform = a.platform;
+    let r = await api('/api/v1/fetch', { method: 'POST', body: JSON.stringify(body) });
+    if (r.status === 'pending') {
+      document.getElementById('fetch-result').innerHTML = `<div class="muted">任务 ${esc(r.task_id)} 已提交，执行中…</div>`;
+      while (true) {
+        await new Promise(res => setTimeout(res, 3000));
+        r = await api(`/api/v1/tasks/${r.task_id}`);
+        if (r.status !== 'pending' && r.status !== 'running') break;
+      }
+    }
+    if (r.status === 'success') {
+      const rows = (r.items || []).map(i => `
+        <tr><td><a class="link" target="_blank" href="https://www.douyin.com/video/${esc(i.content_id)}">${esc(i.title || i.content_id)}</a></td>
+        <td>${esc(i.author_name || '-')}</td><td>${fmtDuration(i.duration)}</td><td class="muted">${esc(i.collected_at || '-')}</td></tr>`).join('');
+      document.getElementById('fetch-result').innerHTML = `
+        <p>✅ 成功：共 <b>${r.result_count}</b> 条（新增收藏 ${r.new_favorites}）${r.has_more ? '，还有更多可翻页（cursor=' + r.cursor + '）' : ''}</p>
+        <table><thead><tr><th>标题</th><th>作者</th><th>时长</th><th>收藏时间</th></tr></thead><tbody>${rows || ''}</tbody></table>`;
+    } else {
+      document.getElementById('fetch-result').innerHTML = `<div class="err">❌ 失败：${esc(r.error_message || '未知错误')}</div>`;
+    }
+    loadTasks(); loadAccount();
+  } catch (e) {
+    document.getElementById('fetch-result').innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = '开始抓取';
+  }
+};
+
+(async () => { await loadAccount(); await loadTasks(); })();
+</script>
+{% endblock %}

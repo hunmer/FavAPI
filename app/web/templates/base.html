@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}FavAPI{% endblock %} - FavAPI</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --card: #fff; --border: #e3e6ea; --text: #1f2329;
+    --muted: #8a919f; --primary: #3370ff; --green: #2ea44f; --red: #d4380d;
+    --orange: #d46b08; --blue: #1677ff; --gray: #8a919f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+  nav { display: flex; align-items: center; gap: 20px; background: #fff; border-bottom: 1px solid var(--border); padding: 0 24px; height: 52px; }
+  nav .brand { font-weight: 700; font-size: 16px; color: var(--primary); }
+  nav a { color: var(--muted); text-decoration: none; padding: 4px 2px; }
+  nav a.active, nav a:hover { color: var(--text); }
+  main { max-width: 1080px; margin: 24px auto; padding: 0 16px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 18px 20px; margin-bottom: 16px; }
+  .card h2 { margin: 0 0 14px; font-size: 16px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  th { color: var(--muted); font-weight: 500; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  .btn { border: 1px solid var(--border); background: #fff; border-radius: 6px; padding: 5px 12px; cursor: pointer; font-size: 13px; }
+  .btn:hover { border-color: var(--primary); color: var(--primary); }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .btn.danger:hover { border-color: var(--red); color: var(--red); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  input, select { border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; font-size: 13px; background: #fff; }
+  input[type=number] { width: 90px; }
+  .badge { display: inline-block; border-radius: 10px; padding: 1px 9px; font-size: 12px; color: #fff; }
+  .badge.active, .badge.success { background: var(--green); }
+  .badge.expired, .badge.failed { background: var(--red); }
+  .badge.disabled { background: var(--gray); }
+  .badge.pending, .badge.running, .badge.login_pending { background: var(--orange); }
+  .muted { color: var(--muted); }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .toast { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); background: #1f2329; color: #fff; border-radius: 6px; padding: 8px 18px; display: none; z-index: 99; max-width: 80vw; }
+  .cover { width: 48px; height: 64px; object-fit: cover; border-radius: 4px; background: #eee; }
+  .err { color: var(--red); white-space: pre-wrap; }
+  a.link { color: var(--primary); text-decoration: none; }
+  .empty { text-align: center; color: var(--muted); padding: 26px 0; }
+</style>
+{% block style %}{% endblock %}
+</head>
+<body>
+<nav>
+  <a class="brand" href="/">FavAPI</a>
+  <a href="/" class="{{ 'active' if page in ('accounts','account_detail') }}">账号</a>
+  <a href="/tasks" class="{{ 'active' if page == 'tasks' }}">任务</a>
+  <a href="/favorites" class="{{ 'active' if page == 'favorites' }}">数据</a>
+</nav>
+<main>{% block content %}{% endblock %}</main>
+<div class="toast" id="toast"></div>
+<script>
+async function api(path, opts = {}) {
+  const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || res.statusText);
+  return data;
+}
+function toast(msg, isError = false) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.background = isError ? '#d4380d' : '#1f2329';
+  el.style.display = 'block';
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.style.display = 'none', isError ? 6000 : 3000);
+}
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function fmtDuration(ms) {
+  if (!ms || ms < 0) return '-';
+  const s = Math.round(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+function badge(status) {
+  const map = { active: '已启用', expired: '登录过期', disabled: '已禁用',
+                pending: '等待中', running: '执行中', success: '成功', failed: '失败', login_pending: '登录中' };
+  const cls = ['active','expired','disabled','pending','running','success','failed','login_pending'].includes(status) ? status : 'disabled';
+  return `<span class="badge ${cls}">${map[status] || esc(status)}</span>`;
+}
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,44 @@
+"""平台适配器抽象基类与通用数据结构。"""
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+
+
+@dataclass
+class AccountContext:
+    """适配器所需的账号上下文（服务层从 accounts 表构造）。"""
+    account_id: str
+    platform: str
+    name: str
+    profile_path: str
+
+
+@dataclass
+class FetchResult:
+    """fetch_favorites 的统一返回。items 为解析后的通用 content 行（见 parser）。"""
+    items: list[dict] = field(default_factory=list)
+    cursor: int | None = None   # 下次增量抓取的偏移
+    has_more: bool = False
+    total: int = 0
+
+
+class LoginExpiredError(Exception):
+    """登录态失效：抓取中途检测到未登录时抛出，由任务执行器标记账号 expired。"""
+
+
+class BasePlatformAdapter(ABC):
+    platform: str = ""
+    display_name: str = ""
+    implemented: bool = True          # False = 占位平台（Bilibili）
+    supported_actions: tuple[str, ...] = ()
+
+    @abstractmethod
+    async def login(self, account: AccountContext, timeout: float | None = None) -> bool:
+        """有头浏览器登录（扫码），成功返回 True。"""
+
+    @abstractmethod
+    async def check_login_status(self, account: AccountContext) -> bool:
+        """检查登录态是否有效。"""
+
+    @abstractmethod
+    async def fetch_favorites(self, account: AccountContext, params: dict) -> FetchResult:
+        """抓取收藏列表，params 支持 count / cursor 等。"""
