@@ -71,6 +71,8 @@ class FavoriteItem(BaseModel):
     cover_url: str | None = None
     duration: int | None = None
     statistics: dict[str, Any] = Field(default_factory=dict)
+    fav_media_id: str | None = None  # 归属收藏夹（Bilibili）
+    fav_title: str | None = None
     collected_at: str | None = None
     fetched_at: str | None = None
     url: str | None = None

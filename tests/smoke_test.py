@@ -39,6 +39,25 @@ def _fake_items():
     ]
 
 
+def _fake_bili_items():
+    """同一视频收藏在两个收藏夹 → 两条收藏关系，内容主表仅一条。"""
+    base = {
+        "content_id": "BV1test",
+        "title": "B站测试视频",
+        "author_id": "285760",
+        "author_name": "up主",
+        "cover_url": "https://example.com/bili.jpg",
+        "duration": 442,
+        "statistics": '{"play": 47968}',
+        "raw_data": "{}",
+        "collected_at": None,
+    }
+    return [
+        {**base, "fav_media_id": "290999545", "fav_title": "默认收藏夹"},
+        {**base, "fav_media_id": "290999600", "fav_title": "教程"},
+    ]
+
+
 async def _checks(client: httpx.AsyncClient) -> int:
     failed = 0
 
@@ -54,7 +73,7 @@ async def _checks(client: httpx.AsyncClient) -> int:
     r = await client.get("/api/v1/platforms")
     platforms = {p["platform"]: p for p in r.json()["platforms"]}
     check("platforms.douyin_implemented", platforms["douyin"]["implemented"] is True)
-    check("platforms.bilibili_placeholder", platforms["bilibili"]["implemented"] is False)
+    check("platforms.bilibili_implemented", platforms["bilibili"]["implemented"] is True)
 
     # 2. 创建账号
     r = await client.post("/api/v1/accounts", json={"platform": "douyin", "name": "主号"})
@@ -63,7 +82,7 @@ async def _checks(client: httpx.AsyncClient) -> int:
     check("accounts.create_id_prefix", acc["account_id"].startswith("acc_"))
 
     r = await client.post("/api/v1/accounts", json={"platform": "bilibili", "name": "B站"})
-    check("accounts.create_bilibili_blocked", r.status_code == 400 and "即将支持" in r.json()["detail"], r.text)
+    check("accounts.create_bilibili", r.status_code == 201, r.text)
 
     r = await client.post("/api/v1/accounts", json={"platform": "xxx", "name": "?"})
     check("accounts.create_unknown_platform", r.status_code == 400)
@@ -92,17 +111,14 @@ async def _checks(client: httpx.AsyncClient) -> int:
     r = await client.post("/api/v1/fetch", json={**base, "action": "list_collects"})
     check("fetch.unsupported_action_400", r.status_code == 400 and "不支持" in r.json()["detail"])
 
-    # 5. Bilibili 账号的抓取（直接写库模拟未来状态）→ 友好提示
-    bili_acc_id = new_id("acc")
-    await data_store.db.execute(
-        """INSERT INTO accounts (account_id, platform, name, status, created_at)
-           VALUES (?, 'bilibili', 'B站占位', 'active', ?)""",
-        (bili_acc_id, now_iso()),
-    )
+    # 5. Bilibili 账号的抓取参数校验（不触浏览器；带 url 的真实抓取需浏览器内核，另行验证）
+    r = await client.post("/api/v1/accounts", json={"platform": "bilibili", "name": "B站抓取"})
+    bili_acc_id = r.json()["account_id"]
     r = await client.post("/api/v1/fetch", json={
         "platform": "bilibili", "account_id": bili_acc_id, "action": "list_favorites",
     })
-    check("fetch.bilibili_not_implemented_400", r.status_code == 400 and "暂未实现" in r.json()["detail"], r.text)
+    check("fetch.bilibili_missing_mid_400", r.status_code == 400 and "目标用户" in r.json()["detail"], r.text)
+    await client.delete(f"/api/v1/accounts/{bili_acc_id}")
 
     # 6. 任务记录生命周期
     task_id = new_id("task")
@@ -127,6 +143,26 @@ async def _checks(client: httpx.AsyncClient) -> int:
     r = await client.get(f"/api/v1/favorites?account_id={acc['account_id']}&limit=2&offset=2")
     check("favorites.pagination", len(r.json()["items"]) == 1 and r.json()["total"] == 3)
 
+    # 7.1 Bilibili 收藏夹归属：同一视频两个夹 → 两条收藏关系、内容主表一条
+    r = await client.post("/api/v1/accounts", json={"platform": "bilibili", "name": "B站归属测试"})
+    bili_acc = r.json()
+    summary = await data_store.save_fetch_result(bili_acc, _fake_bili_items())
+    check("favorites.bili_multi_folder", summary["result_count"] == 2 and summary["new_favorites"] == 2)
+    summary2 = await data_store.save_fetch_result(bili_acc, _fake_bili_items())
+    check("favorites.bili_dedup_on_refetch", summary2["new_favorites"] == 0)
+    r = await client.get(f"/api/v1/favorites?account_id={bili_acc['account_id']}")
+    body = r.json()
+    check(
+        "favorites.bili_folder_titles",
+        body["total"] == 2 and {i["fav_title"] for i in body["items"]} == {"默认收藏夹", "教程"},
+        r.text,
+    )
+    check("favorites.bili_url", body["items"][0]["url"] == "https://www.bilibili.com/video/BV1test")
+    row = await data_store.db.query_one(
+        "SELECT COUNT(*) AS n FROM contents WHERE platform='bilibili'")
+    check("favorites.bili_contents_dedup", row["n"] == 1)
+    await client.delete(f"/api/v1/accounts/{bili_acc['account_id']}")
+
     # 8. 删除账号 → 收藏关系清空、内容保留
     r = await client.delete(f"/api/v1/accounts/{acc['account_id']}")
     check("accounts.delete", r.status_code == 200)
@@ -148,11 +184,59 @@ async def _checks(client: httpx.AsyncClient) -> int:
     return failed
 
 
+async def _migrate_check() -> int:
+    """老库（favorites 无归属列）迁移：数据保留 + 新列可用。"""
+    import aiosqlite
+
+    from app.database import Database
+
+    path = Path(os.environ["FAVAPI_DATA_DIR"]) / "migrate_test.db"
+    async with aiosqlite.connect(path) as conn:
+        await conn.execute(
+            """CREATE TABLE favorites (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT, account_id TEXT, platform TEXT,
+                 content_id TEXT, collected_at TEXT, fetched_at TEXT,
+                 UNIQUE(account_id, platform, content_id))"""
+        )
+        await conn.execute(
+            "INSERT INTO favorites (account_id, platform, content_id) VALUES ('acc_x', 'douyin', 'aweme_1')"
+        )
+        await conn.commit()
+
+    old_db = Database(str(path))
+    await old_db.connect()
+    row = await old_db.query_one("SELECT * FROM favorites WHERE content_id='aweme_1'")
+    new_combo = await old_db.execute(
+        "INSERT OR IGNORE INTO favorites (account_id, platform, content_id, fav_media_id, fav_title) "
+        "VALUES ('acc_x', 'douyin', 'aweme_1', 'm1', '夹')"
+    )
+    old_combo = await old_db.execute(
+        "INSERT OR IGNORE INTO favorites (account_id, platform, content_id, fav_media_id, fav_title) "
+        "VALUES ('acc_x', 'douyin', 'aweme_1', '', '')"
+    )
+    await old_db.close()
+
+    failed = 0
+    def check(name, cond, extra=""):
+        nonlocal failed
+        if cond:
+            print(f"PASS {name}")
+        else:
+            failed += 1
+            print(f"FAIL {name} {extra}")
+
+    check("migrate.row_kept", row is not None and row["fav_media_id"] == "", str(row))
+    check("migrate.new_folder_combo_inserted", new_combo.rowcount == 1)
+    check("migrate.old_combo_ignored", old_combo.rowcount == 0)
+    return failed
+
+
 async def main():
     async with fastapp.router.lifespan_context(fastapp):
         transport = httpx.ASGITransport(app=fastapp)
         async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
             failed = await _checks(client)
+    failed += await _migrate_check()
     print("\n冒烟测试完成" + ("" if failed == 0 else f"，{failed} 项失败"))
     return failed
 

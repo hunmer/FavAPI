@@ -47,9 +47,14 @@ async def save_fetch_result(account: dict, items: list[dict]) -> dict:
     now = now_iso()
     for it in items:
         await db.execute(
-            """INSERT OR IGNORE INTO favorites (account_id, platform, content_id, collected_at, fetched_at)
-               VALUES (?, ?, ?, ?, ?)""",
-            (account_id, platform, it["content_id"], it.get("collected_at"), now),
+            """INSERT OR IGNORE INTO favorites (account_id, platform, content_id,
+                   fav_media_id, fav_title, collected_at, fetched_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                account_id, platform, it["content_id"],
+                it.get("fav_media_id") or "", it.get("fav_title") or "",
+                it.get("collected_at"), now,
+            ),
         )
 
     after = await db.query_one(
@@ -88,7 +93,8 @@ async def list_favorites(
         f"SELECT COUNT(*) AS n FROM favorites f {where_sql}", tuple(params)
     )
     rows = await db.query_all(
-        f"""SELECT f.content_id, f.platform, f.collected_at, f.fetched_at,
+        f"""SELECT f.content_id, f.platform, f.fav_media_id, f.fav_title,
+                   f.collected_at, f.fetched_at,
                    c.title, c.author_name, c.cover_url, c.duration, c.statistics
             FROM favorites f LEFT JOIN contents c
               ON c.content_id = f.content_id AND c.platform = f.platform
@@ -112,6 +118,8 @@ async def list_favorites(
             "cover_url": r.get("cover_url"),
             "duration": r.get("duration"),
             "statistics": statistics,
+            "fav_media_id": r.get("fav_media_id") or None,
+            "fav_title": r.get("fav_title") or None,
             "collected_at": r.get("collected_at"),
             "fetched_at": r.get("fetched_at"),
             "url": _CONTENT_URL_TEMPLATES.get(r["platform"], "").format(content_id=r["content_id"]) or None,

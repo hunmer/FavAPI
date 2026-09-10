@@ -51,9 +51,11 @@ CREATE TABLE IF NOT EXISTS favorites (
     account_id      TEXT,
     platform        TEXT,
     content_id      TEXT,
+    fav_media_id    TEXT DEFAULT '',    -- 归属收藏夹（Bilibili media_id；抖音等无此概念为空串）
+    fav_title       TEXT DEFAULT '',
     collected_at    TEXT,
     fetched_at      TEXT,
-    UNIQUE(account_id, platform, content_id)
+    UNIQUE(account_id, platform, content_id, fav_media_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_favorites_account ON favorites(account_id, platform);
@@ -75,7 +77,36 @@ class Database:
         self._conn.row_factory = aiosqlite.Row
         await self._conn.execute("PRAGMA journal_mode=WAL")
         await self._conn.executescript(SCHEMA)
+        await self._migrate()
         await self._conn.commit()
+
+    async def _migrate(self):
+        """老库迁移：favorites 表补充收藏夹归属列（重建表保留原数据）。"""
+        async with self.conn.execute("PRAGMA table_info(favorites)") as cur:
+            cols = [row[1] for row in await cur.fetchall()]
+        if "fav_media_id" in cols:
+            return
+        await self.conn.executescript("""
+            BEGIN;
+            CREATE TABLE favorites_new (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      TEXT,
+                platform        TEXT,
+                content_id      TEXT,
+                fav_media_id    TEXT DEFAULT '',
+                fav_title       TEXT DEFAULT '',
+                collected_at    TEXT,
+                fetched_at      TEXT,
+                UNIQUE(account_id, platform, content_id, fav_media_id)
+            );
+            INSERT INTO favorites_new (id, account_id, platform, content_id, fav_media_id,
+                                       fav_title, collected_at, fetched_at)
+              SELECT id, account_id, platform, content_id, '', '', collected_at, fetched_at FROM favorites;
+            DROP TABLE favorites;
+            ALTER TABLE favorites_new RENAME TO favorites;
+            CREATE INDEX IF NOT EXISTS idx_favorites_account ON favorites(account_id, platform);
+            COMMIT;
+        """)
 
     @property
     def conn(self) -> aiosqlite.Connection:

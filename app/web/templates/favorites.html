@@ -43,8 +43,8 @@
 
 <div class="card" id="view-list">
   <table>
-    <thead><tr><th>封面</th><th>标题</th><th>作者</th><th>时长</th><th>点赞</th><th>收藏</th><th>收藏时间</th><th>抓取时间</th></tr></thead>
-    <tbody id="fav-body"><tr><td colspan="8" class="empty">选择账号后查询</td></tr></tbody>
+    <thead><tr><th>封面</th><th>标题</th><th>作者</th><th>时长</th><th>点赞</th><th>收藏</th><th>所属收藏夹</th><th>收藏时间</th><th>抓取时间</th></tr></thead>
+    <tbody id="fav-body"><tr><td colspan="9" class="empty">选择账号后查询</td></tr></tbody>
   </table>
 </div>
 
@@ -121,10 +121,11 @@ async function query() {
         <td>${fmtDuration(i.duration)}</td>
         <td class="muted">${fmtCount(stats.digg_count)}</td>
         <td class="muted">${fmtCount(stats.collect_count)}</td>
+        <td class="muted">${i.fav_title ? esc(i.fav_title) : '-'}</td>
         <td class="muted">${esc(i.collected_at || '-')}</td>
         <td class="muted">${esc(i.fetched_at || '-')}</td>
       </tr>`;
-    }).join('') : '<tr><td colspan="8" class="empty">该账号暂无收藏数据，先去触发一次抓取</td></tr>';
+    }).join('') : '<tr><td colspan="9" class="empty">该账号暂无收藏数据，先去触发一次抓取</td></tr>';
     renderGrid(data.items);
   } catch (e) { toast(e.message, true); }
 }

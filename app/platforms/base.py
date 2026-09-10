@@ -19,6 +19,7 @@ class FetchResult:
     cursor: int | None = None   # 下次增量抓取的偏移
     has_more: bool = False
     total: int = 0
+    meta: dict = field(default_factory=dict)  # 平台附加信息（如 Bilibili 收藏夹主人）
 
 
 class LoginExpiredError(Exception):
@@ -28,7 +29,7 @@ class LoginExpiredError(Exception):
 class BasePlatformAdapter(ABC):
     platform: str = ""
     display_name: str = ""
-    implemented: bool = True          # False = 占位平台（Bilibili）
+    implemented: bool = True          # False = 占位平台
     supported_actions: tuple[str, ...] = ()
 
     @abstractmethod
@@ -38,6 +39,9 @@ class BasePlatformAdapter(ABC):
     @abstractmethod
     async def check_login_status(self, account: AccountContext) -> bool:
         """检查登录态是否有效。"""
+
+    def validate_params(self, params: dict) -> None:
+        """抓取前参数校验（可选覆写）；不合法抛 ValueError，由任务执行器转为 400。"""
 
     @abstractmethod
     async def fetch_favorites(self, account: AccountContext, params: dict) -> FetchResult:

@@ -31,6 +31,7 @@ def _item_summaries(items: list[dict]) -> list[dict]:
             "title": it.get("title"),
             "author_name": it.get("author_name"),
             "duration": it.get("duration"),
+            "fav_title": it.get("fav_title") or None,
             "collected_at": it.get("collected_at"),
         }
         for it in items[:_MAX_ITEMS_IN_RESPONSE]
@@ -57,6 +58,10 @@ async def start_fetch(
         raise FetchValidationError(
             f"不支持的操作：{action}（{adapter.display_name} 当前支持：{', '.join(adapter.supported_actions)}）"
         )
+    try:
+        adapter.validate_params(params or {})
+    except ValueError as exc:
+        raise FetchValidationError(str(exc))
     if account["status"] == "disabled":
         raise FetchValidationError(f"账号 {account_id} 已禁用，请先启用")
 
@@ -111,6 +116,8 @@ async def _run_task(task_id: str, account: dict, action: str, params: dict) -> d
             "has_more": result.has_more,
             "items": _item_summaries(result.items),
         }
+        if result.meta:
+            payload["meta"] = result.meta
         await data_store.update_task(
             task_id, status="success", result_count=summary["result_count"], finished_at=now_iso()
         )

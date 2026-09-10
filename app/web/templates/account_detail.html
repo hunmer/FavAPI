@@ -14,6 +14,14 @@
 
 <div class="card">
   <h2>手动触发抓取</h2>
+  <div class="row" id="bili-params" style="display:none">
+    <label>收藏夹主页 / 用户ID
+      <input type="text" id="f-mid" placeholder="https://space.bilibili.com/{用户id}/favlist 或纯数字 id" style="width:340px">
+    </label>
+    <label>收藏夹 media_id
+      <input type="text" id="f-media-id" placeholder="可选，默认全部收藏夹" style="width:170px">
+    </label>
+  </div>
   <div class="row">
     <label>数量 <input type="number" id="f-count" value="20" min="1" max="500"></label>
     <label>游标 <input type="number" id="f-cursor" placeholder="0" min="0"></label>
@@ -36,18 +44,33 @@
 <script>
 const accountId = '{{ account_id }}';
 let loginPoller = null;
+let currentPlatform = '';
+
+function videoUrl(id) {
+  return currentPlatform === 'bilibili'
+    ? `https://www.bilibili.com/video/${id}` : `https://www.douyin.com/video/${id}`;
+}
 
 async function loadAccount() {
   try {
     const a = await api(`/api/v1/accounts/${accountId}`);
+    currentPlatform = a.platform;
     document.getElementById('acc-badge').innerHTML = badge(a.status);
-    document.getElementById('acc-info').innerHTML = `
+    let rows = `
       <tr><th style="width:120px">账号 ID</th><td>${esc(a.account_id)}</td></tr>
       <tr><th>名称</th><td>${esc(a.name)}</td></tr>
       <tr><th>平台</th><td>${esc(a.platform)}</td></tr>
       <tr><th>最后登录</th><td>${esc(a.last_login_at || '-')}</td></tr>
       <tr><th>最后使用</th><td>${esc(a.last_used_at || '-')}</td></tr>
       <tr><th>Profile</th><td class="muted">${esc(a.profile_path || '-')}</td></tr>`;
+    const bili = (a.extra || {}).bilibili;
+    if (bili && bili.owner && bili.owner.mid) {
+      rows += `
+        <tr><th>收藏夹主人</th><td>${bili.owner.face ? `<img src="${esc(bili.owner.face)}" referrerpolicy="no-referrer" style="width:22px;height:22px;border-radius:50%;vertical-align:-5px;margin-right:6px">` : ''}${esc(bili.owner.name || '-')} <span class="muted">(mid: ${esc(bili.owner.mid)})</span></td></tr>
+        <tr><th>收藏夹</th><td>${(bili.folders || []).map(f => `<span class="badge disabled" style="margin:0 4px 4px 0">${esc(f.title || f.media_id)} · ${f.media_count ?? '?'}</span>`).join('') || '-'}</td></tr>`;
+    }
+    document.getElementById('acc-info').innerHTML = rows;
+    document.getElementById('bili-params').style.display = a.platform === 'bilibili' ? '' : 'none';
     const btn = document.getElementById('btn-toggle-disable');
     btn.textContent = a.status === 'disabled' ? '启用' : '禁用';
   } catch (e) {
@@ -119,15 +142,17 @@ document.getElementById('btn-fetch').onclick = async () => {
   const btn = document.getElementById('btn-fetch');
   btn.disabled = true; btn.textContent = '抓取中…';
   document.getElementById('fetch-result').innerHTML = '<div class="muted">正在执行，浏览器窗口可能弹出，请勿关闭…</div>';
-  const body = {
-    platform: null, account_id: accountId, action: 'list_favorites',
-    params: { count: +document.getElementById('f-count').value || 20,
-              cursor: +document.getElementById('f-cursor').value || 0 },
-    async_run: document.getElementById('f-async').checked,
-  };
+  const params = { count: +document.getElementById('f-count').value || 20,
+                   cursor: +document.getElementById('f-cursor').value || 0 };
+  if (currentPlatform === 'bilibili') {
+    const target = document.getElementById('f-mid').value.trim();
+    if (target) { if (/^\d+$/.test(target)) params.mid = target; else params.url = target; }
+    const mediaId = document.getElementById('f-media-id').value.trim();
+    if (mediaId) params.media_id = mediaId;
+  }
+  const body = { platform: currentPlatform, account_id: accountId, action: 'list_favorites',
+                 params, async_run: document.getElementById('f-async').checked };
   try {
-    const a = await api(`/api/v1/accounts/${accountId}`);
-    body.platform = a.platform;
     let r = await api('/api/v1/fetch', { method: 'POST', body: JSON.stringify(body) });
     if (r.status === 'pending') {
       document.getElementById('fetch-result').innerHTML = `<div class="muted">任务 ${esc(r.task_id)} 已提交，执行中…</div>`;
@@ -138,12 +163,18 @@ document.getElementById('btn-fetch').onclick = async () => {
       }
     }
     if (r.status === 'success') {
+      const isBili = currentPlatform === 'bilibili';
+      const favCol = isBili ? '<th>收藏夹</th>' : '';
       const rows = (r.items || []).map(i => `
-        <tr><td><a class="link" target="_blank" href="https://www.douyin.com/video/${esc(i.content_id)}">${esc(i.title || i.content_id)}</a></td>
-        <td>${esc(i.author_name || '-')}</td><td>${fmtDuration(i.duration)}</td><td class="muted">${esc(i.collected_at || '-')}</td></tr>`).join('');
+        <tr><td style="max-width:380px"><a class="link" target="_blank" href="${videoUrl(esc(i.content_id))}">${esc(i.title || i.content_id)}</a></td>
+        <td>${esc(i.author_name || '-')}</td><td>${fmtDuration(i.duration)}</td>
+        ${isBili ? `<td class="muted">${esc(i.fav_title || '-')}</td>` : ''}
+        <td class="muted">${esc(i.collected_at || '-')}</td></tr>`).join('');
+      const owner = (r.meta || {}).owner;
+      const ownerInfo = isBili && owner ? `，主人：${esc(owner.name || '')}(${esc(owner.mid || '')})` : '';
       document.getElementById('fetch-result').innerHTML = `
-        <p>✅ 成功：共 <b>${r.result_count}</b> 条（新增收藏 ${r.new_favorites}）${r.has_more ? '，还有更多可翻页（cursor=' + r.cursor + '）' : ''}</p>
-        <table><thead><tr><th>标题</th><th>作者</th><th>时长</th><th>收藏时间</th></tr></thead><tbody>${rows || ''}</tbody></table>`;
+        <p>✅ 成功：共 <b>${r.result_count}</b> 条（新增收藏 ${r.new_favorites}）${ownerInfo}${r.has_more ? '，还有更多可翻页（cursor=' + r.cursor + '）' : ''}</p>
+        <table><thead><tr><th>标题</th><th>作者</th><th>时长</th>${favCol}<th>收藏时间</th></tr></thead><tbody>${rows || ''}</tbody></table>`;
     } else {
       document.getElementById('fetch-result').innerHTML = `<div class="err">❌ 失败：${esc(r.error_message || '未知错误')}</div>`;
     }
