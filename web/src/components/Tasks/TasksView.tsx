@@ -39,7 +39,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
   });
 
   return (
-    <div id="tasks-view" className="space-y-6 anim-view-enter">
+    <div id="tasks-view" className="space-y-6">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

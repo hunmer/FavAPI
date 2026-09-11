@@ -33,19 +33,30 @@ def _row_out(row: dict) -> dict:
 
 async def create_schedule(account_id: str, cron_expr: str, title: str = "",
                           action: str = "list_favorites", params: dict | None = None,
-                          status: str = "active") -> dict:
+                          status: str = "active", platform: str | None = None) -> dict:
     validate_cron(cron_expr)
-    account = await account_manager.get_account(account_id)
-    if account is None:
-        raise ValueError(f"账号不存在：{account_id}")
     if status not in ("active", "paused"):
         raise ValueError("status 仅支持 active / paused")
 
+    from app.services.ai_tagging import AI_TAG_ACTION, validate_tagging
+
+    if action == AI_TAG_ACTION:
+        # 智能打标不绑定账号；平台可选（空 = 全平台）
+        await validate_tagging(params or {})
+        account_name = "AI 智能打标"
+        sched_platform = platform or (params or {}).get("platform") or ""
+    else:
+        account = await account_manager.get_account(account_id)
+        if account is None:
+            raise ValueError(f"账号不存在：{account_id}")
+        account_name = account["name"]
+        sched_platform = account["platform"]
+
     row = {
         "schedule_id": new_id("sched"),
-        "title": title or f"{account['name']} 定时抓取",
+        "title": title or f"{account_name} 定时抓取",
         "account_id": account_id,
-        "platform": account["platform"],
+        "platform": sched_platform,
         "action": action,
         "params": json.dumps(params or {}, ensure_ascii=False),
         "cron_expr": cron_expr,

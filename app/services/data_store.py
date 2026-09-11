@@ -96,7 +96,8 @@ async def list_favorites(
     rows = await db.query_all(
         f"""SELECT f.account_id, f.content_id, f.platform, f.fav_media_id, f.fav_title,
                    f.collected_at, f.fetched_at,
-                   c.title, c.author_name, c.cover_url, c.duration, c.statistics
+                   c.title, c.author_name, c.cover_url, c.duration, c.statistics,
+                   c.tags, c.tagged_at
             FROM favorites f LEFT JOIN contents c
               ON c.content_id = f.content_id AND c.platform = f.platform
             {where_sql}
@@ -111,6 +112,10 @@ async def list_favorites(
             statistics = json.loads(r.get("statistics") or "{}")
         except (TypeError, json.JSONDecodeError):
             statistics = {}
+        try:
+            tags = json.loads(r.get("tags") or "[]")
+        except (TypeError, json.JSONDecodeError):
+            tags = []
         items.append({
             "content_id": r["content_id"],
             "account_id": r.get("account_id"),
@@ -125,6 +130,8 @@ async def list_favorites(
             "collected_at": r.get("collected_at"),
             "fetched_at": r.get("fetched_at"),
             "url": _CONTENT_URL_TEMPLATES.get(r["platform"], "").format(content_id=r["content_id"]) or None,
+            "tags": [str(t) for t in tags] if isinstance(tags, list) else [],
+            "tagged_at": r.get("tagged_at"),
         })
     return {"total": total_row["n"] if total_row else 0, "items": items, "limit": limit, "offset": offset}
 

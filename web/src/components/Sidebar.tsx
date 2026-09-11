@@ -1,16 +1,20 @@
 import React from 'react';
+import { motion } from 'motion/react';
 import { NavTab } from '../types';
-import { 
-  LayoutDashboard, 
-  Smartphone, 
-  Bookmark, 
-  Activity, 
-  CalendarDays, 
+import {
+  LayoutDashboard,
+  Smartphone,
+  Bookmark,
+  Activity,
+  CalendarDays,
   Settings,
   Sparkles,
   Sun,
   Moon
 } from 'lucide-react';
+
+// tab 切换移动效果（motion-design Corporate）：屏内过渡统一 Snappy 曲线
+const EASE_SNAPPY: [number, number, number, number] = [0.2, 0, 0, 1];
 
 interface SidebarProps {
   activeTab: NavTab;
@@ -58,9 +62,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
             const isActive = activeTab === item.id;
             return (
               <div key={item.id} className="relative flex items-center justify-center w-full">
-                {/* Active side indicator bar */}
+                {/* Active side indicator bar：layoutId 让指示条随 tab 切换平滑滑动 */}
                 {isActive && (
-                  <div className="absolute -left-3 w-1.5 h-6 bg-sky-500 rounded-r-full shadow-sm shadow-sky-500/50" />
+                  <motion.div
+                    layoutId="sidebar-indicator"
+                    className="absolute -left-3 w-1.5 h-6 bg-sky-500 rounded-r-full shadow-sm shadow-sky-500/50"
+                    transition={{ duration: 0.25, ease: EASE_SNAPPY }}
+                  />
                 )}
 
                 <button
@@ -68,13 +76,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   onClick={() => onTabChange(item.id)}
                   aria-label={item.label}
                   title={item.label}
-                  className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 cursor-pointer ${
+                  className={`relative w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 cursor-pointer ${
                     isActive
-                      ? 'bg-white text-slate-900 shadow-md shadow-black/20 scale-105 ring-2 ring-white/20'
+                      ? 'text-slate-900 scale-105'
                       : 'bg-slate-800/40 text-slate-400 hover:text-white hover:bg-slate-800/80 hover:scale-105'
                   }`}
                 >
-                  <Icon className="w-5 h-5 shrink-0" />
+                  {/* 激活高亮胶囊：从上一个 tab 滑移过来 */}
+                  {isActive && (
+                    <motion.span
+                      layoutId="sidebar-pill"
+                      className="absolute inset-0 rounded-full bg-white shadow-md shadow-black/20 ring-2 ring-white/20"
+                      transition={{ duration: 0.3, ease: EASE_SNAPPY }}
+                    />
+                  )}
+                  <Icon className="relative z-10 w-5 h-5 shrink-0" />
                 </button>
               </div>
             );

@@ -13,6 +13,7 @@ export interface ScheduledSync {
   targetFolder?: string;
   status: 'active' | 'paused';
   itemCount?: number;
+  action?: string;  // list_favorites / ai_tag
 }
 
 export type PlatformId = 
@@ -61,7 +62,7 @@ export interface CookieItem {
 }
 
 export type TaskStatus = 'running' | 'success' | 'failed';
-export type OperationType = '增量抓取' | '全量抓取' | '登录态检查' | '会话续期';
+export type OperationType = '增量抓取' | '全量抓取' | '登录态检查' | '会话续期' | '智能打标';
 
 export interface TaskRecord {
   id: string;

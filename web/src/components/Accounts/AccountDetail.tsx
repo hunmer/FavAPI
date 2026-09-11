@@ -86,7 +86,7 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
   };
 
   return (
-    <div id="account-detail-view" className="space-y-6 anim-view-enter">
+    <div id="account-detail-view" className="space-y-6">
       {/* Top Bar: Back button & Title */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-200/80">
         <div className="flex items-center gap-3">

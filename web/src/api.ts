@@ -59,6 +59,17 @@ export interface FavoriteRow {
   collected_at?: string | null;
   fetched_at?: string | null;
   url?: string | null;
+  tags?: string[];
+  tagged_at?: string | null;
+}
+
+export interface AgentConfigRow {
+  agent_id: string;
+  name: string;
+  base_url: string;
+  api_key: string;
+  model_id: string;
+  created_at?: string | null;
 }
 
 export interface ScheduleRow {
@@ -139,7 +150,9 @@ export function toTask(row: TaskRow, accountNameById: Map<string, string>): Task
   const operation =
     row.action === 'list_favorites'
       ? Number(params.count) === 0 ? '全量抓取' : '增量抓取'
-      : (row.action || '未知操作');
+      : row.action === 'ai_tag'
+        ? '智能打标'
+        : (row.action || '未知操作');
   const durSec = Math.max(
     0,
     Math.round((parseTime(row.finished_at) - parseTime(row.started_at)) / 1000) || 0
@@ -177,20 +190,25 @@ export function toScrapedItem(row: FavoriteRow, accountNameById: Map<string, str
     platform: row.platform,
     accountId: row.account_id || '',
     accountName: accountNameById.get(row.account_id || '') || '—',
+    tags: row.tags || [],
   };
 }
 
 export function toSchedule(row: ScheduleRow, accountNameById: Map<string, string>): ScheduledSync {
+  const isAiTag = row.action === 'ai_tag';
   return {
     id: row.schedule_id,
-    title: row.title || '定时抓取',
+    title: row.title || (isAiTag ? 'AI 智能打标' : '定时抓取'),
     platform: row.platform,
     accountId: row.account_id,
-    accountName: accountNameById.get(row.account_id) || row.account_id,
+    accountName: isAiTag
+      ? row.params?.platform ? `智能打标 · ${row.params.platform}` : '智能打标 · 全平台'
+      : (accountNameById.get(row.account_id) || row.account_id),
     cronExpr: row.cron_expr,
     nextRunTime: row.status === 'active' ? fmtDateTime(row.next_run_at) : '已暂停',
     targetFolder: row.params?.fav_title,
     status: row.status,
+    action: row.action,
   };
 }
 
@@ -408,7 +426,14 @@ export async function listSchedules(): Promise<ScheduleRow[]> {
   return data.schedules;
 }
 
-export async function createSchedule(body: { account_id: string; cron_expr: string; title?: string; params?: Record<string, any> }) {
+export async function createSchedule(body: {
+  account_id?: string;
+  cron_expr: string;
+  title?: string;
+  action?: string;
+  platform?: string;
+  params?: Record<string, any>;
+}) {
   return request('/schedules', { method: 'POST', body: JSON.stringify(body) });
 }
 
@@ -422,6 +447,21 @@ export async function deleteSchedule(id: string) {
 
 export async function triggerSchedule(id: string) {
   return request(`/schedules/${id}/trigger`, { method: 'POST' });
+}
+
+// ---------- AI Agent 配置 / 智能打标 ----------
+
+export async function listAgents(): Promise<AgentConfigRow[]> {
+  const data = await request<{ agents: AgentConfigRow[] }>('/ai/agents');
+  return data.agents;
+}
+
+export async function createAgent(body: { name: string; base_url: string; api_key: string; model_id: string }) {
+  return request<AgentConfigRow>('/ai/agents', { method: 'POST', body: JSON.stringify(body) });
+}
+
+export async function deleteAgent(id: string) {
+  return request(`/ai/agents/${id}`, { method: 'DELETE' });
 }
 
 // ---------- 系统设置 / 头像 ----------

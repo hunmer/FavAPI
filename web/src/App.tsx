@@ -24,6 +24,12 @@ import { ScheduleView } from './components/Schedule/ScheduleView';
 import { SettingsView } from './components/Settings/SettingsView';
 import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
 import { DevInspector } from './components/DevInspector';
+import { AnimatePresence, motion } from 'motion/react';
+
+// 视图切换缓动（motion-design 规范）：入场 MD3 Emphasized 减速 / 出场 MD3 Accelerate 加速
+// 入场 400ms > 出场 200ms（Enter 比 Exit 长 30-50%），总时长落在页面过渡 400-600ms 区间
+const VIEW_EASE_IN: [number, number, number, number] = [0.05, 0.7, 0.1, 1];
+const VIEW_EASE_OUT: [number, number, number, number] = [0.3, 0, 1, 1];
 
 export function App() {
   // Theme State
@@ -46,6 +52,7 @@ export function App() {
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [scrapedItems, setScrapedItems] = useState<ScrapedItem[]>([]);
   const [schedules, setSchedules] = useState<ScheduledSync[]>([]);
+  const [agents, setAgents] = useState<api.AgentConfigRow[]>([]);
   const [stats, setStats] = useState<api.StatsData | null>(null);
   const [browserOpenIds, setBrowserOpenIds] = useState<Set<string>>(new Set());
   const [dataLoaded, setDataLoaded] = useState(false);
@@ -139,6 +146,17 @@ export function App() {
     }
   }, []);
 
+  const reloadAgents = useCallback(async (): Promise<api.AgentConfigRow[]> => {
+    try {
+      const rows = await api.listAgents();
+      setAgents(rows);
+      return rows;
+    } catch {
+      /* 静默 */
+      return [];
+    }
+  }, []);
+
   // 初始加载：平台支持情况 + 各类数据 + 手动浏览窗口状态
   useEffect(() => {
     (async () => {
@@ -155,7 +173,7 @@ export function App() {
       }
 
       const nameMap = await reloadAccounts();
-      await Promise.all([reloadTasks(nameMap), reloadFavorites(nameMap), reloadSchedules(nameMap), reloadStats()]);
+      await Promise.all([reloadTasks(nameMap), reloadFavorites(nameMap), reloadSchedules(nameMap), reloadStats(), reloadAgents()]);
 
       // 恢复各账号手动浏览窗口的打开状态
       try {
@@ -402,15 +420,41 @@ export function App() {
     }
   };
 
-  const handleCreateSchedule = async (body: { account_id: string; cron_expr: string; title: string; count: number }) => {
-    await api.createSchedule({
-      account_id: body.account_id,
-      cron_expr: body.cron_expr,
-      title: body.title,
-      params: body.count > 0 ? { count: body.count } : {},
-    });
+  const handleCreateSchedule = async (body: {
+    action: 'list_favorites' | 'ai_tag';
+    account_id: string;
+    cron_expr: string;
+    title: string;
+    count: number;
+    platform: string;
+    agentId: string;
+    limit: number;
+  }) => {
+    if (body.action === 'ai_tag') {
+      await api.createSchedule({
+        cron_expr: body.cron_expr,
+        title: body.title,
+        action: 'ai_tag',
+        platform: body.platform,
+        params: { agent_id: body.agentId, platform: body.platform, limit: body.limit },
+      });
+    } else {
+      await api.createSchedule({
+        account_id: body.account_id,
+        cron_expr: body.cron_expr,
+        title: body.title,
+        params: body.count > 0 ? { count: body.count } : {},
+      });
+    }
     showToast(`定时计划「${body.title}」创建成功`);
     reloadSchedules();
+  };
+
+  const handleCreateAgent = async (agentBody: { name: string; base_url: string; api_key: string; model_id: string }) => {
+    const created = await api.createAgent(agentBody);
+    await reloadAgents();
+    showToast(`AI Agent 配置「${created.name}」已保存`);
+    return created;
   };
 
   const handleDeleteSchedule = async (scheduleId: string) => {
@@ -479,6 +523,14 @@ export function App() {
           />
 
           <main className="flex-1 overflow-y-auto">
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8, transition: { duration: 0.2, ease: VIEW_EASE_OUT } }}
+                transition={{ duration: 0.4, ease: VIEW_EASE_IN }}
+              >
             {/* View 1: 仪表盘 */}
             {activeTab === 'dashboard' && (
               <DashboardView
@@ -503,7 +555,7 @@ export function App() {
 
             {/* View 2: 账号管理 */}
             {activeTab === 'accounts' && (
-              <div className="anim-view-enter p-4 sm:p-6 lg:p-8">
+              <div className="p-4 sm:p-6 lg:p-8">
                 {selectedAccount ? (
                   <AccountDetail
                     account={selectedAccount}
@@ -535,7 +587,7 @@ export function App() {
 
             {/* View 3: 收藏数据 */}
             {activeTab === 'data' && (
-              <div className="anim-view-enter p-4 sm:p-6 lg:p-8">
+              <div className="p-4 sm:p-6 lg:p-8">
                 <DataBrowserView
                   items={scrapedItems}
                   accounts={accounts}
@@ -546,7 +598,7 @@ export function App() {
 
             {/* View 4: 同步任务 */}
             {activeTab === 'tasks' && (
-              <div className="anim-view-enter p-4 sm:p-6 lg:p-8">
+              <div className="p-4 sm:p-6 lg:p-8">
                 <TasksView
                   tasks={tasks}
                   onManualRefresh={() => {
@@ -563,9 +615,11 @@ export function App() {
               <ScheduleView
                 schedules={schedules}
                 accounts={accounts}
+                agents={agents}
                 onTriggerNow={handleTriggerSchedule}
                 onToggleSchedule={handleToggleSchedule}
                 onCreateSchedule={handleCreateSchedule}
+                onCreateAgent={handleCreateAgent}
                 onDeleteSchedule={handleDeleteSchedule}
               />
             )}
@@ -582,6 +636,8 @@ export function App() {
                 onAvatarChange={setAvatarUrl}
               />
             )}
+              </motion.div>
+            </AnimatePresence>
           </main>
         </div>
       </div>

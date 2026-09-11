@@ -44,7 +44,18 @@ CREATE TABLE IF NOT EXISTS contents (
     raw_data        TEXT,
     first_seen_at   TEXT,
     last_seen_at    TEXT,
+    tags            TEXT,             -- AI 打标结果（JSON 数组字符串）
+    tagged_at       TEXT,
     UNIQUE(platform, content_id)
+);
+
+CREATE TABLE IF NOT EXISTS ai_agents (
+    agent_id        TEXT PRIMARY KEY,
+    name            TEXT NOT NULL,
+    base_url        TEXT NOT NULL,    -- OpenAI 兼容服务地址，如 https://api.openai.com/v1
+    api_key         TEXT NOT NULL,
+    model_id        TEXT NOT NULL,
+    created_at      TEXT
 );
 
 CREATE TABLE IF NOT EXISTS favorites (
@@ -123,6 +134,12 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_favorites_account ON favorites(account_id, platform);
                 COMMIT;
             """)
+
+        async with self.conn.execute("PRAGMA table_info(contents)") as cur:
+            content_cols = [row[1] for row in await cur.fetchall()]
+        for col in ("tags", "tagged_at"):
+            if col not in content_cols:
+                await self.conn.execute(f"ALTER TABLE contents ADD COLUMN {col} TEXT")
 
         async with self.conn.execute("PRAGMA table_info(fetch_tasks)") as cur:
             task_cols = [row[1] for row in await cur.fetchall()]

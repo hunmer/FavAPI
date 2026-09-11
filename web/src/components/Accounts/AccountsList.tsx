@@ -69,7 +69,7 @@ export const AccountsList: React.FC<AccountsListProps> = ({
   };
 
   return (
-    <div id="accounts-management-view" className="space-y-6 anim-view-enter">
+    <div id="accounts-management-view" className="space-y-6">
       {/* Top Banner / Actions bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

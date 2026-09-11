@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import accounts, fetch, queries, schedules, settings
+from app.api import accounts, agents, fetch, queries, schedules, settings
 from app.database import db
 from app.services import scheduler
 from app.web.router import mount_web
@@ -31,6 +31,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(accounts.router)
     app.include_router(accounts.platforms_router)
+    app.include_router(agents.router)
     app.include_router(fetch.router)
     app.include_router(queries.router)
     app.include_router(schedules.router)

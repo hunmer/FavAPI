@@ -67,10 +67,11 @@ class TaskOut(BaseModel):
 # ---------- 定时任务 ----------
 
 class ScheduleCreate(BaseModel):
-    account_id: str
     cron_expr: str
+    account_id: str = ""   # ai_tag 不绑定账号，可为空
     title: str = ""
     action: str = "list_favorites"
+    platform: str | None = None  # ai_tag 指定打标平台（空 = 全平台）
     params: dict[str, Any] = Field(default_factory=dict)
     status: str = "active"
 
@@ -111,3 +112,30 @@ class FavoriteItem(BaseModel):
     collected_at: str | None = None
     fetched_at: str | None = None
     url: str | None = None
+    tags: list[str] = Field(default_factory=list)  # AI 智能打标结果
+    tagged_at: str | None = None
+
+
+# ---------- AI Agent 配置 ----------
+
+class AgentCreate(BaseModel):
+    name: str
+    base_url: str  # OpenAI 兼容服务地址，如 https://api.openai.com/v1
+    api_key: str
+    model_id: str
+
+
+class AgentUpdate(BaseModel):
+    name: str | None = None
+    base_url: str | None = None
+    api_key: str | None = None
+    model_id: str | None = None
+
+
+class AgentOut(BaseModel):
+    agent_id: str
+    name: str
+    base_url: str
+    api_key: str
+    model_id: str
+    created_at: str | None = None

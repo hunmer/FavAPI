@@ -71,6 +71,14 @@ async def start_fetch(
     platform: str, account_id: str, action: str, params: dict, async_run: bool = False
 ) -> dict:
     """校验请求并执行；async_run=true 立即返回 pending 任务，否则等待完成返回结果。"""
+    from app.services.ai_tagging import AI_TAG_ACTION, TaggingValidationError, start_tagging
+
+    if action == AI_TAG_ACTION:
+        try:
+            return await start_tagging(platform, params, async_run=async_run)
+        except TaggingValidationError as exc:
+            raise FetchValidationError(str(exc)) from exc
+
     account, _adapter = await validate_fetch(platform, account_id, action, params)
 
     from app.services import browser

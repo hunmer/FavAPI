@@ -22,15 +22,6 @@ body {
   --dur-slow: 400ms;
 }
 
-/* 页面视图切换：淡入 + 上浮 12px（页面级 400-600ms 规范的下限） */
-@keyframes view-enter {
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-.anim-view-enter {
-  animation: view-enter var(--dur-slow, 400ms) var(--ease-in-entrance) both;
-}
-
 /* 卡片/列表项：淡入 + 上浮 20px（卡片 200-350ms 规范） */
 @keyframes card-enter {
   from { opacity: 0; transform: translateY(20px); }
