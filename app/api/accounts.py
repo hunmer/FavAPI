@@ -79,6 +79,34 @@ async def delete_account(account_id: str):
     return {"deleted": account_id}
 
 
+@router.post("/refresh-profile")
+async def refresh_all_profiles():
+    """批量刷新账号身份信息（昵称/头像/收藏夹）；串行执行避免浏览器并发冲突。"""
+    from app.platforms.base import BasePlatformAdapter
+
+    results = []
+    for a in await account_manager.list_accounts():
+        adapter = registry.get_adapter(a["platform"])
+        if adapter is None or type(adapter).refresh_profile is BasePlatformAdapter.refresh_profile:
+            results.append({"account_id": a["account_id"], "name": a["name"],
+                            "status": "skipped", "detail": "该平台暂不支持身份刷新"})
+            continue
+        try:
+            await adapter.refresh_profile(account_manager.to_context(a))
+            results.append({"account_id": a["account_id"], "name": a["name"],
+                            "status": "ok", "detail": ""})
+        except Exception as exc:
+            results.append({"account_id": a["account_id"], "name": a["name"],
+                            "status": "failed", "detail": friendly_error(exc)})
+
+    ok = sum(1 for r in results if r["status"] == "ok")
+    failed = sum(1 for r in results if r["status"] == "failed")
+    if failed:
+        logger.warning("批量身份刷新：成功 %d，失败 %d：%s", ok, failed,
+                       "; ".join(f"{r['name']}: {r['detail']}" for r in results if r["status"] == "failed"))
+    return {"ok": ok, "failed": failed, "results": results}
+
+
 @router.post("/{account_id}/login", status_code=202)
 async def start_login(account_id: str):
     """打开有头浏览器等待扫码；立即返回，前端轮询 status 接口观察结果。"""

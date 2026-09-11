@@ -24,6 +24,11 @@
       "script": ".venv/Scripts/python.exe",
       "args": ["-m", "playwright", "install", "chromium"],
       "desc": "安装 Playwright Chromium 浏览器内核（首次使用前必须执行一次）"
+    },
+    "web": {
+      "script": "node",
+      "args": ["node_modules/vite/bin/vite.js"],
+      "desc": "前端 web 控制台 dev 服务（127.0.0.1:3000，含 DevInspector 元素定位）"
     }
   }
 }

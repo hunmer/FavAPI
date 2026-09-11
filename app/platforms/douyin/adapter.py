@@ -77,6 +77,65 @@ class DouyinAdapter(BasePlatformAdapter):
             logger.info("[%s] 登录态检查：%s", account.account_id, "有效" if ok else "无效")
             return ok
 
+    async def refresh_profile(self, account: AccountContext) -> None:
+        """登录成功后回填主人信息：打开个人主页，拦截页面自身的 profile/self 响应。
+
+        该接口带 a_bogus 签名无法直接构造请求，沿用收藏抓取的响应拦截方案。
+        """
+        import json
+
+        holder: dict = {}
+        async with browser.session(account.profile_path, headless=True) as ctx:
+            page = ctx.pages[0] if ctx.pages else await ctx.new_page()
+
+            async def _on_response(response):
+                if constants.PROFILE_SELF_API not in response.url:
+                    return
+                try:
+                    data = await response.json()
+                except Exception:
+                    return
+                if data.get("status_code") == 0 and data.get("user"):
+                    holder["user"] = data["user"]
+
+            page.on("response", _on_response)
+            await page.goto(constants.FAVORITES_URL, wait_until="domcontentloaded")
+            for _ in range(15):  # 最多等页面请求落地 15s
+                if holder:
+                    break
+                await page.wait_for_timeout(1000)
+
+        user = holder.get("user")
+        if not user:
+            logger.info("[%s] 未拦截到 profile/self（可能未登录），跳过身份回填", account.account_id)
+            return
+
+        def _avatar(u: dict) -> str | None:
+            for key in ("avatar_168x168", "avatar_300x300", "avatar_larger"):
+                urls = (u.get(key) or {}).get("url_list") or []
+                if urls:
+                    return urls[0]
+            return None
+
+        owner = {
+            "uid": str(user.get("uid") or ""),
+            "sec_uid": str(user.get("sec_uid") or ""),
+            "short_id": str(user.get("short_id") or ""),
+            "nickname": user.get("nickname"),
+            "avatar": _avatar(user),  # 带签名 CDN 链接，过期后重新刷新即可
+        }
+        from app.services import account_manager  # 延迟导入避免循环依赖
+
+        row = await account_manager.get_account(account.account_id)
+        if row is None:
+            return
+        extra = row.get("extra") or {}
+        extra["douyin"] = {"owner": owner}
+        await account_manager.update_account(
+            account.account_id, extra=json.dumps(extra, ensure_ascii=False)
+        )
+        logger.info("[%s] 身份信息已回填：%s(%s)", account.account_id, owner.get("nickname"), owner["uid"])
+
     async def fetch_favorites(
         self, account: AccountContext, params: dict, on_batch=None
     ) -> FetchResult:

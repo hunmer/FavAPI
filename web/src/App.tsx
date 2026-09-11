@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Account,
   PlatformId,
@@ -23,6 +23,7 @@ import { DataBrowserView } from './components/Data/DataBrowserView';
 import { ScheduleView } from './components/Schedule/ScheduleView';
 import { SettingsView } from './components/Settings/SettingsView';
 import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
+import { DevInspector } from './components/DevInspector';
 
 export function App() {
   // Theme State
@@ -55,9 +56,17 @@ export function App() {
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
   const [refreshSecondsLeft, setRefreshSecondsLeft] = useState(5);
 
-  // Scraping in progress state
-  const [isScrapingInProgress, setIsScrapingInProgress] = useState(false);
-  const [streamingItems, setStreamingItems] = useState<ScrapedItem[]>([]);
+  // 抓取进度状态：按账号隔离（实时反馈流每个账号独立，互不串扰）
+  const [streamingByAccount, setStreamingByAccount] = useState<Record<string, ScrapedItem[]>>({});
+  const [scrapingAccountIds, setScrapingAccountIds] = useState<Set<string>>(new Set());
+
+  const markScraping = (accountId: string, running: boolean) =>
+    setScrapingAccountIds((prev) => {
+      const next = new Set(prev);
+      if (running) next.add(accountId);
+      else next.delete(accountId);
+      return next;
+    });
 
   // Toast Notification State
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
@@ -251,6 +260,26 @@ export function App() {
     }
   };
 
+  /** 批量刷新账号身份信息；结果 toast 由这里统一提示，组件只管 loading。 */
+  const handleRefreshProfiles = async (): Promise<api.RefreshProfilesResult> => {
+    let res: api.RefreshProfilesResult;
+    try {
+      res = await api.refreshProfiles();
+    } catch (e: any) {
+      showToast(`身份信息刷新失败：${e.message}`, 'error');
+      throw e;
+    }
+    await reloadAccounts();
+    const skipped = res.results.filter((r) => r.status === 'skipped').length;
+    const failedNames = res.results.filter((r) => r.status === 'failed').map((r) => r.name);
+    if (res.failed > 0) {
+      showToast(`刷新完成：成功 ${res.ok}，失败 ${res.failed}（${failedNames.join('、')}），详见服务日志`, 'error');
+    } else {
+      showToast(`刷新完成：成功 ${res.ok} 个${skipped ? `，${skipped} 个平台暂不支持` : ''}`);
+    }
+    return res;
+  };
+
   // ---------- 抓取 ----------
 
   const applyStreamItem = (
@@ -277,8 +306,9 @@ export function App() {
   const handleTriggerScrape = async (formData: ScrapingFormData) => {
     const account = selectedAccount;
     if (!account) return;
-    setIsScrapingInProgress(true);
-    setStreamingItems([]);
+    const accId = account.id;
+    markScraping(accId, true);
+    setStreamingByAccount((prev) => ({ ...prev, [accId]: [] }));
     showToast(`已发起针对「${account.name}」的收藏抓取任务`, 'info');
 
     try {
@@ -291,7 +321,7 @@ export function App() {
             const t = await api.getTask(res.task_id);
             if (t.status === 'success' || t.status === 'failed') {
               window.clearInterval(poll);
-              setIsScrapingInProgress(false);
+              markScraping(accId, false);
               if (t.status === 'failed') showToast(t.error_message || '抓取失败', 'error');
               else showToast(`抓取完成！本次入库 ${t.result_count ?? 0} 条`);
               const map = await reloadAccounts();
@@ -300,30 +330,44 @@ export function App() {
             }
           } catch {
             window.clearInterval(poll);
-            setIsScrapingInProgress(false);
+            markScraping(accId, false);
           }
         }, 3000);
       } else {
-        // 同步 SSE 流式：逐批实时展示
+        // 同步 SSE 流式：逐批实时展示（写入该账号自己的反馈流）
         const done = await api.fetchStream(account.platform, account.id, formData, (ev) => {
           if (ev.type === 'items' && ev.items) {
             const mapped = ev.items.map((it) => applyStreamItem(it, account, ev.folder));
-            setStreamingItems((prev) => [...mapped.reverse(), ...prev]);
+            setStreamingByAccount((prev) => ({
+              ...prev,
+              [accId]: [...mapped.reverse(), ...(prev[accId] || [])],
+            }));
           }
         });
         showToast(`抓取完成！共入库 ${done.result_count ?? 0} 条（新增 ${done.new_favorites ?? 0}）`);
-        setIsScrapingInProgress(false);
+        markScraping(accId, false);
         const map = await reloadAccounts();
         reloadTasks(map);
         reloadFavorites(map);
       }
     } catch (e: any) {
-      setIsScrapingInProgress(false);
+      markScraping(accId, false);
       showToast(e.message, 'error');
     }
   };
 
   // ---------- 定时任务 ----------
+
+  // Header 抓取进度：本地发起的抓取 ∪ 后端 running 任务的账号并集
+  const runningFetch = useMemo(() => {
+    const ids = new Set(scrapingAccountIds);
+    tasks.forEach((t) => {
+      if (t.status === 'running' && t.accountId) ids.add(t.accountId);
+    });
+    const names = accounts.filter((a) => ids.has(a.id)).map((a) => a.name);
+    const liveCount = Object.values<ScrapedItem[]>(streamingByAccount).reduce((n, arr) => n + arr.length, 0);
+    return { count: ids.size, accountNames: names, liveCount };
+  }, [scrapingAccountIds, tasks, accounts, streamingByAccount]);
 
   const handleTriggerSchedule = async (sched: ScheduledSync) => {
     showToast(`已立即触发计划「${sched.title}」，正在后台执行...`, 'info');
@@ -373,7 +417,7 @@ export function App() {
   // ---------- 渲染 ----------
 
   return (
-    <div className={`min-h-screen ${theme === 'dark' ? 'dark bg-[#0A0D14] text-slate-100' : 'bg-[#ECEEF2] text-slate-900'} flex items-center justify-center p-2 sm:p-4 lg:p-6 font-sans transition-colors duration-200`}>
+    <div className={`h-screen overflow-hidden ${theme === 'dark' ? 'dark bg-[#0A0D14] text-slate-100' : 'bg-[#ECEEF2] text-slate-900'} flex items-center justify-center p-2 sm:p-4 lg:p-6 font-sans transition-colors duration-200`}>
       {/* Toast Banner */}
       {toast && (
         <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-3 duration-200">
@@ -399,7 +443,7 @@ export function App() {
       )}
 
       {/* Main Window Container */}
-      <div className="w-full max-w-[1560px] bg-white dark:bg-[#111622] rounded-[32px] sm:rounded-[36px] border border-slate-200/90 dark:border-slate-800 shadow-2xl shadow-slate-300/60 dark:shadow-black/70 overflow-hidden flex flex-row min-h-[880px] max-h-[96vh]">
+      <div className="w-full max-w-[1560px] bg-white dark:bg-[#111622] rounded-[32px] sm:rounded-[36px] border border-slate-200/90 dark:border-slate-800 shadow-2xl shadow-slate-300/60 dark:shadow-black/70 overflow-hidden flex flex-row h-[880px] max-h-[96vh]">
         {/* Left Vertical Dark Sidebar */}
         <Sidebar
           activeTab={activeTab}
@@ -411,6 +455,8 @@ export function App() {
           }}
           accountsCount={accounts.length}
           totalItemsCount={scrapedItems.length}
+          theme={theme}
+          onToggleTheme={toggleTheme}
         />
 
         {/* Right Main Container */}
@@ -420,12 +466,8 @@ export function App() {
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
             onOpenCreateAccount={() => setIsCreateModalOpen(true)}
-            autoRefreshEnabled={autoRefreshEnabled}
-            onToggleAutoRefresh={() => setAutoRefreshEnabled(!autoRefreshEnabled)}
-            refreshSecondsLeft={refreshSecondsLeft}
+            runningFetch={runningFetch}
             onTabChange={setActiveTab}
-            theme={theme}
-            onToggleTheme={toggleTheme}
           />
 
           <main className="flex-1 overflow-y-auto">
@@ -467,8 +509,8 @@ export function App() {
                     recentTasks={tasks.filter((t) => t.accountId === selectedAccount.id)}
                     allScrapedItems={scrapedItems.filter((i) => i.accountId === selectedAccount.id)}
                     onTriggerScrape={handleTriggerScrape}
-                    isScrapingInProgress={isScrapingInProgress}
-                    streamingItems={streamingItems}
+                    isScrapingInProgress={scrapingAccountIds.has(selectedAccount.id)}
+                    streamingItems={streamingByAccount[selectedAccount.id] || []}
                   />
                 ) : (
                   <AccountsList
@@ -477,6 +519,7 @@ export function App() {
                     onOpenCreateModal={() => setIsCreateModalOpen(true)}
                     onOpenLoginModal={(acc) => setLoginModalAccount(acc)}
                     onQuickCheckHealth={handleQuickCheckHealth}
+                    onRefreshProfiles={handleRefreshProfiles}
                   />
                 )}
               </div>
@@ -498,14 +541,11 @@ export function App() {
               <div className="p-4 sm:p-6 lg:p-8">
                 <TasksView
                   tasks={tasks}
-                  autoRefreshEnabled={autoRefreshEnabled}
-                  onToggleAutoRefresh={() => setAutoRefreshEnabled(!autoRefreshEnabled)}
                   onManualRefresh={() => {
                     setRefreshSecondsLeft(5);
                     reloadAccounts().then((map) => reloadTasks(map));
                     showToast('已从私有抓取服务同步最新任务执行状态');
                   }}
-                  refreshSecondsLeft={refreshSecondsLeft}
                 />
               </div>
             )}
@@ -558,6 +598,9 @@ export function App() {
           onClose={() => setCookiesModalAccount(null)}
         />
       )}
+
+      {/* Dev 元素定位器（仅开发模式渲染） */}
+      <DevInspector />
     </div>
   );
 }

@@ -7,7 +7,9 @@ import {
   Activity, 
   CalendarDays, 
   Settings,
-  Sparkles
+  Sparkles,
+  Sun,
+  Moon
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -15,11 +17,15 @@ interface SidebarProps {
   onTabChange: (tab: NavTab) => void;
   accountsCount?: number;
   totalItemsCount?: number;
+  theme: 'light' | 'dark';
+  onToggleTheme: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   onTabChange,
+  theme,
+  onToggleTheme,
 }) => {
   const navItems: { id: NavTab; label: string; icon: React.ElementType }[] = [
     { id: 'dashboard', label: '总览看板', icon: LayoutDashboard },
@@ -74,8 +80,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </nav>
       </div>
 
-      {/* Bottom User Avatar */}
-      <div className="flex flex-col items-center pt-5 border-t border-slate-800/80 w-full">
+      {/* Bottom: Theme Toggle & User Avatar */}
+      <div className="flex flex-col items-center gap-3.5 pt-5 border-t border-slate-800/80 w-full">
+        {/* Dark/Light Mode Toggle Button */}
+        <button
+          onClick={onToggleTheme}
+          className="w-12 h-12 rounded-full flex items-center justify-center bg-slate-800/40 text-slate-400 hover:text-white hover:bg-slate-800/80 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
+          title={theme === 'dark' ? '当前：暗色模式，点击切换为亮色模式' : '当前：亮色模式，点击切换为暗色模式'}
+          aria-label="暗色/亮色切换"
+        >
+          {theme === 'dark' ? (
+            <Sun className="w-5 h-5 text-amber-400 fill-amber-400/20" />
+          ) : (
+            <Moon className="w-5 h-5 text-indigo-600 fill-indigo-600/20" />
+          )}
+        </button>
+
+        {/* User Avatar */}
         <div 
           className="relative cursor-pointer group"
           title="本地管理员: Josh / FavAdmin"

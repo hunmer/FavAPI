@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Account, AccountStatus, PlatformId } from '../../types';
 import { PLATFORMS } from '../../data/mockFavData';
+import * as api from '../../api';
 import { Plus, CheckCircle2, AlertTriangle, Ban, RefreshCw, QrCode, ArrowUpRight, Search, Clock, Monitor, ChevronRight } from 'lucide-react';
 
 interface AccountsListProps {
@@ -9,6 +10,8 @@ interface AccountsListProps {
   onOpenCreateModal: () => void;
   onOpenLoginModal: (account: Account) => void;
   onQuickCheckHealth: (account: Account) => void;
+  /** 批量刷新账号身份信息（昵称/头像/收藏夹）；结果提示由 App 层负责。 */
+  onRefreshProfiles: () => Promise<api.RefreshProfilesResult>;
 }
 
 export const AccountsList: React.FC<AccountsListProps> = ({
@@ -17,9 +20,11 @@ export const AccountsList: React.FC<AccountsListProps> = ({
   onOpenCreateModal,
   onOpenLoginModal,
   onQuickCheckHealth,
+  onRefreshProfiles,
 }) => {
   const [platformFilter, setPlatformFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
 
   const filteredAccounts = accounts.filter((acc) => {
     const matchesPlatform = platformFilter === 'all' || acc.platform === platformFilter;
@@ -76,14 +81,36 @@ export const AccountsList: React.FC<AccountsListProps> = ({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={onOpenCreateModal}
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs sm:text-sm font-bold shadow-sm transition-transform active:scale-98"
-        >
-          <Plus className="w-4 h-4" />
-          创建新账号
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={refreshing || accounts.length === 0}
+            onClick={async () => {
+              setRefreshing(true);
+              try {
+                await onRefreshProfiles();
+              } catch {
+                /* 失败提示由 App 层 toast */
+              } finally {
+                setRefreshing(false);
+              }
+            }}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 rounded-2xl text-xs sm:text-sm font-bold shadow-sm border border-slate-200 transition-transform active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="重新拉取所有账号的昵称/头像/收藏夹信息（Bilibili、抖音、小红书）"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? '刷新中...' : '刷新账号信息'}
+          </button>
+
+          <button
+            type="button"
+            onClick={onOpenCreateModal}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs sm:text-sm font-bold shadow-sm transition-transform active:scale-98"
+          >
+            <Plus className="w-4 h-4" />
+            创建新账号
+          </button>
+        </div>
       </div>
 
       {/* Filter and Search */}

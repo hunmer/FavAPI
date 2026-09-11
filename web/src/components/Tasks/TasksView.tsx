@@ -6,7 +6,6 @@ import {
   RefreshCw,
   CheckCircle2,
   AlertTriangle,
-  Clock,
   Filter,
   Search,
   ChevronRight,
@@ -17,18 +16,12 @@ import {
 
 interface TasksViewProps {
   tasks: TaskRecord[];
-  autoRefreshEnabled: boolean;
-  onToggleAutoRefresh: () => void;
   onManualRefresh: () => void;
-  refreshSecondsLeft: number;
 }
 
 export const TasksView: React.FC<TasksViewProps> = ({
   tasks,
-  autoRefreshEnabled,
-  onToggleAutoRefresh,
   onManualRefresh,
-  refreshSecondsLeft,
 }) => {
   const [platformFilter, setPlatformFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -58,21 +51,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
           </p>
         </div>
 
-        {/* Auto refresh & manual refresh actions */}
+        {/* Manual refresh actions */}
         <div className="flex items-center gap-2.5">
-          <button
-            type="button"
-            onClick={onToggleAutoRefresh}
-            className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-colors flex items-center gap-1.5 cursor-pointer ${
-              autoRefreshEnabled
-                ? 'bg-slate-900 dark:bg-sky-600 text-white border-slate-900 dark:border-sky-600 shadow-2xs'
-                : 'bg-white dark:bg-[#161B26] text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
-            }`}
-          >
-            <Clock className="w-3.5 h-3.5" />
-            <span>5s 自动轮询: {autoRefreshEnabled ? '开启' : '已暂停'}</span>
-          </button>
-
           <button
             type="button"
             onClick={onManualRefresh}

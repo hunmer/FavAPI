@@ -1,18 +1,20 @@
 import React, { useState } from 'react';
-import { Search, Bell, Plus, RefreshCw, CheckCircle2, ShieldCheck, Sparkles, X, Sun, Moon } from 'lucide-react';
+import { Search, Bell, Plus, X, Loader2 } from 'lucide-react';
 import { NavTab } from '../types';
+
+export interface RunningFetchInfo {
+  count: number;          // 正在运行的账号数
+  accountNames: string[]; // 账号名列表（悬浮提示用）
+  liveCount: number;      // 本次实时流已抓取条数
+}
 
 interface HeaderProps {
   activeTab: NavTab;
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onOpenCreateAccount: () => void;
-  autoRefreshEnabled: boolean;
-  onToggleAutoRefresh: () => void;
-  refreshSecondsLeft: number;
+  runningFetch?: RunningFetchInfo | null;
   onTabChange: (tab: NavTab) => void;
-  theme: 'light' | 'dark';
-  onToggleTheme: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -20,12 +22,8 @@ export const Header: React.FC<HeaderProps> = ({
   searchQuery,
   onSearchChange,
   onOpenCreateAccount,
-  autoRefreshEnabled,
-  onToggleAutoRefresh,
-  refreshSecondsLeft,
+  runningFetch,
   onTabChange,
-  theme,
-  onToggleTheme,
 }) => {
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -103,43 +101,21 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Right Controls: Auto-refresh, Dark/Light Mode, Add Account, Notification, Avatar */}
+      {/* Right Controls: Auto-refresh, Add Account, Notification, Avatar */}
       <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-        {/* Dark/Light Mode Toggle Button */}
-        <button
-          onClick={onToggleTheme}
-          className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-semibold border transition-all duration-200 bg-slate-100 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 cursor-pointer shadow-xs"
-          title={theme === 'dark' ? '当前：暗色模式，点击切换为亮色模式' : '当前：亮色模式，点击切换为暗色模式'}
-          aria-label="暗色/亮色切换"
-        >
-          {theme === 'dark' ? (
-            <>
-              <Sun className="w-3.5 h-3.5 text-amber-400 fill-amber-400/20" />
-              <span className="hidden sm:inline text-amber-300 font-medium">暗色</span>
-            </>
-          ) : (
-            <>
-              <Moon className="w-3.5 h-3.5 text-indigo-600 fill-indigo-600/20" />
-              <span className="hidden sm:inline text-slate-700 font-medium">亮色</span>
-            </>
-          )}
-        </button>
-
-        {/* 5s Auto-refresh Switch */}
-        <button
-          onClick={onToggleAutoRefresh}
-          className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-semibold border transition-all ${
-            autoRefreshEnabled
-              ? 'bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800 hover:bg-sky-100 dark:hover:bg-sky-900/50'
-              : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-          }`}
-          title={autoRefreshEnabled ? '点击暂停后台自动轮询' : '点击开启 5s 自动轮询'}
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${autoRefreshEnabled ? 'animate-spin text-sky-600 dark:text-sky-400' : ''}`} style={{ animationDuration: '3s' }} />
-          <span className="hidden sm:inline">
-            {autoRefreshEnabled ? `轮询中 (${refreshSecondsLeft}s)` : '已暂停'}
-          </span>
-        </button>
+        {/* 抓取进度指示：仅有任务运行时展示 */}
+        {runningFetch && runningFetch.count > 0 && (
+          <div
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-full text-xs font-semibold border transition-all bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800"
+            title={`正在运行：${runningFetch.accountNames.join('、') || '定时任务'}`}
+          >
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            <span className="hidden sm:inline whitespace-nowrap">
+              {runningFetch.count} 个账号抓取中
+              {runningFetch.liveCount > 0 ? ` · 已入库 ${runningFetch.liveCount} 条` : ''}
+            </span>
+          </div>
+        )}
 
         {/* Quick Add Account Button */}
         <button
@@ -177,19 +153,6 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             </div>
           )}
-        </div>
-
-        {/* Avatar */}
-        <div 
-          onClick={() => onTabChange('settings')}
-          className="w-8 h-8 rounded-full overflow-hidden border border-slate-200 dark:border-slate-700 cursor-pointer ring-2 ring-transparent hover:ring-sky-200 dark:hover:ring-sky-800 transition-all"
-          title="系统与个人设置"
-        >
-          <img
-            src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80"
-            alt="User Avatar"
-            className="w-full h-full object-cover"
-          />
         </div>
       </div>
     </header>

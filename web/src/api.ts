@@ -105,11 +105,12 @@ function parseTime(iso?: string | null): number {
 
 export function toAccount(row: AccountRow, browserOpen: Set<string> = new Set()): Account {
   const extra = row.extra || {};
-  // Bilibili 身份信息由 adapter 抓取/登录后写入 extra.bilibili（owner + folders）
-  const bili = extra.bilibili || {};
-  const biliOwner = bili.owner || {};
-  const folders: BilibiliFolder[] | undefined = Array.isArray(bili.folders)
-    ? bili.folders.map((f: any) => ({
+  // 平台身份信息由 adapter 登录/抓取后写入 extra.{platform}.owner（bilibili 含收藏夹列表）
+  const biliOwner = extra.bilibili?.owner || {};
+  const xhsOwner = extra.xiaohongshu?.owner || {};
+  const dyOwner = extra.douyin?.owner || {};
+  const folders: BilibiliFolder[] | undefined = Array.isArray(extra.bilibili?.folders)
+    ? extra.bilibili.folders.map((f: any) => ({
         id: String(f.media_id ?? ''),
         name: f.title || '',
         count: f.media_count ?? 0,
@@ -125,9 +126,9 @@ export function toAccount(row: AccountRow, browserOpen: Set<string> = new Set())
     lastLoginTime: fmtDateTime(row.last_login_at),
     lastUsedTime: fmtDateTime(row.last_used_at),
     browserProfilePath: row.profile_path || '',
-    ownerNickname: biliOwner.name || extra.nickname,
-    ownerAvatar: biliOwner.face || extra.avatar,
-    ownerUid: biliOwner.mid || extra.uid,
+    ownerNickname: biliOwner.name || xhsOwner.nickname || dyOwner.nickname || extra.nickname,
+    ownerAvatar: biliOwner.face || xhsOwner.avatar || dyOwner.avatar || extra.avatar,
+    ownerUid: biliOwner.mid || xhsOwner.user_id || dyOwner.uid || extra.uid,
     folders,
     isBrowserOpen: browserOpen.has(row.account_id),
   };
@@ -252,6 +253,19 @@ export async function getCookieItems(accountId: string): Promise<CookieItem[]> {
     secure: false,
     httpOnly: false,
   }));
+}
+
+// ---------- 批量身份刷新 ----------
+
+export interface RefreshProfilesResult {
+  ok: number;
+  failed: number;
+  results: Array<{ account_id: string; name: string; status: 'ok' | 'skipped' | 'failed'; detail: string }>;
+}
+
+/** 批量刷新账号身份信息（昵称/头像/收藏夹）；串行执行，账号多时耗时较长。 */
+export async function refreshProfiles(): Promise<RefreshProfilesResult> {
+  return request('/accounts/refresh-profile', { method: 'POST' });
 }
 
 // ---------- 任务 / 数据 ----------

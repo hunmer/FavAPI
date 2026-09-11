@@ -143,8 +143,8 @@ class XiaohongshuAdapter(BasePlatformAdapter):
         return uid
 
     @staticmethod
-    async def _me_user_id(ctx, page) -> str | None:
-        """等待页面签名函数可用后，签名调用 /user/me 取 user_id；游客（guest）返回 None。"""
+    async def _me(ctx, page) -> dict | None:
+        """等待页面签名函数可用后，签名调用 /user/me 返回 data；游客/失败返回 None。"""
         sig = await page.evaluate(
             """async () => {
                 for (let i = 0; i < 20; i++) {  // 最多等签名函数 10s
@@ -171,8 +171,12 @@ class XiaohongshuAdapter(BasePlatformAdapter):
         data = (await resp.json()).get("data") or {}
         if data.get("guest"):
             return None
-        uid = str(data.get("user_id") or "")
-        return uid if is_user_id(uid) else None
+        return data if is_user_id(str(data.get("user_id") or "")) else None
+
+    @staticmethod
+    async def _me_user_id(ctx, page) -> str | None:
+        data = await XiaohongshuAdapter._me(ctx, page)
+        return str(data.get("user_id")) if data else None
 
     async def login(self, account: AccountContext, timeout: float | None = None) -> bool:
         """打开有头浏览器等待扫码；以 DOM 判据检测成功（游客也会被种 web_session，cookie 会误报）。"""
@@ -214,6 +218,38 @@ class XiaohongshuAdapter(BasePlatformAdapter):
             ok = browser.has_login_cookies(cookies, constants.LOGIN_COOKIE_KEYS)
             logger.info("[%s] 登录态检查：%s", account.account_id, "有效" if ok else "无效")
             return ok
+
+    async def refresh_profile(self, account: AccountContext) -> None:
+        """登录成功后回填主人信息：签名调 /user/me 取昵称/头像/红书号写入 extra。"""
+        import json
+
+        async with browser.session(account.profile_path, headless=True) as ctx:
+            page, closing = await _open_page(ctx)
+            try:
+                await page.goto(constants.HOME_URL, wait_until="domcontentloaded")
+                data = await self._me(ctx, page)
+                if not data:
+                    return
+                owner = {
+                    "user_id": str(data.get("user_id") or ""),
+                    "red_id": str(data.get("red_id") or ""),
+                    "nickname": data.get("nickname"),
+                    "avatar": data.get("imageb") or data.get("images"),
+                }
+            finally:
+                closing["closing"] = True  # 程序主动收尾，关窗不算异常
+
+        from app.services import account_manager  # 延迟导入避免循环依赖
+
+        row = await account_manager.get_account(account.account_id)
+        if row is None:
+            return
+        extra = row.get("extra") or {}
+        extra["xiaohongshu"] = {"owner": owner}
+        await account_manager.update_account(
+            account.account_id, extra=json.dumps(extra, ensure_ascii=False)
+        )
+        logger.info("[%s] 身份信息已回填：%s(%s)", account.account_id, owner.get("nickname"), owner["user_id"])
 
     async def fetch_favorites(
         self, account: AccountContext, params: dict, on_batch=None

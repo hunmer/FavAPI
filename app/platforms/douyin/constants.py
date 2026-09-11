@@ -9,6 +9,9 @@ FAVORITES_URL = "https://www.douyin.com/user/self?showTab=favorite_collection"
 # 个人收藏列表接口（响应拦截匹配用）
 LISTCOLLECTION_API = "/aweme/v1/web/aweme/listcollection"
 
+# 当前登录用户资料接口（个人主页加载时页面自身会调用，拦截复用；签名由页面 JS 完成）
+PROFILE_SELF_API = "/aweme/v1/web/user/profile/self"
+
 # 判定已登录的 cookie（任一存在且非空即视为登录）
 LOGIN_COOKIE_KEYS = ("sessionid", "sessionid_ss")
 

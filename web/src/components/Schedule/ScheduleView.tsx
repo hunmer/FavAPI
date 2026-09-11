@@ -38,7 +38,6 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
   onCreateSchedule,
   onDeleteSchedule,
 }) => {
-  const [selectedDate, setSelectedDate] = useState('2026-09-10');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ScheduledSync | null>(null);
 
@@ -220,7 +219,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
 
       {/* Right Column: Interactive Calendar & Rules (1/3) */}
       <div className="w-full lg:w-[340px] xl:w-[380px] shrink-0 flex flex-col gap-6">
-        <CalendarCard onSelectDate={(d) => setSelectedDate(d)} />
+        <CalendarCard />
 
         <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm">
           <h4 className="text-sm font-bold text-slate-900 mb-2">Cron 表达式简易说明</h4>
