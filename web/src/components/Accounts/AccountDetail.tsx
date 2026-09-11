@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Account, AccountStatus, TaskRecord, ScrapedItem, ScrapingFormData } from '../../types';
 import { PLATFORMS } from '../../data/mockFavData';
+import { uploadWechatJson } from '../../api';
 import {
   ArrowLeft,
   CheckCircle2,
@@ -65,6 +66,7 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
   const [customFolderUrlOrUid, setCustomFolderUrlOrUid] = useState<string>('');
   const [pageIntervalSec, setPageIntervalSec] = useState<number>(2.0);
   const [profileUrlOrUid, setProfileUrlOrUid] = useState<string>('');
+  const [jsonPath, setJsonPath] = useState<string>('');
 
   // Delete confirm dialog state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -82,6 +84,7 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
       folderUrlOrUid: customFolderUrlOrUid,
       pageIntervalSec,
       profileUrlOrUid,
+      jsonPath,
     });
   };
 
@@ -90,14 +93,14 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
       {/* Top Bar: Back button & Title */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-200/80">
         <div className="flex items-center gap-3">
-          <button
+          {account.platform !== 'wechat' && <button
             type="button"
             onClick={onBack}
             className="p-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 transition-colors shadow-2xs"
             title="返回账号列表"
           >
             <ArrowLeft className="w-4 h-4" />
-          </button>
+          </button>}
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
@@ -116,7 +119,7 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
         {/* Action button toolbar */}
         <div className="flex flex-wrap items-center gap-2">
           {/* Health check */}
-          <button
+          {account.platform !== 'wechat' && <button
             type="button"
             onClick={() => onCheckHealth(account)}
             className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold shadow-2xs inline-flex items-center gap-1.5 transition-colors"
@@ -124,17 +127,17 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
           >
             <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
             登录态检查
-          </button>
+          </button>}
 
           {/* Re-login */}
-          <button
+          {account.platform !== 'wechat' && <button
             type="button"
             onClick={() => onOpenLoginModal(account)}
             className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold shadow-2xs inline-flex items-center gap-1.5 transition-colors"
           >
             <QrCode className="w-3.5 h-3.5 text-slate-700" />
             重新扫码
-          </button>
+          </button>}
 
           {/* Cookies */}
           <button
@@ -480,6 +483,22 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
                     placeholder="https://www.xiaohongshu.com/user/profile/... 或留空"
                     className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-slate-900"
                   />
+                </div>
+              )}
+
+              {account.platform === 'wechat' && (
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">微信收藏 JSON 文件路径</label>
+                  <input type="text" value={jsonPath} onChange={(e) => setJsonPath(e.target.value)}
+                    placeholder="请先用 WeChatDataAnalysis 导出，再填写 conversations/.../messages.json"
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-slate-900" />
+                  <input id="wechat-json-file" type="file" accept=".json,application/json" className="mt-2 text-xs" onChange={async (e) => {
+                    const file = e.target.files?.[0]; if (!file) return;
+                    try { const result = await uploadWechatJson(account.id, file); setJsonPath(result.json_path); }
+                    catch { /* 上传错误由抓取校验提示 */ }
+                  }} />
+                  <button type="button" onClick={() => document.querySelector<HTMLInputElement>('#wechat-json-file')?.click()} className="mt-2 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold">导入微信收藏 JSON</button>
+                  <p className="text-[10px] text-slate-500 mt-1">导出工具：github.com/LifeArchiveProject/WeChatDataAnalysis；FavAPI 服务需能读取该路径</p>
                 </div>
               )}
 

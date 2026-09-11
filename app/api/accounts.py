@@ -2,7 +2,8 @@
 import asyncio
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File
+from app import config
 
 from app.models import AccountCreate, AccountOut, AccountUpdate
 from app.platforms import registry
@@ -13,6 +14,23 @@ from app.utils import now_iso
 logger = logging.getLogger("favapi.accounts")
 
 router = APIRouter(prefix="/api/v1/accounts", tags=["accounts"])
+_login_tasks: dict[str, asyncio.Task] = {}
+
+@router.post("/{account_id}/wechat-import")
+async def upload_wechat_json(account_id: str, file: UploadFile = File(...)):
+    account = await _get_account_or_404(account_id)
+    if account["platform"] != "wechat":
+        raise HTTPException(400, "仅微信收藏账号支持 JSON 导入")
+    if not (file.filename or "").lower().endswith(".json"):
+        raise HTTPException(400, "仅支持 .json 文件")
+    data = await file.read()
+    if len(data) > 100 * 1024 * 1024:
+        raise HTTPException(400, "JSON 文件不能超过 100MB")
+    target_dir = config.DATA_DIR / "wechat_imports" / account_id
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = target_dir / "messages.json"
+    target.write_bytes(data)
+    return {"json_path": str(target), "filename": file.filename, "size": len(data)}
 
 platforms_router = APIRouter(prefix="/api/v1", tags=["accounts"])
 
@@ -26,6 +44,16 @@ async def list_platforms():
 async def reload_platforms():
     """重新扫描声明式平台目录，便于生产环境增删平台后立即生效。"""
     return {"loaded": registry.load_declarative() , "platforms": registry.platform_infos()}
+
+@router.post("/{account_id}/refresh-profile")
+async def refresh_profile(account_id: str):
+    account = await _get_account_or_404(account_id)
+    adapter = _require_adapter(account["platform"])
+    try:
+        await adapter.refresh_profile(account_manager.to_context(account))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=friendly_error(exc))
+    return {"account_id": account_id, "status": "ok"}
 
 
 @platforms_router.get("/platforms/{platform}/icon")
@@ -144,7 +172,8 @@ async def start_login(account_id: str):
     if not account_manager.mark_login_started(account_id):
         raise HTTPException(status_code=409, detail="该账号正在登录流程中，请勿重复发起")
 
-    asyncio.create_task(_do_login(account_id, adapter))
+    task = asyncio.create_task(_do_login(account_id, adapter))
+    _login_tasks[account_id] = task
     return {
         "account_id": account_id,
         "status": "login_pending",
@@ -168,6 +197,16 @@ async def _do_login(account_id: str, adapter):
         logger.error("登录流程异常（%s）：%s", account_id, friendly_error(exc))
     finally:
         account_manager.clear_login_started(account_id)
+        _login_tasks.pop(account_id, None)
+
+@router.post("/{account_id}/login/close")
+async def close_login(account_id: str):
+    await _get_account_or_404(account_id)
+    task = _login_tasks.get(account_id)
+    if task and not task.done():
+        task.cancel()
+        return {"account_id": account_id, "closed": True}
+    return {"account_id": account_id, "closed": False}
 
 
 @router.post("/{account_id}/browse")

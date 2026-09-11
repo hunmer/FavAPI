@@ -7,8 +7,9 @@ import { Account, BilibiliFolder, CookieItem, PlatformId, ScheduledSync, Scraped
 const BASE = '/api/v1';
 
 async function request<T = any>(path: string, opts: RequestInit = {}): Promise<T> {
+  const headers = opts.body instanceof FormData ? { ...(opts.headers || {}) } : { 'Content-Type': 'application/json', ...(opts.headers || {}) };
   const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+    headers,
     ...opts,
   });
   const data = await res.json().catch(() => ({}));
@@ -253,6 +254,10 @@ export async function loginStatus(accountId: string): Promise<LoginStatus> {
   return request(`/accounts/${accountId}/status`);
 }
 
+export async function closeLogin(accountId: string) {
+  return request<{ closed: boolean }>(`/accounts/${accountId}/login/close`, { method: 'POST' });
+}
+
 export async function toggleBrowse(accountId: string) {
   return request<{ opened?: boolean }>(`/accounts/${accountId}/browse`, { method: 'POST' });
 }
@@ -285,6 +290,10 @@ export interface RefreshProfilesResult {
 /** 批量刷新账号身份信息（昵称/头像/收藏夹）；串行执行，账号多时耗时较长。 */
 export async function refreshProfiles(): Promise<RefreshProfilesResult> {
   return request('/accounts/refresh-profile', { method: 'POST' });
+}
+
+export async function refreshProfile(accountId: string) {
+  return request<{ account_id: string; status: string }>(`/accounts/${accountId}/refresh-profile`, { method: 'POST' });
 }
 
 // ---------- 任务 / 数据 ----------
@@ -320,7 +329,7 @@ export async function getTask(taskId: string): Promise<TaskRow> {
 }
 
 export async function listFavorites(opts: { accountId?: string; limit?: number; offset?: number } = {}): Promise<{ total: number; items: FavoriteRow[] }> {
-  const p = new URLSearchParams({ limit: String(opts.limit ?? 500), offset: String(opts.offset ?? 0) });
+  const p = new URLSearchParams({ limit: String(opts.limit ?? 5000), offset: String(opts.offset ?? 0) });
   if (opts.accountId) p.set('account_id', opts.accountId);
   return request(`/favorites?${p.toString()}`);
 }
@@ -341,7 +350,15 @@ export function formToParams(platform: string, form: ScrapingFormData): Record<s
   if (platform === 'xiaohongshu' && form.profileUrlOrUid) {
     params.url = form.profileUrlOrUid;
   }
+  if (platform === 'wechat' && form.jsonPath) {
+    params.json_path = form.jsonPath;
+  }
   return params;
+}
+
+export async function uploadWechatJson(accountId: string, file: File): Promise<{ json_path: string }> {
+  const body = new FormData(); body.append('file', file);
+  return request<{ json_path: string }>(`/accounts/${accountId}/wechat-import`, { method: 'POST', body });
 }
 
 /** 异步抓取：立即返回 pending 任务，由调用方轮询。 */

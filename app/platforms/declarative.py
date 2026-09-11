@@ -89,6 +89,9 @@ class DeclarativeAdapter(BasePlatformAdapter):
             values["userId"] = eid_value
         elif numeric_user_id:
             values["userId"] = numeric_user_id
+        logger.info("URL 模板渲染：模板=%s，userId_source=%s，值长度=%d", url,
+                    "eid_cookie" if eid_value else ("userId_cookie" if numeric_user_id else "empty"),
+                    len(values.get("userId") or ""))
         try:
             return url.format_map(values)
         except (KeyError, ValueError):
@@ -153,6 +156,30 @@ class DeclarativeAdapter(BasePlatformAdapter):
         cursor = params.get('cursor'); has_more = False
         async with browser.session(account.profile_path,headless=config.HEADLESS, proxy=self._proxy()) as ctx:
             page=ctx.pages[0] if ctx.pages else await ctx.new_page()
+            # 快手 eid 可能只出现在 profile/get 接口响应，不在 Cookie 中。
+            if self.platform == 'kuaishou' and '{userId}' in str(cap.get('page_url') or self.home_url):
+                resolved_eid = None
+                async def on_profile_response(resp):
+                    nonlocal resolved_eid
+                    if '/rest/v/profile/get' not in resp.url:
+                        return
+                    try:
+                        data = await resp.json()
+                        if data.get('result') == 1 and data.get('eid'):
+                            resolved_eid = str(data['eid'])
+                            logger.info('[%s] 快手 profile/get 解析到 eid（长度=%d）', account.account_id, len(resolved_eid))
+                    except Exception as exc:
+                        logger.debug('[%s] 快手 profile/get 响应解析失败：%s', account.account_id, exc)
+                page.on('response', on_profile_response)
+                try:
+                    await page.goto(self.homepage or 'https://www.kuaishou.com', wait_until='domcontentloaded')
+                    await page.wait_for_timeout(2500)
+                except Exception as exc:
+                    logger.warning('[%s] 快手官网预导航失败：%s', account.account_id, exc)
+                if resolved_eid:
+                    cap = dict(cap)
+                    cap['page_url'] = str(cap.get('page_url') or self.home_url).replace('{userId}', resolved_eid)
+                logger.info('[%s] 快手抓取目标 URL 已解析：%s（eid_source=%s）', account.account_id, cap.get('page_url') or self.home_url, 'profile/get' if resolved_eid else 'cookie/fallback')
             await self._run_hooks('before_fetch', page, account, params)
             headers = dict(self.spec.get('headers') or {}); headers.update(cap.get('headers') or {})
             # 全局注入自定义头会污染静态脚本请求并触发 CDN CORS 预检。
@@ -190,6 +217,29 @@ class DeclarativeAdapter(BasePlatformAdapter):
                     batches.extend(items)
                     if on_batch: await on_batch({'page':len(batches),'items':items})
             page.on('response',on_response); target_url = self._render_url(cap.get('page_url') or self.home_url, account, await ctx.cookies()); await page.goto(target_url,wait_until='domcontentloaded'); await self._run_hooks('after_fetch_page', page, account, params); await page.wait_for_timeout(int(cap.get('wait_ms',3000)))
+            click_selector = cap.get('click_selector')
+            click_text = cap.get('click_text')
+            if click_selector:
+                try:
+                    await page.wait_for_selector(click_selector, timeout=10000)
+                    clicked = await page.evaluate(
+                        "selector => { const el = document.querySelector(selector); if (!el) return false; el.click(); return true; }",
+                        click_selector,
+                    )
+                    if not clicked:
+                        raise RuntimeError('选择器未命中元素')
+                    logger.info('[%s] 已通过选择器点击页面标签：%s', account.account_id, click_selector)
+                    await page.wait_for_timeout(int(cap.get('click_wait_ms', 1500)))
+                except Exception as exc:
+                    logger.warning('[%s] 通过选择器点击页面标签失败（%s）：%s', account.account_id, click_selector, exc)
+            elif click_text:
+                try:
+                    locator = page.locator('span.tab-item', has_text=click_text).filter(has_text=click_text).first
+                    await locator.click(timeout=10000)
+                    logger.info('[%s] 已点击页面标签：%s', account.account_id, click_text)
+                    await page.wait_for_timeout(int(cap.get('click_wait_ms', 1500)))
+                except Exception as exc:
+                    logger.warning('[%s] 点击页面标签失败（%s）：%s', account.account_id, click_text, exc)
             for _ in range(max_rounds):
                 if (target and len({i['content_id'] for i in batches}) >= target) or (batches and not has_more):
                     break

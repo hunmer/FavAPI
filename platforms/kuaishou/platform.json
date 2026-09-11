@@ -10,6 +10,7 @@
   "capture": {
     "url_contains": "/rest/v/collect/list",
     "page_url": "https://www.kuaishou.com/profile/{userId}",
+    "click_selector": "#app > div > div > main > div.wb-right > div > div > div.tab-container > div > div.tab-nav-wrapper.Tab > div > span.tab-item.tab-item-active.is-normal",
     "wait_ms": 5000,
     "max_rounds": 20,
     "scroll_step": 2200,

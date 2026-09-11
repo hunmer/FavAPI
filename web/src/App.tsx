@@ -37,6 +37,13 @@ export function App() {
   // Theme State
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
 
+  // Page Layout：全屏铺满 / 居中卡片窗口（localStorage 持久化）
+  const [fullPage, setFullPage] = useState(() => localStorage.getItem('favapi_fullpage') === '1');
+  const setFullPageAndSave = (v: boolean) => {
+    setFullPage(v);
+    localStorage.setItem('favapi_fullpage', v ? '1' : '0');
+  };
+
   // Avatar State（后端已上传的自定义头像，null 时用默认图）
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
@@ -129,7 +136,7 @@ export function App() {
 
   const reloadFavorites = useCallback(async (nameMap?: Map<string, string>) => {
     try {
-      const { items } = await api.listFavorites({ limit: 500 });
+    const { items } = await api.listFavorites({ limit: 5000 });
       const map = nameMap || accountNameById();
       setScrapedItems(items.map((r) => api.toScrapedItem(r, map)));
     } catch {
@@ -273,6 +280,16 @@ export function App() {
         showToast(`「${account.name}」登录态${s.logged_in ? '有效' : '已过期'}（${s.status}）`, s.logged_in ? 'success' : 'error');
       }
       reloadAccounts();
+    } catch (e: any) {
+      showToast(e.message, 'error');
+    }
+  };
+
+  const handleRefreshProfile = async (account: Account) => {
+    try {
+      await api.refreshProfile(account.id);
+      showToast(`已刷新「${account.name}」账号信息`, 'success');
+      await reloadAccounts();
     } catch (e: any) {
       showToast(e.message, 'error');
     }
@@ -515,7 +532,7 @@ export function App() {
   // ---------- 渲染 ----------
 
   return (
-    <div className={`h-screen overflow-hidden ${theme === 'dark' ? 'dark bg-[#0A0D14] text-slate-100' : 'bg-[#ECEEF2] text-slate-900'} flex items-center justify-center p-2 sm:p-4 lg:p-6 font-sans transition-colors duration-200`}>
+    <div className={`h-screen overflow-hidden ${theme === 'dark' ? 'dark bg-[#0A0D14] text-slate-100' : 'bg-[#ECEEF2] text-slate-900'} ${fullPage ? '' : 'flex items-center justify-center p-2 sm:p-4 lg:p-6'} font-sans transition-colors duration-200`}>
       {/* Toast Banner */}
       {toast && (
         <div className="fixed bottom-6 right-6 z-50 anim-toast">
@@ -543,7 +560,13 @@ export function App() {
       )}
 
       {/* Main Window Container */}
-      <div className="w-full max-w-[1560px] bg-white dark:bg-[#111622] rounded-[32px] sm:rounded-[36px] border border-slate-200/90 dark:border-slate-800 shadow-2xl shadow-slate-300/60 dark:shadow-black/70 overflow-hidden flex flex-row h-[880px] max-h-[96vh]">
+      <div
+        className={`w-full bg-white dark:bg-[#111622] overflow-hidden flex flex-row ${
+          fullPage
+            ? 'h-screen'
+            : 'max-w-[1560px] rounded-[32px] sm:rounded-[36px] border border-slate-200/90 dark:border-slate-800 shadow-2xl shadow-slate-300/60 dark:shadow-black/70 h-[880px] max-h-[96vh]'
+        }`}
+      >
         {/* Left Vertical Dark Sidebar */}
         <Sidebar
           activeTab={activeTab}
@@ -630,6 +653,7 @@ export function App() {
                     onOpenLoginModal={(acc) => setLoginModalAccount(acc)}
                     onQuickCheckHealth={handleQuickCheckHealth}
                     onRefreshProfiles={handleRefreshProfiles}
+                    onRefreshProfile={handleRefreshProfile}
                   />
                 )}
               </div>
@@ -694,6 +718,8 @@ export function App() {
                 theme={theme}
                 onToggleTheme={toggleTheme}
                 onSetTheme={setTheme}
+                fullPage={fullPage}
+                onSetFullPage={setFullPageAndSave}
                 avatarUrl={avatarUrl}
                 onAvatarChange={setAvatarUrl}
                 agents={agents}

@@ -76,9 +76,9 @@ export const QRCodeLoginModal: React.FC<QRCodeLoginModalProps> = ({
   const handleManualCheck = async () => {
     try {
       const s = await api.loginStatus(account.id);
-      if (!s.busy && (s.logged_in || !s.logging_in)) {
-        finish(!!s.logged_in, s.logged_in ? undefined : '未检测到登录态');
-      }
+      await api.closeLogin(account.id);
+      // 用户已明确确认，先关闭有头登录会话；若状态接口正忙则以确认结果结束弹窗。
+      finish(s.logged_in !== false, s.logged_in === false ? '未检测到登录态' : undefined);
     } catch (e: any) {
       finish(false, e.message);
     }
@@ -231,7 +231,7 @@ export const QRCodeLoginModal: React.FC<QRCodeLoginModalProps> = ({
                 className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl shadow-xs inline-flex items-center gap-1.5"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                关闭后重新发起登录
+                我已完成登录
               </button>
             </div>
           )}

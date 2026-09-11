@@ -104,4 +104,6 @@ export interface ScrapingFormData {
   pageIntervalSec?: number; // e.g. 1.5 ~ 5.0
   // Xiaohongshu specific
   profileUrlOrUid?: string;
+  // WeChat specific
+  jsonPath?: string;
 }

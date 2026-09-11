@@ -13,6 +13,7 @@ interface AccountsListProps {
   onQuickCheckHealth: (account: Account) => void;
   /** 批量刷新账号身份信息（昵称/头像/收藏夹）；结果提示由 App 层负责。 */
   onRefreshProfiles: () => Promise<api.RefreshProfilesResult>;
+  onRefreshProfile: (account: Account) => Promise<void>;
 }
 
 export const AccountsList: React.FC<AccountsListProps> = ({
@@ -22,6 +23,7 @@ export const AccountsList: React.FC<AccountsListProps> = ({
   onOpenLoginModal,
   onQuickCheckHealth,
   onRefreshProfiles,
+  onRefreshProfile,
 }) => {
   const [platformFilter, setPlatformFilter] = useState<string>('all');
   // mock 未收录的平台（如 threads）由此兜底 display_name / icon_url
@@ -255,7 +257,7 @@ export const AccountsList: React.FC<AccountsListProps> = ({
               {/* Bottom Action Buttons */}
               <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5">
-                  <button
+                  {account.platform !== 'wechat' && <button
                     type="button"
                     onClick={() => onOpenLoginModal(account)}
                     className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 hover:text-slate-900 transition-colors inline-flex items-center gap-1"
@@ -263,16 +265,24 @@ export const AccountsList: React.FC<AccountsListProps> = ({
                   >
                     <QrCode className="w-3.5 h-3.5" />
                     {account.status === 'expired' ? '重新扫码' : '扫码登录'}
-                  </button>
+                  </button>}
 
-                  <button
+                  {account.platform !== 'wechat' && <button
                     type="button"
                     onClick={() => onQuickCheckHealth(account)}
                     className="px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors"
                     title="验证当前登录凭据是否有效"
                   >
                     检查
-                  </button>
+                  </button>}
+                  {account.platform !== 'wechat' && <button
+                    type="button"
+                    onClick={() => onRefreshProfile(account)}
+                    className="p-1.5 rounded-xl text-slate-500 hover:bg-slate-100 transition-colors"
+                    title="刷新此账号信息"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  </button>}
                 </div>
 
                 <button

@@ -18,7 +18,9 @@ import {
   Trash2,
   Plus,
   Zap,
-  Save
+  Save,
+  Maximize2,
+  Frame
 } from 'lucide-react';
 import { AgentConfigRow, AgentTestResult, fetchAppSettings, updateAppSettings, uploadAvatar } from '../../api';
 
@@ -30,6 +32,8 @@ interface SettingsViewProps {
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
   onSetTheme: (theme: 'light' | 'dark') => void;
+  fullPage: boolean;
+  onSetFullPage: (v: boolean) => void;
   avatarUrl: string | null;
   onAvatarChange: (url: string) => void;
   agents: AgentConfigRow[];
@@ -48,6 +52,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   theme,
   onToggleTheme,
   onSetTheme,
+  fullPage,
+  onSetFullPage,
   avatarUrl,
   onAvatarChange,
   agents,
@@ -261,6 +267,47 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               >
                 <Moon className="w-3.5 h-3.5 text-sky-400" />
                 暗色模式
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-4 border-t border-slate-50 dark:border-slate-800/80">
+            <div>
+              <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">页面布局模式</div>
+              <div className="text-[11px] text-slate-400">全屏铺满整个浏览器视口，或保持居中卡片窗口样式</div>
+            </div>
+
+            <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => {
+                  onSetFullPage(false);
+                  onShowToast('已切换为居中卡片布局', 'info');
+                }}
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  !fullPage
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <Frame className="w-3.5 h-3.5 text-amber-500" />
+                居中卡片
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  onSetFullPage(true);
+                  onShowToast('已切换为全屏铺满布局', 'info');
+                }}
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  fullPage
+                    ? 'bg-slate-900 dark:bg-sky-600 text-white shadow-xs'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <Maximize2 className="w-3.5 h-3.5 text-sky-400" />
+                全屏铺满
               </button>
             </div>
           </div>

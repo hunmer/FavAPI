@@ -102,7 +102,7 @@ async def list_favorites(
     account_id: str | None = None,
     platform: str | None = None,
     tag: str | None = None,
-    limit: int = Query(50, ge=1, le=500),
+    limit: int = Query(50, ge=1, le=10000),
     offset: int = Query(0, ge=0),
 ):
     result = await data_store.list_favorites(account_id, platform, tag, limit, offset)
