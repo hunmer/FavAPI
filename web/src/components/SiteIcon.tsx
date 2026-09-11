@@ -8,6 +8,7 @@ const SITE_ICONS: Record<string, string> = {
   kuaishou: '/site_icons/kuaishou.ico',
   weibo: '/site_icons/weibo.ico',
   xiaohongshu: '/site_icons/xiaohongshu.ico',
+  wechat: '/site_icons/wechat.svg',
 };
 
 // 后端平台元信息（display_name / icon_url）缓存：不在 mock PLATFORMS 内的平台（如 threads）由此兜底

@@ -179,7 +179,7 @@ export function toScrapedItem(row: FavoriteRow, accountNameById: Map<string, str
   return {
     id: row.content_id,
     title: row.title || row.content_id,
-    url: row.url || '#',
+    url: row.url || '',
     author: row.author_name || '—',
     duration: row.duration ? fmtDuration(row.duration) : undefined,
     likes: stats.digg_count ?? stats.like_count ?? 0,

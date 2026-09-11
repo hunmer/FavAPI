@@ -92,6 +92,7 @@ export interface ScrapedItem {
   accountName: string;
   tags?: string[];
   notes?: string;
+  description?: string;
 }
 
 export interface ScrapingFormData {

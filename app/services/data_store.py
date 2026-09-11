@@ -119,7 +119,7 @@ async def list_favorites(
     rows = await db.query_all(
         f"""SELECT f.account_id, f.content_id, f.platform, f.fav_media_id, f.fav_title,
                    f.collected_at, f.fetched_at,
-                   c.title, c.author_name, c.cover_url, c.duration, c.statistics,
+                   c.title, c.author_name, c.cover_url, c.duration, c.statistics, c.raw_data,
                    c.tags, c.tagged_at
             FROM favorites f LEFT JOIN contents c
               ON c.content_id = f.content_id AND c.platform = f.platform
@@ -139,6 +139,10 @@ async def list_favorites(
             tags = json.loads(r.get("tags") or "[]")
         except (TypeError, json.JSONDecodeError):
             tags = []
+        raw = {}
+        try: raw = json.loads(r.get("raw_data") or "{}")
+        except (TypeError, json.JSONDecodeError): pass
+        source_url = raw.get("url") or raw.get("locationLabel")
         items.append({
             "content_id": r["content_id"],
             "account_id": r.get("account_id"),
@@ -152,7 +156,8 @@ async def list_favorites(
             "fav_title": r.get("fav_title") or None,
             "collected_at": r.get("collected_at"),
             "fetched_at": r.get("fetched_at"),
-            "url": _CONTENT_URL_TEMPLATES.get(r["platform"], "").format(content_id=r["content_id"]) or None,
+            "url": source_url or (_CONTENT_URL_TEMPLATES.get(r["platform"], "").format(content_id=r["content_id"]) or None),
+            "description": raw.get("content") or None,
             "tags": [str(t) for t in tags] if isinstance(tags, list) else [],
             "tagged_at": r.get("tagged_at"),
         })
