@@ -592,6 +592,49 @@ export async function tagStream(
   return done || { type: 'done', processed: 0, tagged: 0 };
 }
 
+// ---------- 下载队列 ----------
+
+export type DownloaderId = 'yt-dlp' | 'videodl';
+
+export interface DownloadRow {
+  download_id: string;
+  platform?: PlatformId | null;
+  content_id?: string | null;
+  title?: string | null;
+  url: string;
+  downloader: DownloaderId;
+  status: 'pending' | 'running' | 'success' | 'failed' | 'canceled';
+  progress?: string | null;
+  output_path?: string | null;
+  error_message?: string | null;
+  created_at?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+}
+
+export async function listDownloads(): Promise<DownloadRow[]> {
+  const data = await request<{ downloads: DownloadRow[] }>('/downloads');
+  return data.downloads;
+}
+
+export async function createDownload(body: {
+  content_id: string;
+  platform: string;
+  title?: string;
+  url?: string;
+  downloader?: DownloaderId;
+}): Promise<DownloadRow> {
+  return request('/downloads', { method: 'POST', body: JSON.stringify(body) });
+}
+
+export async function retryDownload(id: string) {
+  return request(`/downloads/${id}/retry`, { method: 'POST' });
+}
+
+export async function deleteDownload(id: string) {
+  return request(`/downloads/${id}`, { method: 'DELETE' });
+}
+
 // ---------- 系统设置 / 头像 ----------
 
 export async function uploadAvatar(file: File): Promise<string> {

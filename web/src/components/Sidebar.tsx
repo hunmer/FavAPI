@@ -7,6 +7,7 @@ import {
   Bookmark,
   Activity,
   CalendarDays,
+  Download,
   Settings,
   Sparkles,
   Sun,
@@ -39,6 +40,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'data', label: '收藏数据', icon: Bookmark },
     { id: 'tasks', label: '同步任务', icon: Activity },
     { id: 'schedule', label: '日程调度', icon: CalendarDays },
+    { id: 'downloads', label: '下载队列', icon: Download },
     { id: 'settings', label: '系统设置', icon: Settings },
   ];
 

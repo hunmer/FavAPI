@@ -116,6 +116,32 @@ class FavoriteItem(BaseModel):
     tagged_at: str | None = None
 
 
+# ---------- 下载队列 ----------
+
+class DownloadCreate(BaseModel):
+    content_id: str
+    platform: str
+    title: str = ""
+    url: str = ""       # 缺省时按平台模板用 content_id 生成
+    downloader: str = "yt-dlp"  # yt-dlp / videodl
+
+
+class DownloadOut(BaseModel):
+    download_id: str
+    platform: str | None = None
+    content_id: str | None = None
+    title: str | None = None
+    url: str
+    downloader: str
+    status: str
+    progress: str | None = None
+    output_path: str | None = None
+    error_message: str | None = None
+    created_at: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+
+
 # ---------- AI Agent 配置 ----------
 
 class AgentCreate(BaseModel):

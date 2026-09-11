@@ -22,9 +22,9 @@ _manual_tasks: dict[str, asyncio.Task] = {}
 
 
 def has_login_cookies(cookies: list[dict], keys: tuple[str, ...]) -> bool:
-    """任一关键 cookie 存在且非空即视为已登录。"""
-    by_name = {c.get("name"): c.get("value") for c in cookies or []}
-    return any(by_name.get(k) for k in keys)
+    """任一关键 cookie 存在且非空即视为已登录（名称大小写不敏感）。"""
+    by_name = {str(c.get("name") or "").lower(): c.get("value") for c in cookies or []}
+    return any(by_name.get(str(k).lower()) for k in keys)
 
 
 def is_busy(profile_path: str) -> bool:

@@ -1,6 +1,6 @@
 export type PrimaryTab = 'accounts' | 'tasks' | 'data';
 
-export type NavTab = 'dashboard' | 'accounts' | 'data' | 'tasks' | 'schedule' | 'settings';
+export type NavTab = 'dashboard' | 'accounts' | 'data' | 'tasks' | 'schedule' | 'downloads' | 'settings';
 
 export interface ScheduledSync {
   id: string;

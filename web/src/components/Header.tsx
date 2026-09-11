@@ -39,6 +39,8 @@ export const Header: React.FC<HeaderProps> = ({
         return { title: '任务执行历史', subtitle: '增量抓取、全量同步与日志监控' };
       case 'schedule':
         return { title: '定时同步计划', subtitle: 'Cron 调度规则与自动化同步日历' };
+      case 'downloads':
+        return { title: '收藏下载队列', subtitle: 'yt-dlp / videodl 内容下载任务与进度' };
       case 'settings':
         return { title: '系统运行配置', subtitle: 'Chromium 路径、反风控间隔与数据导出' };
     }

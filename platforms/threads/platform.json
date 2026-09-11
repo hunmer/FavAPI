@@ -3,7 +3,7 @@
   "display_name": "Threads",
   "icon": "favicon.ico",
   "home_url": "https://www.threads.com/saved",
-  "login_cookies": ["sessionid", "csrftoken"],
+  "login_cookies": ["sessionid", "ds_user_id", "Session"],
   "proxy": "auto",
   "supported_actions": ["list_favorites"],
   "headers": {

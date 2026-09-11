@@ -87,8 +87,10 @@ class DeclarativeAdapter(BasePlatformAdapter):
     async def login(self, account, timeout=None):
         timeout=timeout or config.LOGIN_TIMEOUT; deadline=time.monotonic()+timeout
         async with browser.session(account.profile_path, headless=False, proxy=self._proxy()) as ctx:
-            page=ctx.pages[0] if ctx.pages else await ctx.new_page(); await self._run_hooks('before_login', page, account, {}); await page.goto(self.home_url,wait_until='domcontentloaded'); await self._run_hooks('after_login_page', page, account, {})
             keys=tuple(self.spec.get('login_cookies',[]))
+            if browser.has_login_cookies(await ctx.cookies(), keys):
+                return True
+            page=ctx.pages[0] if ctx.pages else await ctx.new_page(); await self._run_hooks('before_login', page, account, {}); await page.goto(self.home_url,wait_until='domcontentloaded'); await self._run_hooks('after_login_page', page, account, {})
             while time.monotonic()<deadline:
                 if browser.has_login_cookies(await ctx.cookies(),keys): return True
                 await asyncio.sleep(3)

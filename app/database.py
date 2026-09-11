@@ -90,10 +90,27 @@ CREATE TABLE IF NOT EXISTS schedules (
     created_at     TEXT
 );
 
+CREATE TABLE IF NOT EXISTS downloads (
+    download_id    TEXT PRIMARY KEY,
+    platform       TEXT,
+    content_id     TEXT,
+    title          TEXT,
+    url            TEXT NOT NULL,
+    downloader     TEXT DEFAULT 'yt-dlp',   -- yt-dlp / videodl
+    status         TEXT DEFAULT 'pending',  -- pending / running / success / failed / canceled
+    progress       TEXT,                    -- 下载器最近输出行（进度/阶段）
+    output_path    TEXT,
+    error_message  TEXT,
+    created_at     TEXT,
+    started_at     TEXT,
+    finished_at    TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_favorites_account ON favorites(account_id, platform);
 CREATE INDEX IF NOT EXISTS idx_tasks_started ON fetch_tasks(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_contents_platform ON contents(platform);
 CREATE INDEX IF NOT EXISTS idx_schedules_due ON schedules(status, next_run_at);
+CREATE INDEX IF NOT EXISTS idx_downloads_created ON downloads(created_at DESC);
 """
 
 

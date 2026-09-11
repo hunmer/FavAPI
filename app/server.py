@@ -4,9 +4,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import accounts, agents, ai_tag, fetch, queries, schedules, settings, tags
+from app.api import accounts, agents, ai_tag, downloads, fetch, queries, schedules, settings, tags
 from app.database import db
-from app.services import scheduler
+from app.services import download_worker, scheduler
 from app.web.router import mount_web
 
 # 让 favapi.* 调试日志输出到 stderr（procm 会同时采集 stdout/stderr）
@@ -17,7 +17,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 async def lifespan(app: FastAPI):
     await db.connect()
     await scheduler.start()
+    await download_worker.start()
     yield
+    await download_worker.stop()
     await scheduler.stop()
     await db.close()
 
@@ -33,6 +35,7 @@ def create_app() -> FastAPI:
     app.include_router(accounts.platforms_router)
     app.include_router(agents.router)
     app.include_router(ai_tag.router)
+    app.include_router(downloads.router)
     app.include_router(fetch.router)
     app.include_router(queries.router)
     app.include_router(schedules.router)

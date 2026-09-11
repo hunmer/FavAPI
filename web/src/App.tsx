@@ -21,6 +21,7 @@ import { CookiesModal } from './components/Accounts/CookiesModal';
 import { TasksView } from './components/Tasks/TasksView';
 import { DataBrowserView } from './components/Data/DataBrowserView';
 import { ScheduleView } from './components/Schedule/ScheduleView';
+import { DownloadsView } from './components/Downloads/DownloadsView';
 import { SettingsView } from './components/Settings/SettingsView';
 import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
 import { DevInspector } from './components/DevInspector';
@@ -44,7 +45,7 @@ export function App() {
   };
 
   // Navigation State：由 URL hash 驱动（/#/data 等），未知路径回落 dashboard
-  const NAV_TABS: NavTab[] = ['dashboard', 'accounts', 'data', 'tasks', 'schedule', 'settings'];
+  const NAV_TABS: NavTab[] = ['dashboard', 'accounts', 'data', 'tasks', 'schedule', 'downloads', 'settings'];
   const location = useLocation();
   const navigate = useNavigate();
   const pathTab = location.pathname.replace(/^\//, '').split('/')[0] as NavTab;
@@ -668,7 +669,10 @@ export function App() {
               />
             )}
 
-            {/* View 6: 系统设置 */}
+            {/* View 6: 下载队列 */}
+            {activeTab === 'downloads' && <DownloadsView />}
+
+            {/* View 7: 系统设置 */}
             {activeTab === 'settings' && (
               <SettingsView
                 onShowToast={showToast}
