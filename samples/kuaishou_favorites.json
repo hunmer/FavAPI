@@ -1,0 +1,273 @@
+{
+    "result": 1,
+    "pcursor": "402524668",
+    "feeds": [
+        {
+            "type": 1,
+            "tags": [
+                {
+                    "name": "快成长计划",
+                    "type": 1
+                },
+                {
+                    "name": "今日文案",
+                    "type": 1
+                },
+                {
+                    "name": "情感语录",
+                    "type": 1
+                },
+                {
+                    "name": "励志",
+                    "type": 1
+                }
+            ],
+            "photo": {
+                "manifestH265": {
+                    "version": "1.0.0",
+                    "businessType": 2,
+                    "mediaType": 2,
+                    "videoId": "9aa8ca662b7b2108",
+                    "hideAuto": false,
+                    "manualDefaultSelect": false,
+                    "stereoType": 0,
+                    "adaptationSet": [
+                        {
+                            "id": 1,
+                            "duration": 52932,
+                            "representation": [
+                                {
+                                    "id": 1,
+                                    "url": "https://k0u3by39ycy16zw240ex964xea00x71bxx16z.djvod.ndcimgs.com/bs2/photo-video-mz/5213761162531208325_9aa8ca662b7b2108_9377_hd15.mp4?tag=1-1789128153-unknown-0-wb1j88gnu1-fe4cc9778acdd76b&provider=self&clientCacheKey=3xvmfg43gz5hpt9_4b77e6c8&di=7829c6f0&bp=10004&x-ks-ptid=170298602267&kwai-not-alloc=self-cdn&kcdntag=p:Fujian;i:ChinaTelecom;ft:UNKNOWN;h:COLD;pn:kuaishouVideoProjection&ocid=6&tt=hd15&ss=vpm",
+                                    "backupUrl": [
+                                        "https://v23-3.kwaicdn.com/bs2/photo-video-mz/5213761162531208325_9aa8ca662b7b2108_9377_hd15.mp4?pkey=AAUzDJdgrla5lbfHu_DF1Dln77RfMmKNBxyV1L1vxypZ4owklasuhEbWh9cnMej2pT5CCxECSvpi1rJtSZs1EkPnBXqABybvTU7MVjE6iztcZ1Tsx-qIEEjHVVJupdc-CSQ&tag=1-1789128153-unknown-1-6xqfpk2cmu-091f897fd879e186&clientCacheKey=3xvmfg43gz5hpt9_4b77e6c8&di=7829c6f0&bp=10004&kwai-not-alloc=0&tt=hd15&ss=vpm"
+                                    ],
+                                    "maxBitrate": 3000,
+                                    "avgBitrate": 459,
+                                    "width": 720,
+                                    "height": 720,
+                                    "frameRate": 30.000378,
+                                    "quality": 1.5,
+                                    "kvqScore": {
+                                        "FR": -1.0,
+                                        "NR": 3.2698566913604736,
+                                        "FRPost": -1.0,
+                                        "NRPost": -1.0,
+                                        "nnvcScore": -1.0,
+                                        "sharpness": 0.34220001101493835,
+                                        "blur": 0.39649999141693115
+                                    },
+                                    "qualityType": "720p",
+                                    "qualityLabel": "高清",
+                                    "featureP2sp": false,
+                                    "p2spCode": "{\"fRsn\":0,\"fixOpt\":-1,\"schTask\":\"\",\"schCode\":-1,\"schRes\":\"\",\"pushTask\":\"v=0&p=0&s=0&d=0\",\"pushCode\":-1}",
+                                    "hidden": false,
+                                    "disableAdaptive": false,
+                                    "defaultSelect": false,
+                                    "comment": "videoId=9aa8ca662b7b2108/ttExplain=HEVC_Turbo2_720P_高码率/tt=hd15",
+                                    "hdrType": 0,
+                                    "fileSize": 3041123,
+                                    "agc": true,
+                                    "mute": false,
+                                    "oriLoudness": -7.947,
+                                    "makeupGain": 1.115,
+                                    "realLoudness": -8.599,
+                                    "realNormalizeGain": 1.0,
+                                    "normalizeGain": 1.0,
+                                    "volumeInfo": {
+                                        "loudness": -8.7,
+                                        "th": -18.6,
+                                        "lra": 0.4,
+                                        "lraTh": -28.6,
+                                        "lraLow": -8.8,
+                                        "lraHigh": -8.4,
+                                        "tp": 3.7
+                                    },
+                                    "colorInfo": {}
+                                }
+                            ]
+                        }
+                    ],
+                    "playInfo": {
+                        "bizType": 0,
+                        "cdnTimeRangeLevel": 0,
+                        "strategyBus": "{\n  \"photoFlag\" : 1\n}"
+                    },
+                    "videoFeature": {
+                        "blurProbability": 0.3242431581020355,
+                        "blockyProbability": 0.48214662075042725,
+                        "avgEntropy": 5.620182359218598,
+                        "mosScore": 0.5840657353401184,
+                        "contrast": 0.26269904,
+                        "underExposed": 0.15580496,
+                        "overExposed": 8.220375E-5,
+                        "capSrc": 0.016729075
+                    },
+                    "audioFeature": {
+                        "audioQuality": 94.4436,
+                        "musicProbability": 0.5191,
+                        "dialogProbability": 0.4781,
+                        "backgroundSoundProbability": 0.0028,
+                        "stereophonicRichness": 40.0,
+                        "audioClip": 0.0302,
+                        "audioSnr": 5.8851,
+                        "effectiveBandwidthInHz": 15409.211
+                    }
+                },
+                "photoUrls": [
+                    {
+                        "cdn": "k0u3by39ycy16zw240ex964xea00x71bxx16z.djvod.ndcimgs.com",
+                        "url": "https://k0u3by39ycy16zw240ex964xea00x71bxx16z.djvod.ndcimgs.com/upic/2025/07/23/21/BMjAyNTA3MjMyMTQwNTZfMzU5OTc3Mjc3MF8xNzAyOTg2MDIyNjdfMl8z_b_B1a43ef6d4a6f9dc582994dc6941e9365.mp4?tag=1-1789128153-unknown-0-rfjfduyvqc-3faefd7209deb320&provider=self&clientCacheKey=3xvmfg43gz5hpt9_b.mp4&di=7829c6f0&bp=10004&x-ks-ptid=170298602267&kwai-not-alloc=self-cdn&kcdntag=p:Fujian;i:ChinaTelecom;ft:UNKNOWN;h:COLD;pn:kuaishouVideoProjection&ocid=6&tt=b&ss=vps"
+                    },
+                    {
+                        "cdn": "v23-3.kwaicdn.com",
+                        "url": "https://v23-3.kwaicdn.com/upic/2025/07/23/21/BMjAyNTA3MjMyMTQwNTZfMzU5OTc3Mjc3MF8xNzAyOTg2MDIyNjdfMl8z_b_B1a43ef6d4a6f9dc582994dc6941e9365.mp4?pkey=AAXTZxYwyKpL5ohRa-kMUSR8kZwxnRvu2DwEWE5TGmlrsVnCkEp1u49viVvCiUxVB8GpVpMHQ5Xxgpz-Wp2xM0TOa3tgwrNkctf-qrncy9TSEC_vJvfU8WsiGBaQQLz3mY8&tag=1-1789128153-unknown-1-zrwgvurvbk-fd84814dd7abf3a5&clientCacheKey=3xvmfg43gz5hpt9_b.mp4&di=7829c6f0&bp=10004&kwai-not-alloc=0&tt=b&ss=vps"
+                    }
+                ],
+                "manifest": {
+                    "version": "1.0.0",
+                    "businessType": 2,
+                    "mediaType": 2,
+                    "videoId": "9aa8ca662b7b2108",
+                    "hideAuto": false,
+                    "manualDefaultSelect": false,
+                    "stereoType": 0,
+                    "adaptationSet": [
+                        {
+                            "id": 1,
+                            "duration": 52895,
+                            "representation": [
+                                {
+                                    "id": 1,
+                                    "url": "https://k0u3by39ycy16zw240ex964xea00x71bxx16z.djvod.ndcimgs.com/upic/2025/07/23/21/BMjAyNTA3MjMyMTQwNTZfMzU5OTc3Mjc3MF8xNzAyOTg2MDIyNjdfMl8z_b_B1a43ef6d4a6f9dc582994dc6941e9365.mp4?tag=1-1789128153-unknown-0-an3cv2hogl-428657fd0bbd16b5&provider=self&clientCacheKey=3xvmfg43gz5hpt9_b.mp4&di=7829c6f0&bp=10004&x-ks-ptid=170298602267&kwai-not-alloc=self-cdn&kcdntag=p:Fujian;i:ChinaTelecom;ft:UNKNOWN;h:COLD;pn:kuaishouVideoProjection&ocid=6&tt=b&ss=vpm",
+                                    "backupUrl": [
+                                        "https://v23-3.kwaicdn.com/upic/2025/07/23/21/BMjAyNTA3MjMyMTQwNTZfMzU5OTc3Mjc3MF8xNzAyOTg2MDIyNjdfMl8z_b_B1a43ef6d4a6f9dc582994dc6941e9365.mp4?pkey=AAUafxYqDun907go8K3dbL1wBdI-2ubZKICHA38oUE1a7B-dK0idikkUY6djxtd-pKBJ_j_9Igllt6d13XApU6XXqy-96Fe3hish-mV0ZK8qv6nEgHizOkRfL_uYFpoK4KY&tag=1-1789128153-unknown-1-vqetj1rtui-a0e906d299cda96c&clientCacheKey=3xvmfg43gz5hpt9_b.mp4&di=7829c6f0&bp=10004&kwai-not-alloc=0&tt=b&ss=vpm"
+                                    ],
+                                    "maxBitrate": 3600,
+                                    "avgBitrate": 1080,
+                                    "width": 720,
+                                    "height": 720,
+                                    "frameRate": 60.0,
+                                    "quality": 1.5,
+                                    "kvqScore": {
+                                        "FR": -1.0,
+                                        "NR": 3.25390625,
+                                        "FRPost": -1.0,
+                                        "NRPost": -1.0,
+                                        "nnvcScore": -1.0,
+                                        "sharpness": 0.31439998745918274,
+                                        "blur": 0.4239000082015991
+                                    },
+                                    "qualityType": "720p",
+                                    "qualityLabel": "高清",
+                                    "featureP2sp": false,
+                                    "p2spCode": "{\"fRsn\":0,\"fixOpt\":-1,\"schTask\":\"\",\"schCode\":-1,\"schRes\":\"\",\"pushTask\":\"v=0&p=0&s=0&d=0\",\"pushCode\":-1}",
+                                    "hidden": false,
+                                    "disableAdaptive": false,
+                                    "defaultSelect": false,
+                                    "comment": "videoId=9aa8ca662b7b2108/ttExplain=AVC_VeryFast_720P_高码率_Basic/tt=b",
+                                    "hdrType": 0,
+                                    "fileSize": 7141954,
+                                    "bitratePattern": [
+                                        1547,
+                                        1069,
+                                        2827,
+                                        464,
+                                        430
+                                    ],
+                                    "agc": false,
+                                    "mute": false,
+                                    "oriLoudness": 0.0,
+                                    "makeupGain": 0.0,
+                                    "realLoudness": -8.64,
+                                    "realNormalizeGain": 1.0,
+                                    "normalizeGain": 0.0,
+                                    "volumeInfo": {
+                                        "loudness": -8.7,
+                                        "th": -18.6,
+                                        "lra": 0.4,
+                                        "lraTh": -28.6,
+                                        "lraLow": -8.8,
+                                        "lraHigh": -8.4,
+                                        "tp": 3.7
+                                    },
+                                    "colorInfo": {}
+                                }
+                            ]
+                        }
+                    ],
+                    "playInfo": {
+                        "bizType": 0,
+                        "cdnTimeRangeLevel": 0,
+                        "strategyBus": "{\n  \"photoFlag\" : 1\n}"
+                    },
+                    "videoFeature": {
+                        "blurProbability": 0.3242431581020355,
+                        "blockyProbability": 0.48214662075042725,
+                        "avgEntropy": 5.620182359218598,
+                        "mosScore": 0.5840657353401184,
+                        "contrast": 0.26269904,
+                        "underExposed": 0.15580496,
+                        "overExposed": 8.220375E-5,
+                        "capSrc": 0.016729075
+                    },
+                    "audioFeature": {
+                        "audioQuality": 94.4436,
+                        "musicProbability": 0.5191,
+                        "dialogProbability": 0.4781,
+                        "backgroundSoundProbability": 0.0028,
+                        "stereophonicRichness": 40.0,
+                        "audioClip": 0.0302,
+                        "audioSnr": 5.8851,
+                        "effectiveBandwidthInHz": 15409.211
+                    }
+                },
+                "photoH265Urls": [
+                    {
+                        "cdn": "k0u3by39ycy16zw240ex964xea00x71bxx16z.djvod.ndcimgs.com",
+                        "url": "https://k0u3by39ycy16zw240ex964xea00x71bxx16z.djvod.ndcimgs.com/bs2/photo-video-mz/5213761162531208325_9aa8ca662b7b2108_9377_hd15.mp4?tag=1-1789128153-unknown-0-mb9sjfkltv-008d54e82bf44191&provider=self&clientCacheKey=3xvmfg43gz5hpt9_4b77e6c8&di=7829c6f0&bp=10004&x-ks-ptid=170298602267&kwai-not-alloc=self-cdn&kcdntag=p:Fujian;i:ChinaTelecom;ft:UNKNOWN;h:COLD;pn:kuaishouVideoProjection&ocid=6&tt=hd15&ss=vps"
+                    },
+                    {
+                        "cdn": "v23-3.kwaicdn.com",
+                        "url": "https://v23-3.kwaicdn.com/bs2/photo-video-mz/5213761162531208325_9aa8ca662b7b2108_9377_hd15.mp4?pkey=AAW8AfsrzuVJaZUOl8Nx2kJnIdxbd6N1goGCw5wJI0A_NTsfxJKwI6AE45t_hHR58UJm-aAPna0KUqk0MoI6LMsvSEmDqlUirvNV7wfsTfoFD7ZxqSIpuotJQhJmE4zpHOc&tag=1-1789128153-unknown-1-nlrl6s1qwy-395312256a643548&clientCacheKey=3xvmfg43gz5hpt9_4b77e6c8&di=7829c6f0&bp=10004&kwai-not-alloc=0&tt=hd15&ss=vps"
+                    }
+                ],
+                "collected": true,
+                "liked": false,
+                "collectCount": 27120,
+                "viewCount": 1760602,
+                "likeCount": 101755,
+                "stereoType": 0,
+                "caption": "当察觉到自己状态不对时，一定要及时调整自己 #励志 #今日文案 #情感语录 #快成长计划 @快手热点(O3xddgkd5fav5if9) @快手情感(O3xmr6vuyyeedpj6) @快手粉条(O3xhcy6vhfzcu3qe)",
+                "expTag": "1_a/2010124462878837377_xpcwebunknownxxunknown0",
+                "coverUrl": "https://p2.a.yximgs.com/upic/2025/07/23/21/BMjAyNTA3MjMyMTQwNTZfMzU5OTc3Mjc3MF8xNzAyOTg2MDIyNjdfMl8z_B21f9f6843fca5c583aded9cd9d991fe4.jpg?tag=1-1789128153-xpcwebprofile-0-hflqwolboe-2c8833919dc7a207&clientCacheKey=3xvmfg43gz5hpt9.jpg&di=7829c6f0&bp=10004",
+                "duration": 52883,
+                "timestamp": 1753278095078,
+                "id": "3xvmfg43gz5hpt9",
+                "riskTagContent": null,
+                "height": 720,
+                "riskTagUrl": null,
+                "width": 720,
+                "disableSensitivePhoto": false,
+                "animatedCoverUrl": "https://p2.a.yximgs.com/upic/2025/07/23/21/BMjAyNTA3MjMyMTQwNTZfMzU5OTc3Mjc3MF8xNzAyOTg2MDIyNjdfMl8z_animatedV5_Ba9290a941a2c18f1caed94cc8c82b82c.webp?tag=1-1789128153-xpcwebprofile-0-uymfzgolt0-5a4cf30343019d50&clientCacheKey=3xvmfg43gz5hpt9_animatedV5.webp&di=7829c6f0&bp=10004"
+            },
+            "author": {
+                "id": "3xpzju8bzxeijrm",
+                "livingInfo": {
+                    "living": false,
+                    "livingId": null,
+                    "iconType": 0
+                },
+                "name": "泡泡",
+                "following": false,
+                "headerUrl": "https://p66.a.kwimgs.com/uhead/AB/2025/06/08/15/BMjAyNTA2MDgxNTQwMTFfMzU5OTc3Mjc3MF8yX2hkOTQ3Xzk4OQ==_s.jpg"
+            },
+            "danmakuSwitch": true,
+            "comment": {
+                "us_c": 0
+            }
+        }
+    ],
+    "llsid": "2010124462878837377",
+    "host-name": "public-bjmt-c26-kce-node448.idchb1az4.hb1.kwaidc.com"
+}

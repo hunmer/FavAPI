@@ -1,0 +1,1377 @@
+{
+    "code": 0,
+    "message": "OK",
+    "ttl": 1,
+    "data": {
+        "info": {
+            "id": 290999545,
+            "fid": 2909995,
+            "mid": 388116545,
+            "attr": 0,
+            "title": "默认收藏夹",
+            "cover": "http://i2.hdslb.com/bfs/archive/e3416393aba9346f8524bd3e84c621ad5c8ca0e0.jpg",
+            "upper": {
+                "mid": 388116545,
+                "name": "无知少女の末路",
+                "face": "https://i2.hdslb.com/bfs/face/6a1574ea75c2ced7d91638e96aaaa1e13266b395.jpg",
+                "followed": false,
+                "vip_type": 0,
+                "vip_statue": 0
+            },
+            "cover_type": 2,
+            "cnt_info": {
+                "collect": 0,
+                "play": 1,
+                "thumb_up": 0,
+                "share": 0
+            },
+            "type": 11,
+            "intro": "",
+            "ctime": 1543044905,
+            "mtime": 1549219831,
+            "state": 0,
+            "fav_state": 0,
+            "like_state": 0,
+            "media_count": 1695,
+            "is_top": false,
+            "is_kid_playlist": false,
+            "kid_playlist_desc": ""
+        },
+        "medias": [
+            {
+                "id": 117071211929385,
+                "type": 2,
+                "title": "MioKit1.1.0 平替Listary Quick Swicth 和接入 Everything搜索",
+                "cover": "http://i0.hdslb.com/bfs/archive/8a1570525222631b509c832a6f60211e2a4e89a3.jpg",
+                "intro": "MioKit 1.1.0版本来了\n目前支持在线下载和更新了，给每个插件都设置了单独的数据存储目录，代价是之前插件的数据丢失了\n对不起使用MioKit的1.1.0版本前的几位小伙伴\n还更新了一些其他的插件、功能、UI，大家感兴趣直接搜索MioKit使用微软应用商店进行下载吧",
+                "page": 1,
+                "duration": 121,
+                "upper": {
+                    "mid": 182423189,
+                    "name": "我是一个小小小小岛",
+                    "face": "https://i2.hdslb.com/bfs/face/e26d858555cc49924c123bdae364458d18e74748.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 51,
+                    "play": 1025,
+                    "danmaku": 0,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "1025"
+                },
+                "link": "bilibili://video/117071211929385",
+                "ctime": 1786364990,
+                "pubtime": 1786364990,
+                "fav_time": 1788490321,
+                "bv_id": "BV1X4uZ6GECw",
+                "bvid": "BV1X4uZ6GECw",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 40783644357
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117071211929385\u0026otype=2"
+            },
+            {
+                "id": 117162614201808,
+                "type": 2,
+                "title": "用1w行代码实现一个网页可交互游玩的魔法小屋！",
+                "cover": "http://i1.hdslb.com/bfs/archive/73afb7d15596c0203ff50273dc6baa2a403c12d2.jpg",
+                "intro": "一个线稿风格的网页魔法小木屋~\n灵感/参考来源：AN湯NA\n\n项目Github页：\ngithub.com/YIBI2333/line-art-style-magic-cabin\n\n项目预览：\nyibi2333.fun/house\nyibi2333.github.io/line-art-style-magic-cabin/",
+                "page": 1,
+                "duration": 413,
+                "upper": {
+                    "mid": 312607590,
+                    "name": "夜白才不白呢",
+                    "face": "https://i0.hdslb.com/bfs/face/4f4e9fe576f39b22e36751dc956cacb6c2951dfc.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 597,
+                    "play": 6003,
+                    "danmaku": 2,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "6003"
+                },
+                "link": "bilibili://video/117162614201808",
+                "ctime": 1787760709,
+                "pubtime": 1787799600,
+                "fav_time": 1788483178,
+                "bv_id": "BV1Rh8Z6wEwX",
+                "bvid": "BV1Rh8Z6wEwX",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 41298364488
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117162614201808\u0026otype=2"
+            },
+            {
+                "id": 117205329056111,
+                "type": 2,
+                "title": "这是一个用AI生成场景并导出模型的尝试初步看流程还挺顺畅支持导出场景中的素材#室内设计软件 #comfyui安装 #游戏开发 #KayingCodex",
+                "cover": "http://i1.hdslb.com/bfs/archive/ea96363742bee4722aecbf9abf05d511c0e65460.jpg",
+                "intro": "-",
+                "page": 1,
+                "duration": 81,
+                "upper": {
+                    "mid": 1520587083,
+                    "name": "大模型与小场景",
+                    "face": "https://i0.hdslb.com/bfs/face/e34818e4b717145ff7803ac33f393a63441b5a24.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 1,
+                    "play": 144,
+                    "danmaku": 0,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "144"
+                },
+                "link": "bilibili://video/117205329056111",
+                "ctime": 1788411504,
+                "pubtime": 1788411516,
+                "fav_time": 1788445617,
+                "bv_id": "BV16RtX6WERm",
+                "bvid": "BV16RtX6WERm",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 41541175559
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117205329056111\u0026otype=2"
+            },
+            {
+                "id": 117206436353833,
+                "type": 2,
+                "title": "接近免费的AI一键提取UI元素生成精灵图，再也不用浪费精力做无效的游戏开发切图了",
+                "cover": "http://i1.hdslb.com/bfs/archive/d3675a84ab336af6d9e2873917dcef62656ca33a.jpg",
+                "intro": "现在有一个办法，你只需要一张图，AI就能自动帮你把所有的按钮、图标、文本框，甚至是复杂的组件，都识别出来，是不是感觉工作量瞬间少了一大半？\n\n不管是快速搭建原型，还是实现多版本UI的快速迭代，效率都能直线飙升。没错，直接把你的设计稿扔进去，AI就能智能识别并分离出所有UI组件，省去了大量的手动操作。\n\n为了再多榨取一些VberAI的积分，我选择AI提取UI元素的功能",
+                "page": 1,
+                "duration": 66,
+                "upper": {
+                    "mid": 3706994347214867,
+                    "name": "啊我还挺好",
+                    "face": "https://i2.hdslb.com/bfs/face/54ea7f3a4f1cc0598085520fabe75e18109ea6b7.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 11,
+                    "play": 258,
+                    "danmaku": 0,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "258"
+                },
+                "link": "bilibili://video/117206436353833",
+                "ctime": 1788428342,
+                "pubtime": 1788428342,
+                "fav_time": 1788445511,
+                "bv_id": "BV1eLtZ6xErz",
+                "bvid": "BV1eLtZ6xErz",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 41548646933
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117206436353833\u0026otype=2"
+            },
+            {
+                "id": 117196369956274,
+                "type": 2,
+                "title": "Shirone-谷歌M3E规范设计的全新开源博客主题",
+                "cover": "http://i0.hdslb.com/bfs/archive/92922eda783fdff9e5131f6f25ee85954c84c314.jpg",
+                "intro": "Material 3 Expressive × 现代博客，会碰撞出什么样的体验？\nShirone 是一个以 Material 3 Expressive 为核心设计理念打造的现代化开源博客系统。\n从动态色彩、灵动布局、平滑动效，到 Atomic Design 组件体系，Shirone 尝试将 M3E 的设计语言真正融入博客，而不是简单地套上一层 Material 风格。\n同时，它还拥有完整的 Markdown 内容体系、客户端文章加密、原生内容分离、性能优化、多媒体能力以及多云部署支持。\n设计，不只是好看。",
+                "page": 1,
+                "duration": 127,
+                "upper": {
+                    "mid": 701864046,
+                    "name": "松坂有希",
+                    "face": "https://i0.hdslb.com/bfs/face/68926bd21973cfa691472707027e8550e3e6cd06.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 203,
+                    "play": 2159,
+                    "danmaku": 0,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "2159"
+                },
+                "link": "bilibili://video/117196369956274",
+                "ctime": 1788274885,
+                "pubtime": 1788274884,
+                "fav_time": 1788433322,
+                "bv_id": "BV1KKtV69E8a",
+                "bvid": "BV1KKtV69E8a",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 41499756158
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117196369956274\u0026otype=2"
+            },
+            {
+                "id": 116792156622424,
+                "type": 2,
+                "title": "【Krene】大厂首席艺术家，教你用AI偷懒！角色立绘流程！banana pro+GPT image2。从线稿，到配色，到立绘效果，到三视图，到游戏内效果图",
+                "cover": "http://i0.hdslb.com/bfs/archive/8376c29914dafa11be972f98103d8c4a829f5759.jpg",
+                "intro": "小工具体验地址：https://www.krene.com/?invitationCode=20F77A9W\n也欢迎加入体验群，qq：692785043。有更多的福利可以领哦\n视频文档，需要的小伙伴自取\nhttps://www.krene.com/blog/ai-character-artwork-kimono-banana-pro-gpt-image2",
+                "page": 1,
+                "duration": 183,
+                "upper": {
+                    "mid": 46180428,
+                    "name": "-XYZ-小叶子瓶颈中",
+                    "face": "https://i0.hdslb.com/bfs/face/d534435d7facccb2f9e50ad331367f70a284fc7f.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 10035,
+                    "play": 114777,
+                    "danmaku": 37,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "11.5万"
+                },
+                "link": "bilibili://video/116792156622424",
+                "ctime": 1782106986,
+                "pubtime": 1782108000,
+                "fav_time": 1788433266,
+                "bv_id": "BV16c7N6fEFU",
+                "bvid": "BV16c7N6fEFU",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 39306919936
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=116792156622424\u0026otype=2"
+            },
+            {
+                "id": 117196051191103,
+                "type": 2,
+                "title": "插件化架构怎么设计？SPI、四个等级、类加载器隔离全讲清",
+                "cover": "http://i1.hdslb.com/bfs/archive/aa2685b167a416b0996cbb60dfc99cd8dd9f760d.jpg",
+                "intro": "# 软件架构 · 插件化架构\n\n## 一、标题\n\n插件化架构怎么设计？SPI、四个等级、类加载器隔离全讲清\n\n备选：\n- 又加一个渠道，又改一次核心代码？插件化架构该这么设计\n- 抽了三层接口，只有一个实现：你的插件化多半是过度设计\n- Java SPI 到底怎么找到插件的？一条视频讲透插件化四个等级\n- 一个插件卡三十秒，把整条链路拖死了：插件治理三件套\n\n## 二、简介\n\n\n又要接一个新的支付渠道。\n你打开 PaymentService，找到那个 if-else，翻了三屏才看到底——\n微信、支付宝、银",
+                "page": 1,
+                "duration": 788,
+                "upper": {
+                    "mid": 474769086,
+                    "name": "郭宏志-老郭",
+                    "face": "https://i0.hdslb.com/bfs/face/a2257ae0ef9f7b8dd617acff8297ffa74cacffc9.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 703,
+                    "play": 6062,
+                    "danmaku": 0,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "6062"
+                },
+                "link": "bilibili://video/117196051191103",
+                "ctime": 1788270004,
+                "pubtime": 1788270004,
+                "fav_time": 1788393977,
+                "bv_id": "BV1K3tV6nEGq",
+                "bvid": "BV1K3tV6nEGq",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 41497791364
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117196051191103\u0026otype=2"
+            },
+            {
+                "id": 116617958720568,
+                "type": 2,
+                "title": "AI黑科技搞定帧动画制作！游戏序列帧 \u0026 gif动图轻松拿捏",
+                "cover": "http://i1.hdslb.com/bfs/archive/743bcb590751387e939b86a7b01f1f5489fc4511.jpg",
+                "intro": "FramePacker：视频转序列帧 / 视频转GIF动图 / gif编辑 / 在线改图一站式工具，无需下载，支持视频提取帧、在线精修编辑、批量抠图、智能去重、任意分辨率导出。\n\n工具官网：https://www.framepacker.cn\n\n最近FramePacker正式版已发布，工作流超进化，结合豆包轻松拿捏帧动画制作，一起来看看吧~后续会出更多教程，关注up不迷路！",
+                "page": 1,
+                "duration": 359,
+                "upper": {
+                    "mid": 4200208,
+                    "name": "Dreamland工坊",
+                    "face": "https://i1.hdslb.com/bfs/face/a8f64479d23432b260b3e91a48e14de561ace2f0.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 504,
+                    "play": 10958,
+                    "danmaku": 4,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "1.1万"
+                },
+                "link": "bilibili://video/116617958720568",
+                "ctime": 1779448905,
+                "pubtime": 1779448905,
+                "fav_time": 1788393731,
+                "bv_id": "BV1gcGt68EL8",
+                "bvid": "BV1gcGt68EL8",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 38560268472
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=116617958720568\u0026otype=2"
+            },
+            {
+                "id": 116434885741594,
+                "type": 2,
+                "title": "可以直接生成骨骼动画和游戏的AI！【极逸SoonAI】",
+                "cover": "http://i0.hdslb.com/bfs/archive/4004fd0b4a915a49454153ec1a55f5bfee61e16d.jpg",
+                "intro": "极逸 SOON AI 游戏创作平台率先实现视频素材生成完整游戏，一站式打造各类专业游戏资产，致力于助力创作者打造可商用的高品质游戏作品。\n平台还支持智能生成 2D 游戏角色，配套原生骨骼动画资源，成功解决AIGC游戏动画素材这一痛点！\n快去试试吧！",
+                "page": 1,
+                "duration": 243,
+                "upper": {
+                    "mid": 185430330,
+                    "name": "夏目贵志lth",
+                    "face": "https://i0.hdslb.com/bfs/face/d6787773b4d4d9790b34742f82ac53f6fe6610fa.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 781,
+                    "play": 20952,
+                    "danmaku": 0,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "2.1万"
+                },
+                "link": "bilibili://video/116434885741594",
+                "ctime": 1776655742,
+                "pubtime": 1776826800,
+                "fav_time": 1788368440,
+                "bv_id": "BV1U3oNBzED3",
+                "bvid": "BV1U3oNBzED3",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 37654956889
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=116434885741594\u0026otype=2"
+            },
+            {
+                "id": 117150685599336,
+                "type": 2,
+                "title": "Vibe Coding 不知道怎么描述页面元素位置？",
+                "cover": "http://i1.hdslb.com/bfs/archive/531a07a289ee7f5c6ac4ae9a2ed09116ce9cd3ee.jpg",
+                "intro": "https://selector-pro.org",
+                "page": 1,
+                "duration": 336,
+                "upper": {
+                    "mid": 13030183,
+                    "name": "oil欧呦",
+                    "face": "https://i1.hdslb.com/bfs/face/a69e0c2da44e0b4333739aa01e5f6f772ff420fd.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 428,
+                    "play": 4559,
+                    "danmaku": 0,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "4559"
+                },
+                "link": "bilibili://video/117150685599336",
+                "ctime": 1787577737,
+                "pubtime": 1787577737,
+                "fav_time": 1788345504,
+                "bv_id": "BV1PthK6TEsy",
+                "bvid": "BV1PthK6TEsy",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 41225620834
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117150685599336\u0026otype=2"
+            },
+            {
+                "id": 117193350058046,
+                "type": 2,
+                "title": "seedance2.5 最强导演预演台 完全免费 吊打大厂",
+                "cover": "http://i1.hdslb.com/bfs/archive/4179dbaff24603ac95ca18f771b74a430046cfc9.jpg",
+                "intro": "对软件有兴趣的评论+3连 关注 私信我第一时间推送。\n不定期开放免费seedance2.0提供练习",
+                "page": 1,
+                "duration": 1516,
+                "upper": {
+                    "mid": 404132390,
+                    "name": "gfastai工作室",
+                    "face": "https://i2.hdslb.com/bfs/face/7837d936b7e19836ace65a5084f9ad59184e2d16.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 348,
+                    "play": 5287,
+                    "danmaku": 0,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "5287"
+                },
+                "link": "bilibili://video/117193350058046",
+                "ctime": 1788228962,
+                "pubtime": 1788228962,
+                "fav_time": 1788339976,
+                "bv_id": "BV1QbtT6CEvf",
+                "bvid": "BV1QbtT6CEvf",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 41485797834
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117193350058046\u0026otype=2"
+            },
+            {
+                "id": 117197410144737,
+                "type": 2,
+                "title": "顶级！Github 又出狠活神器！一款AI资源管家，是目前市面上把「对话、翻译、代码、文档处理、自动记账、屏幕翻译」结合得很好的多功能工具箱软件",
+                "cover": "http://i2.hdslb.com/bfs/archive/c0ae081cb508009e22f686300bd16adee45c4bb8.jpg",
+                "intro": "AI Cubby：https://pan.quark.cn/s/cab2c82f862f",
+                "page": 1,
+                "duration": 64,
+                "upper": {
+                    "mid": 3546632826128697,
+                    "name": "宝藏研究社",
+                    "face": "https://i0.hdslb.com/bfs/face/999aceffc2cd61499fe345356158ad61c1f05150.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 156,
+                    "play": 7219,
+                    "danmaku": 8,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "7219"
+                },
+                "link": "bilibili://video/117197410144737",
+                "ctime": 1788290825,
+                "pubtime": 1788290825,
+                "fav_time": 1788333315,
+                "bv_id": "BV1tbt56oESd",
+                "bvid": "BV1tbt56oESd",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 41504607279
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117197410144737\u0026otype=2"
+            },
+            {
+                "id": 117073778838305,
+                "type": 2,
+                "title": "杀疯了！开源可观测平台，直接让日志存储成本狂降140倍",
+                "cover": "http://i1.hdslb.com/bfs/archive/ab1702e923614c8763637f2958ba3e7939dc7f55.jpg",
+                "intro": "-",
+                "page": 1,
+                "duration": 50,
+                "upper": {
+                    "mid": 1057604619,
+                    "name": "沉默聊科技",
+                    "face": "https://i0.hdslb.com/bfs/face/96f072028151b13b3975b1d72c9fd0bec80174b9.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 237,
+                    "play": 3733,
+                    "danmaku": 0,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "3733"
+                },
+                "link": "bilibili://video/117073778838305",
+                "ctime": 1786404129,
+                "pubtime": 1786404136,
+                "fav_time": 1788313339,
+                "bv_id": "BV1PEue6hE2M",
+                "bvid": "BV1PEue6hE2M",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 40794587924
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117073778838305\u0026otype=2"
+            },
+            {
+                "id": 117161037137996,
+                "type": 2,
+                "title": "开源自托管即时通讯 IM 系统「林语 2.0」出关！修炼两坤年，一个桌面APP搞定聊天 + 网盘 + AI？",
+                "cover": "http://i2.hdslb.com/bfs/archive/eae7fb41c9fed940272d4424fa67d119057d1c75.jpg",
+                "intro": "林语 2.0 是一款免费开源、可自托管的即时通讯产品（Apache 2.0，GitHub 搜 linyu-im）。支持聊天、通讯录、动态、云盘、AI 工作助手等，数据部署在你自己的服务器上。\n支持私聊群聊、@ 与引用、独立窗口、记录搜索、AI 机器人；内置云盘可上传预览，不用另开网盘；应用中心可装插件，AI Work 能协助处理文档表格，改文件前会先确认。还有语音视频通话、深浅色主题、会话锁定等细节。\n适合团队获取企业自建 IM、在意数据归属、希望少切换工具的用户。官网 linyu.chat，欢迎大家 S",
+                "page": 1,
+                "duration": 328,
+                "upper": {
+                    "mid": 135427028,
+                    "name": "Heath-ヾ",
+                    "face": "https://i2.hdslb.com/bfs/face/03bfd896452a2c7db50ab651f32efdc641cdfeee.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 134,
+                    "play": 2153,
+                    "danmaku": 0,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "2153"
+                },
+                "link": "bilibili://video/117161037137996",
+                "ctime": 1787735643,
+                "pubtime": 1787735643,
+                "fav_time": 1788312647,
+                "bv_id": "BV1Dt896mEex",
+                "bvid": "BV1Dt896mEex",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 41306227146
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117161037137996\u0026otype=2"
+            },
+            {
+                "id": 117190414043120,
+                "type": 2,
+                "title": "我把视频做成了可复用的开源模板",
+                "cover": "http://i1.hdslb.com/bfs/archive/7219c3ad7fa232dcf5a5178be7ceb2ca71e2eb90.jpg",
+                "intro": "我把 HyperFrames 里的视频动画整理成了可以反复复用、继续修改的开源模板。选择喜欢的动画结构后，就能按需求修改文字、颜色、节奏和内容，用来制作宣传片、产品介绍或视频 B-roll。你想让我下一期做什么类型的动画？欢迎在评论区告诉我。",
+                "page": 1,
+                "duration": 73,
+                "upper": {
+                    "mid": 490796926,
+                    "name": "超灵感illli",
+                    "face": "https://i1.hdslb.com/bfs/face/8176db9d240daa95d23d8b763d51c2b91e544d66.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 396,
+                    "play": 2695,
+                    "danmaku": 2,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "2695"
+                },
+                "link": "bilibili://video/117190414043120",
+                "ctime": 1788184071,
+                "pubtime": 1788184071,
+                "fav_time": 1788260786,
+                "bv_id": "BV1uvta62EfR",
+                "bvid": "BV1uvta62EfR",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 41467578190
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117190414043120\u0026otype=2"
+            },
+            {
+                "id": 117191471009875,
+                "type": 2,
+                "title": "DX-OS第一集：首款集成AI Agent/Skill/MCP架构的操作系统，支持无限画布/ComfyUI等，系统详细特征介绍",
+                "cover": "http://i0.hdslb.com/bfs/archive/5cef2315f182ad4e5e1100be8f68abf0734204e4.jpg",
+                "intro": "",
+                "page": 1,
+                "duration": 1321,
+                "upper": {
+                    "mid": 78652351,
+                    "name": "wuli大雄oO",
+                    "face": "https://i1.hdslb.com/bfs/face/300951773560effb970852e8210c70467ea5328e.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 967,
+                    "play": 18090,
+                    "danmaku": 19,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "1.8万"
+                },
+                "link": "bilibili://video/117191471009875",
+                "ctime": 1788200051,
+                "pubtime": 1788200051,
+                "fav_time": 1788242487,
+                "bv_id": "BV1pLte6MEqZ",
+                "bvid": "BV1pLte6MEqZ",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 41473083692
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117191471009875\u0026otype=2"
+            },
+            {
+                "id": 117188417553914,
+                "type": 2,
+                "title": "非标题党：一分钟将AI生成的图片完美抠图",
+                "cover": "http://i2.hdslb.com/bfs/archive/dc135d729270ca5a62dd4a8c3c41b5f85a84aeac.jpg",
+                "intro": "抠图工具我放到Q群共享了：1087428924",
+                "page": 1,
+                "duration": 187,
+                "upper": {
+                    "mid": 220214,
+                    "name": "Bad烂游戏",
+                    "face": "https://i2.hdslb.com/bfs/face/30ca1c46a51863d0cb59449dbe322cefb11c6861.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 415,
+                    "play": 4590,
+                    "danmaku": 10,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "4590"
+                },
+                "link": "bilibili://video/117188417553914",
+                "ctime": 1788153612,
+                "pubtime": 1788153612,
+                "fav_time": 1788224555,
+                "bv_id": "BV1iitb6EEQe",
+                "bvid": "BV1iitb6EEQe",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 41452701472
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117188417553914\u0026otype=2"
+            },
+            {
+                "id": 117127398823708,
+                "type": 2,
+                "title": "或许变成大肥鱼就能无忧无虑...",
+                "cover": "http://i2.hdslb.com/bfs/archive/6c22dae74257012c587e65bd21b9132c3ddf8985.jpg",
+                "intro": "也许应该ai直出2k分辨率，可是积分太贵了...令人感叹",
+                "page": 1,
+                "duration": 132,
+                "upper": {
+                    "mid": 38871361,
+                    "name": "暮之鸣",
+                    "face": "https://i1.hdslb.com/bfs/face/fb6462d46b9bfdbd83c1de3e4148c507517aef9b.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 7416,
+                    "play": 126899,
+                    "danmaku": 149,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "12.7万"
+                },
+                "link": "bilibili://video/117127398823708",
+                "ctime": 1787222313,
+                "pubtime": 1787222313,
+                "fav_time": 1788224423,
+                "bv_id": "BV1538w6BEc8",
+                "bvid": "BV1538w6BEc8",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 41097236359
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117127398823708\u0026otype=2"
+            },
+            {
+                "id": 117150752705570,
+                "type": 2,
+                "title": "好啊 换一个",
+                "cover": "http://i1.hdslb.com/bfs/archive/be635b189c72c1a1a230929df53675526d1dc01a.jpg",
+                "intro": "我用最直接、最真相、最不绕弯、最扎心、最硬核、最干脆、最不墨迹、最戳痛点、最不留情面、最一针见血、最开门见山、最单刀直入、最不铺垫、最不客套、最不煽情、最不废话、最不拐弯、最不磨叽、最不装、最不端着、最不啰嗦、最不拖沓、最不委婉、最不掩饰、最不藏着掖着、最直白、最露骨、最实在、最通透、最毒辣、最爽快、最解气、最上头、最够劲、最过瘾、最粗暴、最有效、最狠、最准、最稳、最绝、最顶、最炸、最刚、最烈、最飒、最莽、最冲、最猛、最脆、最亮、最透、最干、最净、最利落、最霸道、最硬核、最生猛、最狂野、最直白、最粗暴、最",
+                "page": 1,
+                "duration": 68,
+                "upper": {
+                    "mid": 72589033,
+                    "name": "末儿克丝Morx",
+                    "face": "https://i1.hdslb.com/bfs/face/d8ba51a80d86dcea9c7322e52426f8ab09fd256e.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 7985,
+                    "play": 374935,
+                    "danmaku": 324,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "37.5万"
+                },
+                "link": "bilibili://video/117150752705570",
+                "ctime": 1787578672,
+                "pubtime": 1787578672,
+                "fav_time": 1788045012,
+                "bv_id": "BV1X1hK69EDJ",
+                "bvid": "BV1X1hK69EDJ",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 41226012115
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117150752705570\u0026otype=2"
+            },
+            {
+                "id": 117162530308792,
+                "type": 2,
+                "title": "我做了个PSD转Spine初稿的PS插件",
+                "cover": "http://i2.hdslb.com/bfs/archive/c2dc6ce27b1cc22fc827e5ebdd9b0d4e0b43606d.jpg",
+                "intro": "做Spine动画，前期搭建太耗时？MintS可在PS中完成AI图层命名、骨骼标记，导出JSON与透明PNG，并生成蒙皮和初始权重。首版发布，欢迎体验与反馈✨\nhttps://mints.miko-wu.com/",
+                "page": 1,
+                "duration": 149,
+                "upper": {
+                    "mid": 3709435,
+                    "name": "TsubasaM",
+                    "face": "https://i1.hdslb.com/bfs/face/826cd6cef8396c78df031251de8ddfb2aa4007bc.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 239,
+                    "play": 2724,
+                    "danmaku": 0,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "2724"
+                },
+                "link": "bilibili://video/117162530308792",
+                "ctime": 1787764275,
+                "pubtime": 1787764275,
+                "fav_time": 1788002884,
+                "bv_id": "BV1fJ8Z6zEQy",
+                "bvid": "BV1fJ8Z6zEQy",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 41298036616
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117162530308792\u0026otype=2"
+            },
+            {
+                "id": 116359757366375,
+                "type": 2,
+                "title": "一个自制spine自动网格工具分享",
+                "cover": "http://i2.hdslb.com/bfs/archive/bbcb67ab35a9c52187b51459e12c62aa4e0129ea.jpg",
+                "intro": "作者：咚咚 QQ：885112656 | 交流群：1031588918欢迎随时反馈交流，\n本工具用于行业内部交流测试使用，出现任何利益损失概不负责哈。\n本工具完全免费，出于安全考虑，下载和追更请认准我的官方发布途径（评论置顶和Q群，软件内部更新系统暂未开放）。",
+                "page": 1,
+                "duration": 72,
+                "upper": {
+                    "mid": 382681744,
+                    "name": "热心网友小咚",
+                    "face": "https://i1.hdslb.com/bfs/face/a255387dd37ccb2fc11b8519ce5d2f55db13a4e2.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 525,
+                    "play": 4699,
+                    "danmaku": 0,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "4699"
+                },
+                "link": "bilibili://video/116359757366375",
+                "ctime": 1775509139,
+                "pubtime": 1775509139,
+                "fav_time": 1787963108,
+                "bv_id": "BV1kJD8BUEo4",
+                "bvid": "BV1kJD8BUEo4",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 37297850636
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=116359757366375\u0026otype=2"
+            },
+            {
+                "id": 117171925553511,
+                "type": 2,
+                "title": "flutter开发的快速启动工具，功能超全",
+                "cover": "http://i0.hdslb.com/bfs/archive/7402b41322c5c8592e681b1048396ed64dc77170.jpg",
+                "intro": "flutter开发的快速启动工具，功能超全\n软件官网：pixstart.cn",
+                "page": 1,
+                "duration": 89,
+                "upper": {
+                    "mid": 361777079,
+                    "name": "Enki在哪呢",
+                    "face": "https://i2.hdslb.com/bfs/face/70147a9e1dd71b71ea60e7813f7582e5bc3c2331.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 24,
+                    "play": 733,
+                    "danmaku": 0,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "733"
+                },
+                "link": "bilibili://video/117171925553511",
+                "ctime": 1787901812,
+                "pubtime": 1787901812,
+                "fav_time": 1787963083,
+                "bv_id": "BV1cZtF6rEm1",
+                "bvid": "BV1cZtF6rEm1",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 41354790165
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117171925553511\u0026otype=2"
+            },
+            {
+                "id": 116468809208224,
+                "type": 2,
+                "title": "关于GPT-image2生成序列帧图片的测试",
+                "cover": "http://i1.hdslb.com/bfs/archive/ecca0ee7981f2f14830df32cc8d1df1adba2ae47.jpg",
+                "intro": "整体上一致性的模仿还是跟gpt有差距\n简单的类似rpgmaker的战斗图一套还能用\n但是复杂的一致性，多个一致性生成还是有差距。\n且很难做到完美像素的生成。\n秉持“技术报国，服务人民”的初心，我致力于将复杂的AI技术转化为免费的知识和工具。\n我将长期分享AI教程与美术素材，旨在降低创作门槛，节约广大游戏开发人员的开发成本。",
+                "page": 1,
+                "duration": 188,
+                "upper": {
+                    "mid": 285760,
+                    "name": "bimelona",
+                    "face": "https://i1.hdslb.com/bfs/face/74d1aa21a69b202c6d7be0be0c90279fb4549e5c.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 309,
+                    "play": 12020,
+                    "danmaku": 0,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "1.2万"
+                },
+                "link": "bilibili://video/116468809208224",
+                "ctime": 1777173165,
+                "pubtime": 1777173165,
+                "fav_time": 1787963068,
+                "bv_id": "BV1f9ofBzEBN",
+                "bvid": "BV1f9ofBzEBN",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 37836292481
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=116468809208224\u0026otype=2"
+            },
+            {
+                "id": 117110990771737,
+                "type": 2,
+                "title": "我开源了一个可以在画布上面运行任何cli agent的项目。",
+                "cover": "http://i0.hdslb.com/bfs/archive/5991fe24cbae6ae7c390fd09f0cc536fc8053386.jpg",
+                "intro": "-",
+                "page": 1,
+                "duration": 153,
+                "upper": {
+                    "mid": 498163766,
+                    "name": "潮汐_Nature",
+                    "face": "https://i2.hdslb.com/bfs/face/f602d76cac3e369bd21f6a0b33e6ef620b2aa528.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 969,
+                    "play": 5725,
+                    "danmaku": 0,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "5725"
+                },
+                "link": "bilibili://video/117110990771737",
+                "ctime": 1786971929,
+                "pubtime": 1786971941,
+                "fav_time": 1787922839,
+                "bv_id": "BV1pUbi67EeZ",
+                "bvid": "BV1pUbi67EeZ",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 40999649792
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117110990771737\u0026otype=2"
+            },
+            {
+                "id": 117169744515201,
+                "type": 2,
+                "title": "Flutter 全平台视频播放插件",
+                "cover": "http://i0.hdslb.com/bfs/archive/d5b84db5fb57eaf3658a14c8933ffe7b264ef8df.jpg",
+                "intro": "Flutter 全平台视频播放插件，不像 media kit 那样重，支持全平台，不需要引入额外的插件。",
+                "page": 1,
+                "duration": 239,
+                "upper": {
+                    "mid": 3546737929095596,
+                    "name": "HelloMyFlutter",
+                    "face": "https://i2.hdslb.com/bfs/face/a7ee9f49ef5723a5c9e4da5e4ff1ed82e653b298.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 14,
+                    "play": 257,
+                    "danmaku": 0,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "257"
+                },
+                "link": "bilibili://video/117169744515201",
+                "ctime": 1787868557,
+                "pubtime": 1787868557,
+                "fav_time": 1787913266,
+                "bv_id": "BV1BB4o6oEAS",
+                "bvid": "BV1BB4o6oEAS",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 41341816168
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117169744515201\u0026otype=2"
+            },
+            {
+                "id": 117040996156525,
+                "type": 2,
+                "title": "AI制作3d模型转2d序列帧工具【B站AI创造公开赛】",
+                "cover": "http://i0.hdslb.com/bfs/archive/c1b10cf0c6d4e1b196776363349152ff9803d483.jpg",
+                "intro": "工具最新更新见合集最新视频",
+                "page": 1,
+                "duration": 379,
+                "upper": {
+                    "mid": 3546637886557138,
+                    "name": "三修刺客",
+                    "face": "https://i1.hdslb.com/bfs/face/ad79010b771827b7d7e3f387ff938e240d7d2317.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 56,
+                    "play": 951,
+                    "danmaku": 0,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "951"
+                },
+                "link": "bilibili://video/117040996156525",
+                "ctime": 1785903981,
+                "pubtime": 1785904016,
+                "fav_time": 1787878886,
+                "bv_id": "BV1ZdM66vEWj",
+                "bvid": "BV1ZdM66vEWj",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 40610694640
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117040996156525\u0026otype=2"
+            },
+            {
+                "id": 1004008109,
+                "type": 2,
+                "title": "时隔一年，他来了！像素人物生成器 国产开源免费工具 商用",
+                "cover": "http://i1.hdslb.com/bfs/archive/1c1510f184dae7ad1e6609afc63680498b53f2b9.jpg",
+                "intro": "访问地址：http://150.158.78.78:21422  已开放编辑体验，每三个小时数据会自动还原，请勿上传重要数据\n\n开源地址：https://github.com/xiaomaogame/catctor",
+                "page": 1,
+                "duration": 173,
+                "upper": {
+                    "mid": 627968233,
+                    "name": "小猫学游戏",
+                    "face": "https://i1.hdslb.com/bfs/face/18e22e47a04d1c181ead001a4f68928113765558.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 15727,
+                    "play": 178080,
+                    "danmaku": 26,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "17.8万"
+                },
+                "link": "bilibili://video/1004008109",
+                "ctime": 1715036938,
+                "pubtime": 1715036938,
+                "fav_time": 1787821873,
+                "bv_id": "BV1ix4y1z78s",
+                "bvid": "BV1ix4y1z78s",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 1534443814
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=1004008109\u0026otype=2"
+            },
+            {
+                "id": 117156121613843,
+                "type": 2,
+                "title": "Image2生成的PNG图直接识别自动分层切图交付开发，游戏开发设计神器",
+                "cover": "http://i1.hdslb.com/bfs/archive/74bfa82f426397de7f8af02b9983e56e783302e9.jpg",
+                "intro": "发现了一款设计神器VberAI Studio，直接可以把PNG图片识别，自动分层和切图处理，结果可以直接导入工程文件到特定的游戏引擎，如Godot，Cocos Creator，Unity，方便Codex Vibe Coding开发。\n\n00:00 效果预览\n00:06  Codex Vibe Coding时的自动切图\n00:46 开始自动分层并切图\n01:01 AI自动切图完成效果预览",
+                "page": 1,
+                "duration": 105,
+                "upper": {
+                    "mid": 3706994347214867,
+                    "name": "啊我还挺好",
+                    "face": "https://i2.hdslb.com/bfs/face/54ea7f3a4f1cc0598085520fabe75e18109ea6b7.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 225,
+                    "play": 4367,
+                    "danmaku": 1,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "4367"
+                },
+                "link": "bilibili://video/117156121613843",
+                "ctime": 1787660678,
+                "pubtime": 1787660678,
+                "fav_time": 1787820759,
+                "bv_id": "BV1Zoh56JExp",
+                "bvid": "BV1Zoh56JExp",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 41256355008
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117156121613843\u0026otype=2"
+            },
+            {
+                "id": 117122650871334,
+                "type": 2,
+                "title": "无限画布介绍篇",
+                "cover": "http://i1.hdslb.com/bfs/archive/e26e4b02a30638295f8bc2b657f20dcf6b8f1e3e.jpg",
+                "intro": "如果这个画布您能用的到可以一键三连加关注，私信我，不是和B友完套路，只是想给视频增加点人气。开发不易，多谢支持！",
+                "page": 1,
+                "duration": 294,
+                "upper": {
+                    "mid": 480865179,
+                    "name": "毫米空间设计",
+                    "face": "https://i0.hdslb.com/bfs/face/ca2348b9a2f1c5a7c3f3d34498fd514a41150267.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 30,
+                    "play": 612,
+                    "danmaku": 0,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "612"
+                },
+                "link": "bilibili://video/117122650871334",
+                "ctime": 1787149953,
+                "pubtime": 1787149953,
+                "fav_time": 1787747119,
+                "bv_id": "BV1dn8J6sEAW",
+                "bvid": "BV1dn8J6sEAW",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 41071676959
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117122650871334\u0026otype=2"
+            },
+            {
+                "id": 117059853748732,
+                "type": 2,
+                "title": "Godot中文字典，性能提升+内容优化",
+                "cover": "http://i1.hdslb.com/bfs/archive/e8efce3f18b92d3ccbb49a993270f49dad633694.jpg",
+                "intro": "📦 Godot中文字典\n\n这次更新主要是让字典更流畅\n\n📥 下载方式：见个人主页简介",
+                "page": 1,
+                "duration": 243,
+                "upper": {
+                    "mid": 344274603,
+                    "name": "像素Godot",
+                    "face": "https://i0.hdslb.com/bfs/face/7c0fe93e7093d0f7f7b0c69a40d3a73ec4bbea28.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 195,
+                    "play": 2804,
+                    "danmaku": 0,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "2804"
+                },
+                "link": "bilibili://video/117059853748732",
+                "ctime": 1786191881,
+                "pubtime": 1786191881,
+                "fav_time": 1787742810,
+                "bv_id": "BV1nKuG6FEzt",
+                "bvid": "BV1nKuG6FEzt",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 40721187794
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117059853748732\u0026otype=2"
+            },
+            {
+                "id": 117040727787609,
+                "type": 2,
+                "title": "3d转2d，通用人物动作",
+                "cover": "http://i0.hdslb.com/bfs/archive/d43914f272dc6dcc3067b1bb5987ae60971ca869.jpg",
+                "intro": "-",
+                "page": 1,
+                "duration": 42,
+                "upper": {
+                    "mid": 3546637886557138,
+                    "name": "三修刺客",
+                    "face": "https://i1.hdslb.com/bfs/face/ad79010b771827b7d7e3f387ff938e240d7d2317.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 67,
+                    "play": 1281,
+                    "danmaku": 0,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "1281"
+                },
+                "link": "bilibili://video/117040727787609",
+                "ctime": 1785899865,
+                "pubtime": 1785899879,
+                "fav_time": 1787742727,
+                "bv_id": "BV1KnMr6JEPg",
+                "bvid": "BV1KnMr6JEPg",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 40608860661
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117040727787609\u0026otype=2"
+            },
+            {
+                "id": 117004958700755,
+                "type": 2,
+                "title": "Nomi-一款不赚钱的开源本地创作平台重磅更新",
+                "cover": "http://i1.hdslb.com/bfs/archive/68483f674ea543486f7b9696c240bfba861054cf.jpg",
+                "intro": "Nomi 是开源的、本地的、不要钱的。 实话说啊，它现在还在疯狂迭代，整个项目就我一个人在维护，所以肯定有不少没打磨好的地方。 你要是用着遇到问题、或者有想要的功能，直接去 GitHub 给我提个 issue——bug 也好、需求也好、唠嗑也行。你提了，我就能加速给你修、给你做。这东西能长成啥样，真的很大程度上靠你们告诉我。 去 GitHub 搜 Nomi，或者上 nomiaqm.com 直接下。觉得有用就给我来个 Star，对一个独立开发者真的很重要。OK，这就是今天的 Nomi，我们下期再见，拜拜。",
+                "page": 1,
+                "duration": 613,
+                "upper": {
+                    "mid": 629862781,
+                    "name": "青阳-AI",
+                    "face": "https://i1.hdslb.com/bfs/face/e435cd28e2d24f723b3372e69ffd074567943382.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 121,
+                    "play": 1526,
+                    "danmaku": 0,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "1526"
+                },
+                "link": "bilibili://video/117004958700755",
+                "ctime": 1785354242,
+                "pubtime": 1785354242,
+                "fav_time": 1787711378,
+                "bv_id": "BV14Q3H6TEvn",
+                "bvid": "BV14Q3H6TEvn",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 40421036010
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117004958700755\u0026otype=2"
+            },
+            {
+                "id": 117038446021366,
+                "type": 2,
+                "title": "[中配] 我给Claude 60万张真实UI界面后，它做出了这个",
+                "cover": "http://i0.hdslb.com/bfs/archive/6dac46fef52f7f64292152179370bf75706f1026.jpg",
+                "intro": "原标题: I Gave Claude 600,000 UI Screens… Then This Happened\n来源: https://www.youtube.com/watch?v=YbLF42BaoZs\n本文核心论述：通过将Claude连接到MobinMCP（一个包含60万真实App界面、流程和动效的数据库），AI能够生成远超泛化结果的高质量、行业接地气的Fintech应用 onboarding flow。核心概念包括MobinMCP、研究驱动的设计（research-first design）、",
+                "page": 2,
+                "duration": 550,
+                "upper": {
+                    "mid": 577776313,
+                    "name": "豚工智能",
+                    "face": "https://i1.hdslb.com/bfs/face/7fdb02cf010d04856d52481b6f916766c0fe34d5.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 521,
+                    "play": 8136,
+                    "danmaku": 0,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "8136"
+                },
+                "link": "bilibili://video/117038446021366",
+                "ctime": 1785865282,
+                "pubtime": 1785865281,
+                "fav_time": 1787706345,
+                "bv_id": "BV14QMq6rEpk",
+                "bvid": "BV14QMq6rEpk",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 40600864207
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117038446021366\u0026otype=2"
+            },
+            {
+                "id": 117149360261917,
+                "type": 2,
+                "title": "78.9K Star！浏览器直接写代码，code-server 一键部署教程",
+                "cover": "http://i2.hdslb.com/bfs/archive/071181a183fb0e677906e17baf68da3e8f6a8119.jpg",
+                "intro": "code-server：在浏览器中运行 VS Code，随时随地在线写代码。现在通过 Sealos 应用商店即可快速部署自己的 code-server。 部署地址：https://sealos.run （注册即送5元额度，可用大概一个月，快来尝试）",
+                "page": 1,
+                "duration": 115,
+                "upper": {
+                    "mid": 3546907926334328,
+                    "name": "GitHub开源社区",
+                    "face": "https://i2.hdslb.com/bfs/face/c599e379374162d465f1c78887b4121a74ece34b.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 109,
+                    "play": 2396,
+                    "danmaku": 0,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "2396"
+                },
+                "link": "bilibili://video/117149360261917",
+                "ctime": 1787557573,
+                "pubtime": 1787557573,
+                "fav_time": 1787631777,
+                "bv_id": "BV1GQ8e6hEMp",
+                "bvid": "BV1GQ8e6hEMp",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 41215526260
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117149360261917\u0026otype=2"
+            },
+            {
+                "id": 117037137397416,
+                "type": 2,
+                "title": "【音频管理】分享一个有意思的想法～音频管理兼播放器，还带歌词？剪完片子听会歌",
+                "cover": "http://i0.hdslb.com/bfs/archive/294826700b13cda8639643ca31b737376a00a511.jpg",
+                "intro": "之前我在开发过程中，群友有分享说，你这个软件都可以做一个播放器了。那么，哎，我有一个点子就来了。那我是不是可以加入一些歌词预览，做一个读取内嵌歌词的音频管理软件兼播放器呢？可能这个是目前为止第一个支持歌词预览、支持播放器功能的音频管理工具？？？",
+                "page": 1,
+                "duration": 177,
+                "upper": {
+                    "mid": 11074718,
+                    "name": "Garry_Kai",
+                    "face": "https://i2.hdslb.com/bfs/face/3f16c2154fb3104edc4ccef623800fb0a4e55abf.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 26,
+                    "play": 466,
+                    "danmaku": 0,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "466"
+                },
+                "link": "bilibili://video/117037137397416",
+                "ctime": 1785845178,
+                "pubtime": 1785845178,
+                "fav_time": 1787618850,
+                "bv_id": "BV14zuA61EPA",
+                "bvid": "BV14zuA61EPA",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 40592213500
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117037137397416\u0026otype=2"
+            },
+            {
+                "id": 117132499165019,
+                "type": 2,
+                "title": "【Meowa】一句话生成各种游戏资产",
+                "cover": "http://i1.hdslb.com/bfs/archive/f68cd72a6653d958ea1d9d4b2be0ada56415a9bc.jpg",
+                "intro": "Meowa——AINative游戏创作平台\n以多智能体架构为核心，策划Agent基于数千款游戏构建的专有知识库，能与创\n作者对话式地打磨玩法设计与策划案；美术、动画、音乐音效、地图等生成\nAgent则将创意直接转化为可用于游戏的高质量资产，并支持与Godot等引擎的\n无缝集成。\nMeowa以Skil1的形式开放，可直接嵌入开发者自己的Agent工作流，让AI编程\n与AI资产生产真正打通，实现一个人、一个团队即可完成完整游戏的开发。\n\n感兴趣的可以点击置顶评论的邀请码领取专属点数方便使用，喜欢本视频的话不妨",
+                "page": 2,
+                "duration": 510,
+                "upper": {
+                    "mid": 3546833978657466,
+                    "name": "冷团子",
+                    "face": "https://i0.hdslb.com/bfs/face/76039863f7443069fa5c1c22a2db80e87b6c44c9.jpg",
+                    "jump_link": ""
+                },
+                "attr": 0,
+                "cnt_info": {
+                    "collect": 179,
+                    "play": 2113,
+                    "danmaku": 0,
+                    "vt": 0,
+                    "play_switch": 0,
+                    "reply": 0,
+                    "view_text_1": "2113"
+                },
+                "link": "bilibili://video/117132499165019",
+                "ctime": 1787300221,
+                "pubtime": 1787300220,
+                "fav_time": 1787598894,
+                "bv_id": "BV1Co8q69ETQ",
+                "bvid": "BV1Co8q69ETQ",
+                "season": null,
+                "ogv": null,
+                "ugc": {
+                    "first_cid": 41124496687
+                },
+                "media_list_link": "bilibili://music/playlist/playpage/679116045?page_type=3\u0026oid=117132499165019\u0026otype=2"
+            }
+        ],
+        "has_more": true,
+        "ttl": 1789128034
+    }
+}

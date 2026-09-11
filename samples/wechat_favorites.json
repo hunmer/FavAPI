@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "exportedAt": "2026-09-11T17:26:28",
+  "account": "wxid_dl3wovrbf47c22",
+  "conversation": {"username": "__favorites__", "displayName": "收藏", "avatarPath": "", "isGroup": false},
+  "filters": {"startTime": null, "endTime": null, "messageTypes": ["link"]},
+  "messages": [
+    {"id": "favorite_2_1_attachment_13464fdbd4b1d36b5a2a71f14207083b", "localId": 2, "serverId": 1, "createTime": 1553095907, "createTimeText": "2019-03-20 23:31", "isSent": false, "senderUsername": "wxid_dl3wovrbf47c22", "senderDisplayName": "Hum。", "type": 5, "renderType": "link", "content": "【关注】2019年高等职业教育入学考试招生录取工作的通知", "title": "【关注】2019年高等职业教育入学考试招生录取工作的通知", "url": "http://mp.weixin.qq.com/s?__biz=MzU3MzYyMzQzNA==&mid=2247485825&idx=1&sn=70469a45bc214da3b551bb10079b8251&chksm=fd3f9464ca481d72a4e571b637ff817fe1828109bf22ade5c830653c852171b611155c4b017c&mpshare=1&scene=24&srcid=03201t9ZWIvRFZ6JYqA9dmdO#rd", "thumbUrl": "", "from": "", "fromAvatar": "", "linkType": "link", "imageMd5": "", "imageMd5Candidates": [], "imageFileId": "", "imageFileIdCandidates": [], "imageUrl": "", "emojiMd5": "", "emojiFileId": "", "emojiUrl": "", "videoMd5": "", "videoThumbMd5": "", "videoFileId": "", "videoThumbFileId": "", "videoUrl": "", "videoThumbUrl": "", "voiceLength": 0, "fileSize": 0, "fileMd5": "", "fileFileId": "", "locationLat": "", "locationLng": "", "locationPoiname": "【关注】2019年高等职业教育入学考试招生录取工作的通知", "locationLabel": "", "senderAvatarPath": "media/avatars/wxid_dl3wovrbf47c22_d66f8b0b.jpg"}
+  ]
+}
