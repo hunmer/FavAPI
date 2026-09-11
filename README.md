@@ -12,6 +12,11 @@
 - **Web 管理界面**：账号列表、登录、触发抓取、任务记录、数据浏览，完整闭环
 - **平台适配器架构**：新增平台只需实现 `BasePlatformAdapter` 并注册
 
+### 声明式平台热加载
+
+生产环境可通过 `FAVAPI_PLATFORMS_DIR` 指定平台目录。每个平台放置一个
+`<platform>/platform.json`，声明 `home_url`、`login_cookies` 及响应拦截字段映射，服务启动自动加载；运行中调用 `POST /api/v1/platforms/reload` 刷新。Threads 示例位于 `platforms/threads/platform.json`。
+
 ## 快速开始
 
 ```bash

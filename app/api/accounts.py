@@ -22,6 +22,11 @@ async def list_platforms():
     """全部平台元信息（含是否已实现、支持的 action）。"""
     return {"platforms": registry.platform_infos()}
 
+@platforms_router.post("/platforms/reload")
+async def reload_platforms():
+    """重新扫描声明式平台目录，便于生产环境增删平台后立即生效。"""
+    return {"loaded": registry.load_declarative() , "platforms": registry.platform_infos()}
+
 
 async def _get_account_or_404(account_id: str) -> dict:
     account = await account_manager.get_account(account_id)

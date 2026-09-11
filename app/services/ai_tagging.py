@@ -6,6 +6,7 @@ result_count = 本轮处理的条目数，new_favorites = 成功打标的条目�
 import asyncio
 import json
 import logging
+import time
 
 import httpx
 
@@ -60,24 +61,19 @@ async def _guarded_run(task_id: str, agent: dict, platform: str, params: dict):
         logger.exception("后台打标任务 %s 异常", task_id)
 
 
+def _resolve_limit(params: dict) -> int:
+    return max(1, min(int((params or {}).get("limit") or DEFAULT_LIMIT), 2000))
+
+
 async def _run_tagging_task(task_id: str, agent: dict, platform: str, params: dict) -> dict:
-    limit = max(1, min(int(params.get("limit") or DEFAULT_LIMIT), 2000))
+    limit = _resolve_limit(params)
     await data_store.update_task(task_id, status="running", started_at=now_iso())
 
     processed = tagged = 0
     try:
-        while processed < limit:
-            size = min(BATCH_SIZE, limit - processed)
-            items = await _pending_contents(platform, size)
-            if not items:
-                break
-            results = await _tag_batch(agent, items)
-            tagged += await _save_tags(results)
-            # 模型漏掉的条目写空数组（NULL=未打标，[]=已尝试无标签），避免反复重试
-            missing = [it["content_id"] for it in items if it["content_id"] not in {r["content_id"] for r in results}]
-            if missing:
-                await _save_tags([{"content_id": cid, "tags": []} for cid in missing])
+        async for items, results in _tagging_batches(agent, platform, limit):
             processed += len(items)
+            tagged += len(results)
         payload = {
             "task_id": task_id,
             "action": AI_TAG_ACTION,
@@ -102,6 +98,98 @@ async def _run_tagging_task(task_id: str, agent: dict, platform: str, params: di
             "task_id": task_id, "action": AI_TAG_ACTION, "status": "failed",
             "result_count": processed, "new_favorites": tagged, "error_message": message,
         }
+
+
+async def _tagging_batches(agent: dict, platform: str, limit: int):
+    """逐批产出 (items, results)；无待打标内容时结束。"""
+    processed = 0
+    batch_no = 0
+    while processed < limit:
+        size = min(BATCH_SIZE, limit - processed)
+        items = await _pending_contents(platform, size)
+        if not items:
+            if batch_no == 0:
+                logger.info("打标：平台=%s 无待打标内容", platform or "全部")
+            break
+        batch_no += 1
+        started = time.monotonic()
+        logger.info(
+            "打标批次 #%s 开始：平台=%s 取 %s 条（累计 %s/%s），model=%s",
+            batch_no, platform or "全部", len(items), processed, limit, agent["model_id"],
+        )
+        try:
+            results = await _tag_batch(agent, items)
+        except Exception as exc:
+            logger.error("打标批次 #%s LLM 调用失败（%s 条丢弃，任务中止）：%s",
+                         batch_no, len(items), str(exc)[:300])
+            raise
+        elapsed = time.monotonic() - started
+        await _save_tags(results)
+        # 模型漏掉的条目写空数组（NULL=未打标，[]=已尝试无标签），避免反复重试
+        got_ids = {r["content_id"] for r in results}
+        missing = [it["content_id"] for it in items if it["content_id"] not in got_ids]
+        if missing:
+            await _save_tags([{"content_id": cid, "tags": []} for cid in missing])
+        processed += len(items)
+        logger.info(
+            "打标批次 #%s 完成：LLM %.1fs，有效 %s 条，漏标 %s 条，样例=%s",
+            batch_no, elapsed, len(results), len(missing),
+            json.dumps(results[0]["tags"], ensure_ascii=False) if results else "无",
+        )
+        yield items, results
+
+
+async def stream_tagging_events(agent: dict, platform: str, params: dict):
+    """SSE 流式打标：逐批推送进度，结束推 done/error。
+
+    消费方（API 层）断开时 generator 被 close，worker 中止并把任务标记为失败
+    （已入库的批次结果保留）。
+    """
+    limit = _resolve_limit(params)
+    task_id = new_id("task")
+    await data_store.create_task(task_id, "", platform or "", AI_TAG_ACTION, params or {})
+    yield {"type": "task", "task_id": task_id, "limit": limit}
+
+    finished = False
+    try:
+        await data_store.update_task(task_id, status="running", started_at=now_iso())
+        processed = tagged = 0
+        title_by_id: dict[str, str] = {}
+        async for items, results in _tagging_batches(agent, platform, limit):
+            processed += len(items)
+            tagged += len(results)
+            title_by_id.update({it["content_id"]: it["title"] for it in items})
+            yield {
+                "type": "batch",
+                "processed": processed,
+                "tagged": tagged,
+                "items": [
+                    {"content_id": r["content_id"], "title": title_by_id.get(r["content_id"], ""),
+                     "tags": r["tags"]}
+                    for r in results
+                ],
+            }
+        await data_store.update_task(
+            task_id, status="success", result_count=processed, new_favorites=tagged, finished_at=now_iso()
+        )
+        finished = True
+        yield {"type": "done", "task_id": task_id, "processed": processed, "tagged": tagged}
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        logger.exception("流式打标任务 %s 失败", task_id)
+        await data_store.update_task(
+            task_id, status="failed", error_message=str(exc)[:2000], finished_at=now_iso()
+        )
+        finished = True
+        yield {"type": "error", "task_id": task_id, "error_message": str(exc)[:2000]}
+    finally:
+        if not finished:
+            # 客户端断开：generator 被 close 走到这里，中止后续批次
+            logger.warning("流式打标任务 %s 因客户端断开中止", task_id)
+            await data_store.update_task(
+                task_id, status="failed", error_message="客户端断开，打标中止", finished_at=now_iso()
+            )
 
 
 async def _pending_contents(platform: str, limit: int) -> list[dict]:
@@ -136,6 +224,7 @@ async def _tag_batch(agent: dict, items: list[dict]) -> list[dict]:
         ],
     }
     body = await _chat_completions(agent, payload)
+    logger.debug("打标 LLM 原始响应：%s", json.dumps(body, ensure_ascii=False)[:500])
     return _parse_results(body, {it["content_id"] for it in items})
 
 
@@ -195,6 +284,7 @@ def _parse_results(body: dict, valid_ids: set[str]) -> list[dict]:
         raise RuntimeError(f"LLM 返回结构不符（缺少 results 数组）：{text[:200]}")
 
     out = []
+    dropped = 0
     for r in results:
         cid = (r or {}).get("content_id")
         tags = (r or {}).get("tags")
@@ -202,6 +292,10 @@ def _parse_results(body: dict, valid_ids: set[str]) -> list[dict]:
             cleaned = [str(t).strip().lstrip("#") for t in tags if str(t).strip()]
             if cleaned:
                 out.append({"content_id": cid, "tags": cleaned[:MAX_TAGS_PER_ITEM]})
+                continue
+        dropped += 1
+    if dropped:
+        logger.debug("打标解析丢弃 %s 条（content_id 不匹配或 tags 无效）", dropped)
     return out
 
 

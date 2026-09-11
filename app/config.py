@@ -8,6 +8,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = Path(os.environ.get("FAVAPI_DATA_DIR", str(BASE_DIR / "data")))
 DB_PATH = DATA_DIR / "favapi.db"
 PROFILES_DIR = DATA_DIR / "profiles"
+PLATFORMS_DIR = Path(os.environ.get("FAVAPI_PLATFORMS_DIR", str(BASE_DIR / "platforms")))
 
 # HTTP 服务
 HOST = os.environ.get("FAVAPI_HOST", "127.0.0.1")

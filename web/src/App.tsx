@@ -618,6 +618,13 @@ export function App() {
                   accounts={accounts}
                   externalSearchQuery={searchQuery}
                   tagStats={tagStats}
+                  agents={agents}
+                  onTaggingDone={() => {
+                    const map = accountNameById();
+                    reloadFavorites(map);
+                    reloadTags();
+                    reloadTasks(map);
+                  }}
                 />
               </div>
             )}

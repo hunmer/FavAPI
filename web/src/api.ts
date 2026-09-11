@@ -493,6 +493,65 @@ export async function listTags(limit = 100): Promise<TagStatRow[]> {
   return data.tags;
 }
 
+export interface TagStreamEvent {
+  type: 'task' | 'batch' | 'done' | 'error';
+  task_id?: string;
+  limit?: number;
+  processed?: number;
+  tagged?: number;
+  items?: Array<{ content_id: string; title?: string; tags: string[] }>;
+  error_message?: string;
+}
+
+/** 一键打标（SSE 流式）：逐批回调进度，结束返回 done 载荷；抛错对应 error 事件。 */
+export async function tagStream(
+  body: { agent_id: string; platform?: string; limit?: number },
+  onEvent: (ev: TagStreamEvent) => void,
+  signal?: AbortSignal
+): Promise<TagStreamEvent> {
+  const res = await fetch(`${BASE}/ai/tag/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      platform: body.platform || '',
+      account_id: '',
+      action: 'ai_tag',
+      params: { agent_id: body.agent_id, platform: body.platform || '', limit: body.limit },
+    }),
+    signal,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as any).detail || res.statusText);
+  }
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let done: TagStreamEvent | null = null;
+
+  while (true) {
+    const { value, done: finished } = await reader.read();
+    if (finished) break;
+    buffer += decoder.decode(value, { stream: true });
+    let idx: number;
+    while ((idx = buffer.indexOf('\n\n')) >= 0) {
+      const chunk = buffer.slice(0, idx).trim();
+      buffer = buffer.slice(idx + 2);
+      if (!chunk.startsWith('data:')) continue;
+      let ev: TagStreamEvent;
+      try {
+        ev = JSON.parse(chunk.slice(5).trim());
+      } catch {
+        continue;
+      }
+      if (ev.type === 'error') throw new Error(ev.error_message || '打标失败');
+      onEvent(ev);
+      if (ev.type === 'done') done = ev;
+    }
+  }
+  return done || { type: 'done', processed: 0, tagged: 0 };
+}
+
 // ---------- 系统设置 / 头像 ----------
 
 export async function uploadAvatar(file: File): Promise<string> {
