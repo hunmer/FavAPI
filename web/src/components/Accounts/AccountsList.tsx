@@ -3,6 +3,7 @@ import { Account, AccountStatus, PlatformId } from '../../types';
 import { PLATFORMS } from '../../data/mockFavData';
 import * as api from '../../api';
 import { Plus, CheckCircle2, AlertTriangle, Ban, RefreshCw, QrCode, ArrowUpRight, Search, Clock, Monitor, ChevronRight } from 'lucide-react';
+import { SiteIcon, usePlatformInfos } from '../SiteIcon';
 
 interface AccountsListProps {
   accounts: Account[];
@@ -23,6 +24,8 @@ export const AccountsList: React.FC<AccountsListProps> = ({
   onRefreshProfiles,
 }) => {
   const [platformFilter, setPlatformFilter] = useState<string>('all');
+  // mock 未收录的平台（如 threads）由此兜底 display_name / icon_url
+  const platformInfos = usePlatformInfos();
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
@@ -165,6 +168,7 @@ export const AccountsList: React.FC<AccountsListProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
         {filteredAccounts.map((account, idx) => {
           const platform = PLATFORMS.find((p) => p.id === account.platform);
+          const platformName = platform?.name || platformInfos[account.platform]?.display_name || account.platform;
           return (
             <div
               key={account.id}
@@ -176,8 +180,13 @@ export const AccountsList: React.FC<AccountsListProps> = ({
               <div>
                 <div className="flex items-center justify-between gap-2 mb-3">
                   <div className="flex items-center gap-2">
-                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border ${platform?.badgeBg}`}>
-                      {platform?.name}
+                    <span
+                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                        platform?.badgeBg || 'bg-slate-100 text-slate-600 border-slate-200'
+                      }`}
+                    >
+                      <SiteIcon platform={account.platform} name={platformName} className="w-3.5 h-3.5" />
+                      {platformName}
                     </span>
                     {account.isBrowserOpen && (
                       <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-sky-700 bg-sky-50 px-2 py-0.5 rounded-full border border-sky-200">

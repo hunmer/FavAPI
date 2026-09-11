@@ -2,7 +2,7 @@ import React from 'react';
 import { Account } from '../../types';
 import { PLATFORMS } from '../../data/mockFavData';
 import { Play, ArrowUpRight, FolderHeart, CheckCircle2, AlertCircle, Clock, QrCode } from 'lucide-react';
-import { SiteIcon } from '../SiteIcon';
+import { SiteIcon, usePlatformInfo } from '../SiteIcon';
 
 interface ActiveAccountCardProps {
   account: Account;
@@ -17,7 +17,11 @@ export const ActiveAccountCard: React.FC<ActiveAccountCardProps> = ({
   onQuickSync,
   onLogin,
 }) => {
-  const platformMeta = PLATFORMS.find((p) => p.id === account.platform) || PLATFORMS[0];
+  // mock 未收录的平台（如 threads）回退到后端 /platforms 的 display_name 与中性样式
+  const platformMeta = PLATFORMS.find((p) => p.id === account.platform);
+  const backendInfo = usePlatformInfo(account.platform);
+  const platformName = platformMeta?.name || backendInfo?.display_name || account.platform;
+  const badgeBg = platformMeta?.badgeBg || 'bg-slate-100 text-slate-600 border-slate-200';
   const totalFoldersCount = account.folders?.reduce((acc, f) => acc + f.count, 0) || 0;
   // last_login_at 为空（fmtDateTime 映射为 '—'）表示从未扫码登录，即未绑定账号
   const notLoggedIn = !account.lastLoginTime || account.lastLoginTime === '—';
@@ -29,10 +33,10 @@ export const ActiveAccountCard: React.FC<ActiveAccountCardProps> = ({
         <div className="flex items-center justify-between gap-2 mb-3">
           <div className="flex items-center gap-2">
             <span
-              className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full border ${platformMeta.badgeBg}`}
+              className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full border ${badgeBg}`}
             >
-              <SiteIcon platform={account.platform} name={platformMeta.name} className="w-3.5 h-3.5" />
-              {platformMeta.name.split(' ')[0]}
+              <SiteIcon platform={account.platform} name={platformName} className="w-3.5 h-3.5" />
+              {platformName.split(' ')[0]}
             </span>
             <span className="text-[11px] text-slate-400 dark:text-slate-400 font-mono">
               UID: {account.ownerUid || '38819201'}
@@ -93,7 +97,7 @@ export const ActiveAccountCard: React.FC<ActiveAccountCardProps> = ({
               className="h-full rounded-full transition-all duration-500"
               style={{
                 width: account.status === 'active' ? '100%' : '35%',
-                backgroundColor: platformMeta.color,
+                backgroundColor: platformMeta?.color || '#94a3b8',
               }}
             />
           </div>
