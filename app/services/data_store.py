@@ -1,4 +1,5 @@
 """抓取结果与任务记录的持久化。"""
+import asyncio
 import json
 
 from app.database import db
@@ -94,10 +95,22 @@ async def list_favorites(
     account_id: str | None = None,
     platform: str | None = None,
     tag: str | None = None,
+    folder: str | None = None,
+    author: str | None = None,
+    date_start: str | None = None,
+    date_end: str | None = None,
+    tags: list[str] | None = None,
+    q: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> dict:
-    """favorites JOIN contents，按抓取时间倒序；tag 基于 contents.tags JSON 数组精确匹配。"""
+    """favorites JOIN contents，按抓取时间倒序；tag 基于 contents.tags JSON 数组精确匹配。
+
+    服务端过滤（与前端过滤面板语义一致）：
+    - folder/author 精确匹配，空值占位（'默认收藏夹'/'—'）匹配 NULL 或空串
+    - date_start/date_end 按 fetched_at 前 10 位（YYYY-MM-DD）闭区间比较，可只填一端
+    - tags 多标签 OR；q 模糊匹配标题/作者/标签
+    """
     where, params = [], []
     if account_id:
         where.append("f.account_id = ?")
@@ -108,6 +121,35 @@ async def list_favorites(
     if tag:
         where.append("EXISTS (SELECT 1 FROM json_each(c.tags) WHERE json_each.value = ?)")
         params.append(tag)
+    if folder:
+        if folder == "默认收藏夹":
+            where.append("(f.fav_title IS NULL OR f.fav_title = '')")
+        else:
+            where.append("f.fav_title = ?")
+            params.append(folder)
+    if author:
+        if author == "—":
+            where.append("(c.author_name IS NULL OR c.author_name = '')")
+        else:
+            where.append("c.author_name = ?")
+            params.append(author)
+    if date_start:
+        where.append("substr(f.fetched_at, 1, 10) >= ?")
+        params.append(date_start)
+    if date_end:
+        where.append("substr(f.fetched_at, 1, 10) <= ?")
+        params.append(date_end)
+    if tags:
+        placeholders = ",".join("?" for _ in tags)
+        where.append(f"EXISTS (SELECT 1 FROM json_each(c.tags) WHERE json_each.value IN ({placeholders}))")
+        params.extend(tags)
+    if q:
+        like = f"%{q}%"
+        where.append(
+            "(c.title LIKE ? OR c.author_name LIKE ? OR"
+            " EXISTS (SELECT 1 FROM json_each(c.tags) WHERE json_each.value LIKE ?))"
+        )
+        params.extend([like, like, like])
     where_sql = f"WHERE {' AND '.join(where)}" if where else ""
 
     total_row = await db.query_one(
@@ -162,6 +204,50 @@ async def list_favorites(
             "tagged_at": r.get("tagged_at"),
         })
     return {"total": total_row["n"] if total_row else 0, "items": items, "limit": limit, "offset": offset}
+
+
+async def favorite_facets(account_id: str | None = None, folder: str | None = None) -> dict:
+    """过滤面板候选值：全量总数、各账号收藏数、收藏夹/作者候选及计数。
+
+    folders 按账号收敛；authors 按账号+收藏夹收敛（与前端联动逻辑一致）。
+    占位值与 toScrapedItem 对齐：空收藏夹 → '默认收藏夹'，空作者 → '—'。
+    """
+    base, params = [], []
+    if account_id:
+        base.append("f.account_id = ?")
+        params.append(account_id)
+    where_sql = f"WHERE {' AND '.join(base)}" if base else ""
+
+    total_row, accounts_rows, folder_rows = await asyncio.gather(
+        db.query_one(f"SELECT COUNT(*) AS n FROM favorites f {where_sql}", tuple(params)),
+        db.query_all(
+            f"SELECT f.account_id AS id, COUNT(*) AS count FROM favorites f {where_sql} GROUP BY f.account_id ORDER BY count DESC",
+            tuple(params),
+        ),
+        db.query_all(
+            f"""SELECT COALESCE(NULLIF(f.fav_title, ''), '默认收藏夹') AS name, COUNT(*) AS count
+                FROM favorites f {where_sql} GROUP BY name ORDER BY count DESC""",
+            tuple(params),
+        ),
+    )
+    author_where, author_params = list(base), list(params)
+    if folder:
+        author_where.append("COALESCE(NULLIF(f.fav_title, ''), '默认收藏夹') = ?")
+        author_params.append(folder)
+    author_sql = f"WHERE {' AND '.join(author_where)}" if author_where else ""
+    author_rows = await db.query_all(
+        f"""SELECT COALESCE(NULLIF(c.author_name, ''), '—') AS name, COUNT(*) AS count
+            FROM favorites f LEFT JOIN contents c
+              ON c.content_id = f.content_id AND c.platform = f.platform
+            {author_sql} GROUP BY name ORDER BY count DESC""",
+        tuple(author_params),
+    )
+    return {
+        "total": (total_row or {}).get("n") or 0,
+        "accounts": accounts_rows,
+        "folders": folder_rows,
+        "authors": author_rows,
+    }
 
 
 # ---------- fetch_tasks ----------

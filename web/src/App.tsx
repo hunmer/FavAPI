@@ -71,16 +71,12 @@ export function App() {
   const [tagGroups, setTagGroups] = useState<api.TagGroupRow[]>([]);
   const [stats, setStats] = useState<api.StatsData | null>(null);
   const [browserOpenIds, setBrowserOpenIds] = useState<Set<string>>(new Set());
-  const [dataLoaded, setDataLoaded] = useState(false);
+
 
   // Modals State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [loginModalAccount, setLoginModalAccount] = useState<Account | null>(null);
   const [cookiesModalAccount, setCookiesModalAccount] = useState<Account | null>(null);
-
-  // 5s Auto-refresh state
-  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(true);
-  const [refreshSecondsLeft, setRefreshSecondsLeft] = useState(5);
 
   // 抓取进度状态：按账号隔离（实时反馈流每个账号独立，互不串扰）
   const [streamingByAccount, setStreamingByAccount] = useState<Record<string, ScrapedItem[]>>({});
@@ -227,31 +223,9 @@ export function App() {
         }
         setBrowserOpenIds(open);
       } catch { /* ignore */ }
-
-      setDataLoaded(true);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // 5 秒自动轮询：刷新账号 + 任务（轻量接口）
-  useEffect(() => {
-    if (!autoRefreshEnabled || !dataLoaded) return;
-    const timer = setInterval(() => {
-      setRefreshSecondsLeft((prev) => {
-        if (prev <= 1) {
-          reloadAccounts().then((map) => {
-            reloadTasks(map);
-            reloadSchedules(map);
-          });
-          reloadStats();
-          reloadTags();
-          return 5;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [autoRefreshEnabled, dataLoaded, reloadAccounts, reloadTasks, reloadSchedules, reloadTags]);
 
   // ---------- 账号操作 ----------
 
@@ -615,7 +589,7 @@ export function App() {
                   setActiveTab('accounts');
                 }}
                 onOpenCreateAccount={() => setIsCreateModalOpen(true)}
-                onViewAllData={(date) => navigate(date ? `/data?date=${date}` : '/data')}
+                onViewAllData={(date) => navigate(date ? `/data?date=${date}&date_end=${date}` : '/data')}
                 onOpenScheduleTab={() => setActiveTab('schedule')}
                 onQuickSyncAccount={(acc) => {
                   setSelectedAccount(acc);
@@ -663,7 +637,6 @@ export function App() {
             {activeTab === 'data' && (
               <div className="p-4 sm:p-6 lg:p-8">
                 <DataBrowserView
-                  items={scrapedItems}
                   accounts={accounts}
                   externalSearchQuery={searchQuery}
                   tagStats={tagStats}
@@ -685,7 +658,6 @@ export function App() {
                 <TasksView
                   tasks={tasks}
                   onManualRefresh={() => {
-                    setRefreshSecondsLeft(5);
                     reloadAccounts().then((map) => reloadTasks(map));
                     showToast('已从私有抓取服务同步最新任务执行状态');
                   }}

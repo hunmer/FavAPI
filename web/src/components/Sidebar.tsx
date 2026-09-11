@@ -11,7 +11,8 @@ import {
   Settings,
   Sparkles,
   Sun,
-  Moon
+  Moon,
+  User
 } from 'lucide-react';
 
 // tab 切换移动效果（motion-design Corporate）：屏内过渡统一 Snappy 曲线
@@ -122,11 +123,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
           title="本地管理员: Josh / FavAdmin"
           onClick={() => onTabChange('settings')}
         >
-          <img
-            src={avatarUrl ?? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80'}
-            alt="Admin"
-            className="w-10 h-10 rounded-full object-cover ring-2 ring-slate-700 group-hover:ring-sky-500 transition-all duration-200"
-          />
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt="Admin"
+              className="w-10 h-10 rounded-full object-cover ring-2 ring-slate-700 group-hover:ring-sky-500 transition-all duration-200"
+            />
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-slate-800/60 flex items-center justify-center ring-2 ring-slate-700 group-hover:ring-sky-500 transition-all duration-200">
+              <User className="w-5 h-5 text-slate-400" />
+            </div>
+          )}
           <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-[#14161C]" />
         </div>
       </div>

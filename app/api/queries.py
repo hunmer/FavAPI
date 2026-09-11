@@ -97,15 +97,30 @@ async def get_task(task_id: str):
     return TaskOut(**task).model_dump()
 
 
+@router.get("/favorites/facets")
+async def favorite_facets(account_id: str | None = None, folder: str | None = None):
+    """数据浏览过滤面板候选：总数、各账号计数、收藏夹/作者候选（可按账号+收藏夹联动收敛）。"""
+    return await data_store.favorite_facets(account_id, folder)
+
+
 @router.get("/favorites")
 async def list_favorites(
     account_id: str | None = None,
     platform: str | None = None,
     tag: str | None = None,
-    limit: int = Query(50, ge=1, le=10000),
+    folder: str | None = None,
+    author: str | None = None,
+    date_start: str | None = None,
+    date_end: str | None = None,
+    tags: str | None = Query(None, description="逗号分隔多标签，OR 匹配"),
+    q: str | None = None,
+    limit: int = Query(50, ge=1, le=5000),
     offset: int = Query(0, ge=0),
 ):
-    result = await data_store.list_favorites(account_id, platform, tag, limit, offset)
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
+    result = await data_store.list_favorites(
+        account_id, platform, tag, folder, author, date_start, date_end, tag_list, q, limit, offset
+    )
     result["items"] = [FavoriteItem(**i).model_dump() for i in result["items"]]
     return result
 

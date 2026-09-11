@@ -328,10 +328,46 @@ export async function getTask(taskId: string): Promise<TaskRow> {
   return request(`/tasks/${taskId}`);
 }
 
-export async function listFavorites(opts: { accountId?: string; limit?: number; offset?: number } = {}): Promise<{ total: number; items: FavoriteRow[] }> {
+export interface FavoriteListOpts {
+  accountId?: string;
+  platform?: string;
+  folder?: string;
+  author?: string;
+  dateStart?: string;
+  dateEnd?: string;
+  tags?: string[];
+  q?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export async function listFavorites(opts: FavoriteListOpts = {}): Promise<{ total: number; items: FavoriteRow[] }> {
   const p = new URLSearchParams({ limit: String(opts.limit ?? 5000), offset: String(opts.offset ?? 0) });
   if (opts.accountId) p.set('account_id', opts.accountId);
+  if (opts.platform) p.set('platform', opts.platform);
+  if (opts.folder) p.set('folder', opts.folder);
+  if (opts.author) p.set('author', opts.author);
+  if (opts.dateStart) p.set('date_start', opts.dateStart);
+  if (opts.dateEnd) p.set('date_end', opts.dateEnd);
+  if (opts.tags?.length) p.set('tags', opts.tags.join(','));
+  if (opts.q) p.set('q', opts.q);
   return request(`/favorites?${p.toString()}`);
+}
+
+// ---------- 数据浏览过滤面板候选 ----------
+
+export interface FacetRow {
+  total: number;
+  accounts: Array<{ id: string; count: number }>;
+  folders: Array<{ name: string; count: number }>;
+  authors: Array<{ name: string; count: number }>;
+}
+
+export async function favoriteFacets(accountId?: string, folder?: string): Promise<FacetRow> {
+  const p = new URLSearchParams();
+  if (accountId) p.set('account_id', accountId);
+  if (folder) p.set('folder', folder);
+  return request(`/favorites/facets?${p.toString()}`);
 }
 
 // ---------- 抓取 ----------

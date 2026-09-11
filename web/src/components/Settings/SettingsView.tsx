@@ -24,8 +24,6 @@ import {
 } from 'lucide-react';
 import { AgentConfigRow, AgentTestResult, fetchAppSettings, updateAppSettings, uploadAvatar } from '../../api';
 
-const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80';
-
 interface SettingsViewProps {
   onShowToast: (msg: string, type?: 'success' | 'info' | 'error') => void;
   totalItemsCount: number;
@@ -326,11 +324,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
 
           <div className="flex items-center gap-5 pt-1">
-            <img
-              src={avatarUrl ?? DEFAULT_AVATAR}
-              alt="当前头像"
-              className="w-16 h-16 rounded-full object-cover ring-2 ring-slate-200 dark:ring-slate-700 shrink-0"
-            />
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt="当前头像"
+                className="w-16 h-16 rounded-full object-cover ring-2 ring-slate-200 dark:ring-slate-700 shrink-0"
+              />
+            ) : (
+              <div className="w-16 h-16 rounded-full bg-rose-50 dark:bg-rose-950/60 flex items-center justify-center ring-2 ring-slate-200 dark:ring-slate-700 shrink-0">
+                <UserCircle className="w-8 h-8 text-rose-600 dark:text-rose-400" />
+              </div>
+            )}
             <label
               className={`px-4 py-2.5 rounded-2xl text-xs font-semibold transition-all flex items-center gap-2 cursor-pointer border border-transparent ${
                 uploadingAvatar

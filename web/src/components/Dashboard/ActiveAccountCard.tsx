@@ -2,7 +2,7 @@ import React, { useRef } from 'react';
 import { uploadWechatJson } from '../../api';
 import { Account } from '../../types';
 import { PLATFORMS } from '../../data/mockFavData';
-import { Play, ArrowUpRight, FolderHeart, CheckCircle2, AlertCircle, Clock, QrCode } from 'lucide-react';
+import { Play, ArrowUpRight, FolderHeart, CheckCircle2, AlertCircle, Clock, QrCode, User } from 'lucide-react';
 import { SiteIcon, usePlatformInfo } from '../SiteIcon';
 
 interface ActiveAccountCardProps {
@@ -63,14 +63,17 @@ export const ActiveAccountCard: React.FC<ActiveAccountCardProps> = ({
 
         {/* Account Info */}
         <div className="flex items-center gap-3.5 my-3">
-          <img
-            src={
-              account.ownerAvatar ||
-              'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80'
-            }
-            alt={account.name}
-            className="w-12 h-12 rounded-2xl object-cover ring-2 ring-slate-100 dark:ring-slate-800 shrink-0"
-          />
+          {account.ownerAvatar ? (
+            <img
+              src={account.ownerAvatar}
+              alt={account.name}
+              className="w-12 h-12 rounded-2xl object-cover ring-2 ring-slate-100 dark:ring-slate-800 shrink-0"
+            />
+          ) : (
+            <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center ring-2 ring-slate-100 dark:ring-slate-800 shrink-0">
+              <User className="w-6 h-6 text-slate-400" />
+            </div>
+          )}
           <div className="min-w-0">
             <h4 className="text-sm font-bold text-slate-900 dark:text-white truncate group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
               {account.name}
