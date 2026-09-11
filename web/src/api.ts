@@ -301,6 +301,7 @@ export interface StatsData {
   accounts_active: number;
   favorites_total: number;
   contents_total: number;
+  contents_tagged: number;
   today_new_favorites: number;
   tasks_running: number;
   tasks_today: number;
@@ -460,8 +461,36 @@ export async function createAgent(body: { name: string; base_url: string; api_ke
   return request<AgentConfigRow>('/ai/agents', { method: 'POST', body: JSON.stringify(body) });
 }
 
+export async function updateAgent(id: string, body: { name?: string; base_url?: string; api_key?: string; model_id?: string }) {
+  return request<AgentConfigRow>(`/ai/agents/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+}
+
 export async function deleteAgent(id: string) {
   return request(`/ai/agents/${id}`, { method: 'DELETE' });
+}
+
+export interface AgentTestResult {
+  ok: boolean;
+  latency_ms?: number;
+  reply?: string;
+  error?: string;
+}
+
+/** 连通性测试：后端用该配置发一次最小 chat 请求。 */
+export async function testAgent(id: string) {
+  return request<AgentTestResult>(`/ai/agents/${id}/test`, { method: 'POST' });
+}
+
+// ---------- 标签聚合 ----------
+
+export interface TagStatRow {
+  tag: string;
+  count: number;
+}
+
+export async function listTags(limit = 100): Promise<TagStatRow[]> {
+  const data = await request<{ tags: TagStatRow[] }>(`/tags?limit=${limit}`);
+  return data.tags;
 }
 
 // ---------- 系统设置 / 头像 ----------
@@ -484,4 +513,21 @@ export async function fetchAvatarUrl(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+// ---------- 系统设置 / 运行参数 ----------
+
+export interface AppSettings {
+  profile_path: string;
+  headless: boolean;
+  request_interval: number;
+  request_timeout: number;
+}
+
+export function fetchAppSettings(): Promise<AppSettings> {
+  return request('/settings');
+}
+
+export function updateAppSettings(patch: Partial<AppSettings>): Promise<AppSettings> {
+  return request('/settings', { method: 'PUT', body: JSON.stringify(patch) });
 }

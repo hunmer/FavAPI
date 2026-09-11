@@ -77,10 +77,11 @@ _CONTENT_URL_TEMPLATES = {
 async def list_favorites(
     account_id: str | None = None,
     platform: str | None = None,
+    tag: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> dict:
-    """favorites JOIN contents，按抓取时间倒序。"""
+    """favorites JOIN contents，按抓取时间倒序；tag 基于 contents.tags JSON 数组精确匹配。"""
     where, params = [], []
     if account_id:
         where.append("f.account_id = ?")
@@ -88,10 +89,16 @@ async def list_favorites(
     if platform:
         where.append("f.platform = ?")
         params.append(platform)
+    if tag:
+        where.append("EXISTS (SELECT 1 FROM json_each(c.tags) WHERE json_each.value = ?)")
+        params.append(tag)
     where_sql = f"WHERE {' AND '.join(where)}" if where else ""
 
     total_row = await db.query_one(
-        f"SELECT COUNT(*) AS n FROM favorites f {where_sql}", tuple(params)
+        f"""SELECT COUNT(*) AS n FROM favorites f
+            LEFT JOIN contents c ON c.content_id = f.content_id AND c.platform = f.platform
+            {where_sql}""",
+        tuple(params),
     )
     rows = await db.query_all(
         f"""SELECT f.account_id, f.content_id, f.platform, f.fav_media_id, f.fav_title,
@@ -181,3 +188,17 @@ async def list_tasks(limit: int = 50, account_id: str | None = None) -> list[dic
             "SELECT * FROM fetch_tasks ORDER BY started_at DESC, rowid DESC LIMIT ?", (limit,)
         )
     return [task_row_out(r) for r in rows]
+
+
+# ---------- 标签聚合 ----------
+
+async def list_tag_stats(limit: int = 100) -> list[dict]:
+    """按标签聚合已打标内容数，倒序返回 [{tag, count}]。"""
+    return await db.query_all(
+        """SELECT je.value AS tag, COUNT(*) AS count
+           FROM contents c, json_each(c.tags) je
+           GROUP BY je.value
+           ORDER BY count DESC, tag ASC
+           LIMIT ?""",
+        (limit,),
+    )

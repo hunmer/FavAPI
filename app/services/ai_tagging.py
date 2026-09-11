@@ -153,6 +153,24 @@ async def _chat_completions(agent: dict, payload: dict) -> dict:
         return resp.json()
 
 
+async def test_agent(agent: dict) -> dict:
+    """连通性测试：发送最小 chat 请求验证 base_url / api_key / model_id。"""
+    import time
+
+    payload = {"model": agent["model_id"], "messages": [{"role": "user", "content": "请直接回复：OK"}]}
+    start = time.monotonic()
+    try:
+        body = await _chat_completions(agent, payload)
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)[:300]}
+    reply = ""
+    for choice in body.get("choices") or []:
+        reply = ((choice.get("message") or {}).get("content") or "").strip()
+        if reply:
+            break
+    return {"ok": True, "latency_ms": round((time.monotonic() - start) * 1000), "reply": reply[:50]}
+
+
 def _parse_results(body: dict, valid_ids: set[str]) -> list[dict]:
     content = ""
     for choice in body.get("choices") or []:

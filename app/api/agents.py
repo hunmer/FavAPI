@@ -1,8 +1,9 @@
-"""AI Agent 配置 API：CRUD（OpenAI 兼容接口参数）。"""
+"""AI Agent 配置 API：CRUD（OpenAI 兼容接口参数）+ 连通性测试。"""
 from fastapi import APIRouter, HTTPException
 
 from app.models import AgentCreate, AgentOut, AgentUpdate
 from app.services import agent_store
+from app.services.ai_tagging import test_agent
 
 router = APIRouter(prefix="/api/v1/ai/agents", tags=["ai-agents"])
 
@@ -34,3 +35,12 @@ async def delete_agent(agent_id: str):
         raise HTTPException(status_code=404, detail=f"Agent 不存在：{agent_id}")
     await agent_store.delete_agent(agent_id)
     return {"deleted": agent_id}
+
+
+@router.post("/{agent_id}/test")
+async def test_agent_conn(agent_id: str):
+    """连通性测试：用最小 chat 请求验证配置，失败时 ok=false 携带错误详情。"""
+    agent = await agent_store.get_agent(agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail=f"Agent 不存在：{agent_id}")
+    return await test_agent(agent)

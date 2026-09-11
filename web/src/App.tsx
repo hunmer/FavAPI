@@ -53,6 +53,7 @@ export function App() {
   const [scrapedItems, setScrapedItems] = useState<ScrapedItem[]>([]);
   const [schedules, setSchedules] = useState<ScheduledSync[]>([]);
   const [agents, setAgents] = useState<api.AgentConfigRow[]>([]);
+  const [tagStats, setTagStats] = useState<api.TagStatRow[]>([]);
   const [stats, setStats] = useState<api.StatsData | null>(null);
   const [browserOpenIds, setBrowserOpenIds] = useState<Set<string>>(new Set());
   const [dataLoaded, setDataLoaded] = useState(false);
@@ -157,6 +158,14 @@ export function App() {
     }
   }, []);
 
+  const reloadTags = useCallback(async () => {
+    try {
+      setTagStats(await api.listTags());
+    } catch {
+      /* 静默 */
+    }
+  }, []);
+
   // 初始加载：平台支持情况 + 各类数据 + 手动浏览窗口状态
   useEffect(() => {
     (async () => {
@@ -173,7 +182,7 @@ export function App() {
       }
 
       const nameMap = await reloadAccounts();
-      await Promise.all([reloadTasks(nameMap), reloadFavorites(nameMap), reloadSchedules(nameMap), reloadStats(), reloadAgents()]);
+      await Promise.all([reloadTasks(nameMap), reloadFavorites(nameMap), reloadSchedules(nameMap), reloadStats(), reloadAgents(), reloadTags()]);
 
       // 恢复各账号手动浏览窗口的打开状态
       try {
@@ -204,13 +213,14 @@ export function App() {
             reloadSchedules(map);
           });
           reloadStats();
+          reloadTags();
           return 5;
         }
         return prev - 1;
       });
     }, 1000);
     return () => clearInterval(timer);
-  }, [autoRefreshEnabled, dataLoaded, reloadAccounts, reloadTasks, reloadSchedules]);
+  }, [autoRefreshEnabled, dataLoaded, reloadAccounts, reloadTasks, reloadSchedules, reloadTags]);
 
   // ---------- 账号操作 ----------
 
@@ -457,6 +467,21 @@ export function App() {
     return created;
   };
 
+  const handleUpdateAgent = async (
+    id: string,
+    body: { name: string; base_url: string; api_key?: string; model_id: string }
+  ) => {
+    await api.updateAgent(id, body);
+    await reloadAgents();
+  };
+
+  const handleDeleteAgent = async (id: string) => {
+    await api.deleteAgent(id);
+    await reloadAgents();
+  };
+
+  const handleTestAgent = async (id: string) => api.testAgent(id);
+
   const handleDeleteSchedule = async (scheduleId: string) => {
     await api.deleteSchedule(scheduleId);
     showToast('定时计划已删除');
@@ -592,6 +617,7 @@ export function App() {
                   items={scrapedItems}
                   accounts={accounts}
                   externalSearchQuery={searchQuery}
+                  tagStats={tagStats}
                 />
               </div>
             )}
@@ -634,6 +660,11 @@ export function App() {
                 onSetTheme={setTheme}
                 avatarUrl={avatarUrl}
                 onAvatarChange={setAvatarUrl}
+                agents={agents}
+                onCreateAgent={handleCreateAgent}
+                onUpdateAgent={handleUpdateAgent}
+                onDeleteAgent={handleDeleteAgent}
+                onTestAgent={handleTestAgent}
               />
             )}
               </motion.div>

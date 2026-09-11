@@ -67,11 +67,13 @@ async def get_stats():
         _count("SELECT COUNT(*) AS n FROM fetch_tasks WHERE status IN ('pending','running')"),
         _count("SELECT COUNT(*) AS n FROM fetch_tasks WHERE started_at >= ?", (today,)),
     )
+    contents_tagged = await _count("SELECT COUNT(*) AS n FROM contents WHERE tags IS NOT NULL")
     return {
         "accounts_total": accounts_total,
         "accounts_active": accounts_active,
         "favorites_total": favorites_total,
         "contents_total": contents_total,
+        "contents_tagged": contents_tagged,
         "today_new_favorites": today_new,
         "tasks_running": tasks_running,
         "tasks_today": tasks_today,
@@ -98,9 +100,16 @@ async def get_task(task_id: str):
 async def list_favorites(
     account_id: str | None = None,
     platform: str | None = None,
+    tag: str | None = None,
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
-    result = await data_store.list_favorites(account_id, platform, limit, offset)
+    result = await data_store.list_favorites(account_id, platform, tag, limit, offset)
     result["items"] = [FavoriteItem(**i).model_dump() for i in result["items"]]
     return result
+
+
+@router.get("/tags")
+async def list_tags(limit: int = Query(100, ge=1, le=500)):
+    """AI 打标标签聚合统计（按引用内容数倒序）。"""
+    return {"tags": await data_store.list_tag_stats(limit)}
