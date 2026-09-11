@@ -54,6 +54,7 @@ export function App() {
   const [schedules, setSchedules] = useState<ScheduledSync[]>([]);
   const [agents, setAgents] = useState<api.AgentConfigRow[]>([]);
   const [tagStats, setTagStats] = useState<api.TagStatRow[]>([]);
+  const [tagGroups, setTagGroups] = useState<api.TagGroupRow[]>([]);
   const [stats, setStats] = useState<api.StatsData | null>(null);
   const [browserOpenIds, setBrowserOpenIds] = useState<Set<string>>(new Set());
   const [dataLoaded, setDataLoaded] = useState(false);
@@ -160,7 +161,9 @@ export function App() {
 
   const reloadTags = useCallback(async () => {
     try {
-      setTagStats(await api.listTags());
+      const { tags, groups } = await api.listTags();
+      setTagStats(tags);
+      setTagGroups(groups);
     } catch {
       /* 静默 */
     }
@@ -574,6 +577,7 @@ export function App() {
                   setSelectedAccount(acc);
                   setActiveTab('accounts');
                 }}
+                onLoginAccount={(acc) => setLoginModalAccount(acc)}
                 onTriggerSchedule={handleTriggerSchedule}
               />
             )}
@@ -618,6 +622,7 @@ export function App() {
                   accounts={accounts}
                   externalSearchQuery={searchQuery}
                   tagStats={tagStats}
+                  tagGroups={tagGroups}
                   agents={agents}
                   onTaggingDone={() => {
                     const map = accountNameById();

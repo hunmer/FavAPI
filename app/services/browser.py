@@ -34,7 +34,7 @@ def is_busy(profile_path: str) -> bool:
 
 
 @asynccontextmanager
-async def session(profile_path: str, headless: bool | None = None):
+async def session(profile_path: str, headless: bool | None = None, proxy: dict | str | None = None):
     """以持久化 profile 打开 Chromium，退出时关闭。
 
     用法: async with browser.session(path) as ctx: ...
@@ -50,11 +50,17 @@ async def session(profile_path: str, headless: bool | None = None):
     lock = _locks.setdefault(str(path.resolve()).lower(), asyncio.Lock())
     async with lock, _semaphore:
         pw = await async_playwright().start()
+        launch_options = {
+            "user_data_dir": str(path),
+            "headless": headless,
+            "viewport": {"width": 1280, "height": 860},
+            "args": ["--disable-blink-features=AutomationControlled"],
+        }
+        # Playwright 不会自动继承系统代理；调用方可显式传入 server / username / password。
+        if proxy:
+            launch_options["proxy"] = {"server": proxy} if isinstance(proxy, str) else proxy
         context = await pw.chromium.launch_persistent_context(
-            user_data_dir=str(path),
-            headless=headless,
-            viewport={"width": 1280, "height": 860},
-            args=["--disable-blink-features=AutomationControlled"],
+            **launch_options,
         )
         context.set_default_timeout(config.PAGE_TIMEOUT)
         try:

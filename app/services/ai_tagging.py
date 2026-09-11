@@ -23,10 +23,16 @@ LLM_TIMEOUT = 120          # 单次 LLM 请求超时（秒）
 
 SYSTEM_PROMPT = (
     "你是一名内容收藏打标助手。根据用户给出的内容标题列表，为每条内容生成 "
-    f"2~{MAX_TAGS_PER_ITEM} 个简短中文标签（主题、领域、内容形式等），标签必须是通用词汇，不要包含标题原文。"
+    f"2~{MAX_TAGS_PER_ITEM} 个简短中文标签。"
+    "优先从用户提供的标签池中选择已有标签，保持标签体系统一、避免衍生杂乱同义标签；"
+    "仅当内容明确不属于标签池中的任何标签时，才新建一个简短、通用的中文标签（主题、领域、内容形式）。"
+    "标签必须是通用词汇，不要包含标题原文。"
     "只输出 JSON 对象，不要输出任何其他文字或代码块标记。"
 )
 OUTPUT_FORMAT = {"results": [{"content_id": "原样返回输入的 content_id", "tags": ["标签1", "标签2"]}]}
+
+# 标签池中「库中已有标签」最多取多少个（按引用数倒序，防 prompt 过长）
+MAX_EXISTING_TAGS_IN_POOL = 120
 
 
 class TaggingValidationError(ValueError):
@@ -205,6 +211,22 @@ async def _pending_contents(platform: str, limit: int) -> list[dict]:
     )
 
 
+async def _label_pool() -> str:
+    """标签池文案：内置分组 + 库中已有标签（按引用数取 top N）。
+
+    每批打标前重新构建，已打出的新标签会进入后续批次的池，促使标签自我收敛。
+    """
+    from app.taxonomy import BUILTIN_TAG_GROUPS, builtin_tags
+
+    parts = [f"{group}：{'、'.join(tags)}" for group, tags in BUILTIN_TAG_GROUPS]
+    builtin = builtin_tags()
+    stats = await data_store.list_tag_stats(MAX_EXISTING_TAGS_IN_POOL)
+    existing = [s["tag"] for s in stats if s["tag"] not in builtin]
+    if existing:
+        parts.append(f"库中已有：{'、'.join(existing)}")
+    return "\n".join(parts)
+
+
 async def _tag_batch(agent: dict, items: list[dict]) -> list[dict]:
     """一次请求喂多个标题，返回 [{content_id, tags}]。"""
     payload = {
@@ -217,6 +239,7 @@ async def _tag_batch(agent: dict, items: list[dict]) -> list[dict]:
                 "role": "user",
                 "content": (
                     f"请为以下 {len(items)} 条内容打标。\n"
+                    f"可选标签池（优先复用）：\n{await _label_pool()}\n"
                     f"输出 JSON 格式：{json.dumps(OUTPUT_FORMAT, ensure_ascii=False)}\n"
                     f"items：{json.dumps([{'content_id': it['content_id'], 'title': it['title']} for it in items], ensure_ascii=False)}"
                 ),

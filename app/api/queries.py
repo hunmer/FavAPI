@@ -111,5 +111,13 @@ async def list_favorites(
 
 @router.get("/tags")
 async def list_tags(limit: int = Query(100, ge=1, le=500)):
-    """AI 打标标签聚合统计（按引用内容数倒序）。"""
-    return {"tags": await data_store.list_tag_stats(limit)}
+    """AI 打标标签聚合统计（按引用内容数倒序）+ 分组定义（内置体系 + 库中未匹配的「其他」组）。"""
+    from app.taxonomy import BUILTIN_TAG_GROUPS, builtin_tags
+
+    stats = await data_store.list_tag_stats(limit)
+    builtin = builtin_tags()
+    others = sorted({s["tag"] for s in stats if s["tag"] not in builtin})
+    groups = [{"group": g, "tags": ts} for g, ts in BUILTIN_TAG_GROUPS]
+    if others:
+        groups.append({"group": "其他", "tags": others})
+    return {"tags": stats, "groups": groups}

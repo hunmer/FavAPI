@@ -1,5 +1,5 @@
 """声明式 JSON 平台适配器。用于无需编写 Python 的简单收藏接口。"""
-import asyncio, json, logging, time
+import asyncio, json, logging, time, os, re
 from app import config
 from app.platforms.base import BasePlatformAdapter, FetchResult, AccountContext, LoginExpiredError
 from app.services import browser
@@ -23,9 +23,16 @@ class DeclarativeAdapter(BasePlatformAdapter):
         self.home_url=spec.get('home_url',''); self.supported_actions=tuple(spec.get('supported_actions',['list_favorites']))
         self.implemented=bool(spec.get('implemented',True)); self._capture=spec.get('capture',{})
 
+    def _proxy(self):
+        value = self.spec.get('proxy')
+        if isinstance(value, str):
+            m = re.fullmatch(r"\$\{([^}]+)\}", value.strip())
+            if m: return os.environ.get(m.group(1)) or None
+        return value
+
     async def login(self, account, timeout=None):
         timeout=timeout or config.LOGIN_TIMEOUT; deadline=time.monotonic()+timeout
-        async with browser.session(account.profile_path, headless=False) as ctx:
+        async with browser.session(account.profile_path, headless=False, proxy=self._proxy()) as ctx:
             page=ctx.pages[0] if ctx.pages else await ctx.new_page(); await page.goto(self.home_url,wait_until='domcontentloaded')
             keys=tuple(self.spec.get('login_cookies',[]))
             while time.monotonic()<deadline:
@@ -34,7 +41,7 @@ class DeclarativeAdapter(BasePlatformAdapter):
         return False
 
     async def check_login_status(self, account):
-        async with browser.session(account.profile_path,headless=True) as ctx:
+        async with browser.session(account.profile_path,headless=True, proxy=self._proxy()) as ctx:
             return browser.has_login_cookies(await ctx.cookies(),tuple(self.spec.get('login_cookies',[])))
 
     def validate_params(self, params):
@@ -50,7 +57,7 @@ class DeclarativeAdapter(BasePlatformAdapter):
         max_rounds = max(0, int(cap.get('max_rounds', 20)))
         scroll_step = int(cap.get('scroll_step', 2400))
         cursor = params.get('cursor'); has_more = False
-        async with browser.session(account.profile_path,headless=config.HEADLESS) as ctx:
+        async with browser.session(account.profile_path,headless=config.HEADLESS, proxy=self._proxy()) as ctx:
             page=ctx.pages[0] if ctx.pages else await ctx.new_page()
             headers = dict(self.spec.get('headers') or {}); headers.update(cap.get('headers') or {})
             if headers:

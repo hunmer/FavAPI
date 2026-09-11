@@ -16,14 +16,8 @@ export interface ScheduledSync {
   action?: string;  // list_favorites / ai_tag
 }
 
-export type PlatformId = 
-  | 'bilibili' 
-  | 'xiaohongshu' 
-  | 'douyin' 
-  | 'zhihu' 
-  | 'weibo' 
-  | 'youtube' 
-  | 'twitter';
+/** 平台标识由后端动态提供，自定义平台无需修改前端类型。 */
+export type PlatformId = string;
 
 export type AccountStatus = 'active' | 'expired' | 'disabled' | 'logging_in';
 

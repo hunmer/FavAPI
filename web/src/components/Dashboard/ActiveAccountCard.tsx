@@ -1,21 +1,25 @@
 import React from 'react';
 import { Account } from '../../types';
 import { PLATFORMS } from '../../data/mockFavData';
-import { Play, ArrowUpRight, FolderHeart, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
+import { Play, ArrowUpRight, FolderHeart, CheckCircle2, AlertCircle, Clock, QrCode } from 'lucide-react';
 
 interface ActiveAccountCardProps {
   account: Account;
   onSelect: (acc: Account) => void;
   onQuickSync?: (acc: Account) => void;
+  onLogin?: (acc: Account) => void;
 }
 
 export const ActiveAccountCard: React.FC<ActiveAccountCardProps> = ({
   account,
   onSelect,
   onQuickSync,
+  onLogin,
 }) => {
   const platformMeta = PLATFORMS.find((p) => p.id === account.platform) || PLATFORMS[0];
   const totalFoldersCount = account.folders?.reduce((acc, f) => acc + f.count, 0) || 0;
+  // last_login_at 为空（fmtDateTime 映射为 '—'）表示从未扫码登录，即未绑定账号
+  const notLoggedIn = !account.lastLoginTime || account.lastLoginTime === '—';
 
   return (
     <div className="bg-white dark:bg-[#161B26] rounded-3xl p-5 border border-slate-100 dark:border-slate-800 shadow-sm hover:shadow-md dark:hover:shadow-slate-950/40 transition-all flex flex-col justify-between group">
@@ -97,11 +101,20 @@ export const ActiveAccountCard: React.FC<ActiveAccountCardProps> = ({
       {/* Action Buttons */}
       <div className="mt-4 pt-3 flex items-center gap-2">
         <button
-          onClick={() => onQuickSync?.(account)}
+          onClick={() => (notLoggedIn ? onLogin?.(account) : onQuickSync?.(account))}
           className="flex-1 py-2 px-3 rounded-xl bg-slate-900 dark:bg-slate-800 text-white dark:text-slate-100 text-xs font-semibold hover:bg-slate-800 dark:hover:bg-slate-700 transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95 border border-transparent dark:border-slate-700"
         >
-          <Play className="w-3.5 h-3.5 fill-current" />
-          增量抓取
+          {notLoggedIn ? (
+            <>
+              <QrCode className="w-3.5 h-3.5" />
+              登录账号
+            </>
+          ) : (
+            <>
+              <Play className="w-3.5 h-3.5 fill-current" />
+              增量抓取
+            </>
+          )}
         </button>
         <button
           onClick={() => onSelect(account)}

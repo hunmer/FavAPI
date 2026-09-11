@@ -3,6 +3,7 @@
   "display_name": "Threads",
   "home_url": "https://www.threads.com/saved",
   "login_cookies": ["sessionid", "csrftoken"],
+  "proxy": "${FAVAPI_THREADS_PROXY}",
   "supported_actions": ["list_favorites"],
   "headers": {
     "x-ig-app-id": "238260118697367",

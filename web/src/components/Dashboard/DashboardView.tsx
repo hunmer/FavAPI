@@ -29,6 +29,7 @@ interface DashboardViewProps {
   onViewAllData: () => void;
   onOpenScheduleTab: () => void;
   onQuickSyncAccount: (account: Account) => void;
+  onLoginAccount: (account: Account) => void;
   onTriggerSchedule: (schedule: ScheduledSync) => void;
 }
 
@@ -42,6 +43,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onViewAllData,
   onOpenScheduleTab,
   onQuickSyncAccount,
+  onLoginAccount,
   onTriggerSchedule,
 }) => {
 
@@ -128,6 +130,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   account={account}
                   onSelect={onSelectAccount}
                   onQuickSync={onQuickSyncAccount}
+                  onLogin={onLoginAccount}
                 />
               </div>
             ))}

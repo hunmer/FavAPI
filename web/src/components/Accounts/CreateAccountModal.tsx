@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, Plus, AlertCircle, Sparkles, Check } from 'lucide-react';
 import { PlatformId } from '../../types';
-import { PLATFORMS } from '../../data/mockFavData';
+import { listPlatforms, PlatformInfoRow } from '../../api';
 
 interface CreateAccountModalProps {
   onClose: () => void;
@@ -12,14 +12,29 @@ export const CreateAccountModal: React.FC<CreateAccountModalProps> = ({
   onClose,
   onCreate,
 }) => {
-  const [selectedPlatform, setSelectedPlatform] = useState<PlatformId>('bilibili');
+  const [platforms, setPlatforms] = useState<PlatformInfoRow[]>([]);
+  const [selectedPlatform, setSelectedPlatform] = useState<PlatformId | ''>('');
   const [accountName, setAccountName] = useState('');
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    listPlatforms()
+      .then((items) => {
+        const available = items.filter((p) => p.implemented && p.supported_actions.includes('list_favorites'));
+        setPlatforms(available);
+        if (available.length) setSelectedPlatform((current) => current || available[0].platform);
+      })
+      .catch((e) => setError(`平台列表加载失败：${e.message}`));
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!accountName.trim()) {
       setError('请输入账号备注名称');
+      return;
+    }
+    if (!selectedPlatform) {
+      setError('暂无可用平台');
       return;
     }
     onCreate(accountName.trim(), selectedPlatform);
@@ -62,43 +77,38 @@ export const CreateAccountModal: React.FC<CreateAccountModalProps> = ({
               选择目标平台 <span className="text-red-500">*</span>
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-2 gap-2.5">
-              {PLATFORMS.map((p) => {
-                const isSelected = selectedPlatform === p.id;
+              {platforms.map((p) => {
+                const isSelected = selectedPlatform === p.platform;
                 return (
                   <button
-                    key={p.id}
+                    key={p.platform}
                     type="button"
-                    disabled={!p.isSupported}
+                    disabled={!p.implemented}
                     onClick={() => {
-                      if (p.isSupported) {
-                        setSelectedPlatform(p.id);
+                      if (p.implemented) {
+                        setSelectedPlatform(p.platform);
                         setError('');
                       }
                     }}
                     className={`relative p-3 rounded-2xl border text-left transition-all ${
-                      !p.isSupported
-                        ? 'opacity-55 cursor-not-allowed bg-slate-50 border-slate-200'
-                        : isSelected
+                      isSelected
                         ? 'border-indigo-600 bg-indigo-50/40 ring-2 ring-indigo-500/20'
                         : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-bold text-slate-900">{p.name}</span>
-                      {!p.isSupported ? (
-                        <span className="text-[10px] font-semibold bg-slate-200/80 text-slate-500 px-1.5 py-0.2 rounded-full">
-                          即将支持
-                        </span>
-                      ) : isSelected ? (
+                      <span className="text-xs font-bold text-slate-900">{p.display_name}</span>
+                      {isSelected ? (
                         <span className="w-4 h-4 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px]">
                           <Check className="w-2.5 h-2.5 stroke-[3]" />
                         </span>
                       ) : null}
                     </div>
-                    <p className="text-[11px] text-slate-500 line-clamp-1">{p.tagline}</p>
+                    <p className="text-[11px] text-slate-500 line-clamp-1">支持操作：{p.supported_actions.join('、')}</p>
                   </button>
                 );
               })}
+              {!platforms.length && <p className="col-span-2 text-xs text-slate-500">暂无可用平台</p>}
             </div>
           </div>
 

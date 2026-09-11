@@ -488,9 +488,13 @@ export interface TagStatRow {
   count: number;
 }
 
-export async function listTags(limit = 100): Promise<TagStatRow[]> {
-  const data = await request<{ tags: TagStatRow[] }>(`/tags?limit=${limit}`);
-  return data.tags;
+export interface TagGroupRow {
+  group: string;
+  tags: string[];
+}
+
+export async function listTags(limit = 100): Promise<{ tags: TagStatRow[]; groups: TagGroupRow[] }> {
+  return request(`/tags?limit=${limit}`);
 }
 
 export interface TagStreamEvent {
