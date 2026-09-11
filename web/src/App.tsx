@@ -25,6 +25,7 @@ import { SettingsView } from './components/Settings/SettingsView';
 import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
 import { DevInspector } from './components/DevInspector';
 import { AnimatePresence, motion } from 'motion/react';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 // 视图切换缓动（motion-design 规范）：入场 MD3 Emphasized 减速 / 出场 MD3 Accelerate 加速
 // 入场 400ms > 出场 200ms（Enter 比 Exit 长 30-50%），总时长落在页面过渡 400-600ms 区间
@@ -42,8 +43,13 @@ export function App() {
     setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
   };
 
-  // Navigation State
-  const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
+  // Navigation State：由 URL hash 驱动（/#/data 等），未知路径回落 dashboard
+  const NAV_TABS: NavTab[] = ['dashboard', 'accounts', 'data', 'tasks', 'schedule', 'settings'];
+  const location = useLocation();
+  const navigate = useNavigate();
+  const pathTab = location.pathname.replace(/^\//, '').split('/')[0] as NavTab;
+  const activeTab = NAV_TABS.includes(pathTab) ? pathTab : 'dashboard';
+  const setActiveTab = (tab: NavTab) => navigate(`/${tab}`);
   const [selectedAccount, setSelectedAccount] = useState<Account | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -571,7 +577,7 @@ export function App() {
                   setActiveTab('accounts');
                 }}
                 onOpenCreateAccount={() => setIsCreateModalOpen(true)}
-                onViewAllData={() => setActiveTab('data')}
+                onViewAllData={(date) => navigate(date ? `/data?date=${date}` : '/data')}
                 onOpenScheduleTab={() => setActiveTab('schedule')}
                 onQuickSyncAccount={(acc) => {
                   setSelectedAccount(acc);

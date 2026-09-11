@@ -15,11 +15,14 @@ import { PLATFORMS } from '../../data/mockFavData';
 
 interface CalendarCardProps {
   scrapedItems?: ScrapedItem[];
-  onViewAllData?: () => void;
+  onViewAllData?: (date?: string) => void;
   onSelectItem?: (item: ScrapedItem) => void;
 }
 
 const WEEK_HEADERS = ['一', '二', '三', '四', '五', '六', '日'];
+
+// 列表最多直接展示条数，超出引导跳转收藏数据中心
+const MAX_VISIBLE_ITEMS = 20;
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
@@ -65,6 +68,8 @@ export const CalendarCard: React.FC<CalendarCardProps> = ({
     () => scrapedItems.filter((item) => (item.crawlTime || '').startsWith(selectedDateStr)),
     [scrapedItems, selectedDateStr]
   );
+  const visibleItems = dayItems.slice(0, MAX_VISIBLE_ITEMS);
+  const hiddenCount = dayItems.length - visibleItems.length;
 
   const handleDayClick = (day: number) => {
     setSelectedDay(day);
@@ -163,7 +168,7 @@ export const CalendarCard: React.FC<CalendarCardProps> = ({
         {onViewAllData && (
           <button
             type="button"
-            onClick={onViewAllData}
+            onClick={() => onViewAllData()}
             className="text-[11px] font-semibold text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-0.5 cursor-pointer"
           >
             全部数据
@@ -175,7 +180,8 @@ export const CalendarCard: React.FC<CalendarCardProps> = ({
       {/* Collection Items List below Calendar, reactive to selected day */}
       <div className="mt-3 space-y-2.5 max-h-[380px] overflow-y-auto pr-1">
         {dayItems.length > 0 ? (
-          dayItems.map((item) => {
+          <>
+          {visibleItems.map((item) => {
             const platformMeta = PLATFORMS.find((p) => p.id === item.platform) || PLATFORMS[0];
             const displayTime = item.crawlTime ? item.crawlTime.split(' ')[1] : '';
 
@@ -254,7 +260,20 @@ export const CalendarCard: React.FC<CalendarCardProps> = ({
                 </div>
               </div>
             );
-          })
+          })}
+
+          {/* 超出上限：一键跳转收藏数据中心（按当前选中日期过滤） */}
+          {hiddenCount > 0 && (
+            <button
+              type="button"
+              onClick={() => onViewAllData?.(selectedDateStr)}
+              className="w-full py-2.5 rounded-2xl border border-sky-100 dark:border-sky-900/60 bg-sky-50/60 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400 hover:bg-sky-100/80 dark:hover:bg-sky-900/50 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            >
+              已展示前 {MAX_VISIBLE_ITEMS} 条，查看全部 {dayItems.length} 条
+              <ArrowRight className="w-3 h-3" />
+            </button>
+          )}
+          </>
         ) : (
           <div className="py-8 px-4 text-center bg-slate-50/50 dark:bg-slate-800/30 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
             <div className="w-9 h-9 mx-auto rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center mb-2">

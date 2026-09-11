@@ -45,6 +45,19 @@ platforms/<platform>/platform.json
 
 字段规则：`items_path` 使用点路径，数组节点加 `[]`；`fields` 左侧为通用 content 字段，右侧为响应对象路径。可配置 `headers`、`wait_ms`、`max_rounds`、`scroll_step`、`scroll_wait_ms`。
 
+需要自定义脚本时，在同一平台目录内放置脚本并在 JSON 声明：
+
+```json
+"scripts": {
+  "before_login_js": "prepare.js",
+  "after_fetch_page_js": "expand.js",
+  "before_fetch_python": "sign_request.py",
+  "python_timeout": 30
+}
+```
+
+JS 脚本在页面上下文执行，接收 `{account_id, params}` 参数；Python 脚本以当前 Python 解释器启动，从 stdin 接收 JSON（含 `account_id`、`platform`、`params`），工作目录为平台目录。支持阶段：`before_login_js`、`after_login_page_js`、`before_fetch_js/python`、`after_fetch_page_js/python`。脚本路径必须位于平台目录内，非零退出或超时会使任务失败。
+
 代理：`proxy: "auto"`（默认）读取 `HTTPS_PROXY/HTTP_PROXY`，Windows 再读取 Internet Settings；也可填 URL 或 `{server, username, password}`。
 
 ## Python 适配器

@@ -26,7 +26,7 @@ interface DashboardViewProps {
   stats?: api.StatsData | null;
   onSelectAccount: (account: Account) => void;
   onOpenCreateAccount: () => void;
-  onViewAllData: () => void;
+  onViewAllData: (date?: string) => void;
   onOpenScheduleTab: () => void;
   onQuickSyncAccount: (account: Account) => void;
   onLoginAccount: (account: Account) => void;

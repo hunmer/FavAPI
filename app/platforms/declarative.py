@@ -1,5 +1,5 @@
 """声明式 JSON 平台适配器。用于无需编写 Python 的简单收藏接口。"""
-import asyncio, json, logging, time, os, re
+import asyncio, json, logging, time, os, re, subprocess, sys
 from pathlib import Path
 from app import config
 from app.platforms.base import BasePlatformAdapter, FetchResult, AccountContext, LoginExpiredError
@@ -56,10 +56,38 @@ class DeclarativeAdapter(BasePlatformAdapter):
             if m: return os.environ.get(m.group(1)) or None
         return value
 
+    def _script_path(self, value):
+        if not value or not self.base_dir: return None
+        path = (self.base_dir / value).resolve()
+        try: path.relative_to(self.base_dir.resolve())
+        except ValueError: raise ValueError('脚本路径必须位于平台目录内')
+        return path
+
+    async def _run_hooks(self, phase, page, account, params):
+        hooks = self.spec.get('scripts') or {}
+        js = hooks.get(f'{phase}_js')
+        if js:
+            path = self._script_path(js); source = path.read_text(encoding='utf-8')
+            await page.evaluate(source, {'account_id': account.account_id, 'params': params})
+        py = hooks.get(f'{phase}_python')
+        if py:
+            path = self._script_path(py)
+            proc = await asyncio.create_subprocess_exec(sys.executable, str(path),
+                stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE, cwd=str(self.base_dir))
+            payload = json.dumps({'account_id': account.account_id, 'platform': self.platform, 'params': params}, ensure_ascii=False).encode()
+            try:
+                out, err = await asyncio.wait_for(proc.communicate(payload), timeout=float(hooks.get('python_timeout', 30)))
+            except asyncio.TimeoutError:
+                proc.kill(); await proc.wait(); raise RuntimeError(f'Python 脚本超时：{path.name}')
+            if proc.returncode:
+                raise RuntimeError(f'Python 脚本失败：{path.name} ({err.decode(errors="replace")[-500:]})')
+            return out.decode(errors='replace')
+
     async def login(self, account, timeout=None):
         timeout=timeout or config.LOGIN_TIMEOUT; deadline=time.monotonic()+timeout
         async with browser.session(account.profile_path, headless=False, proxy=self._proxy()) as ctx:
-            page=ctx.pages[0] if ctx.pages else await ctx.new_page(); await page.goto(self.home_url,wait_until='domcontentloaded')
+            page=ctx.pages[0] if ctx.pages else await ctx.new_page(); await self._run_hooks('before_login', page, account, {}); await page.goto(self.home_url,wait_until='domcontentloaded'); await self._run_hooks('after_login_page', page, account, {})
             keys=tuple(self.spec.get('login_cookies',[]))
             while time.monotonic()<deadline:
                 if browser.has_login_cookies(await ctx.cookies(),keys): return True
@@ -85,6 +113,7 @@ class DeclarativeAdapter(BasePlatformAdapter):
         cursor = params.get('cursor'); has_more = False
         async with browser.session(account.profile_path,headless=config.HEADLESS, proxy=self._proxy()) as ctx:
             page=ctx.pages[0] if ctx.pages else await ctx.new_page()
+            await self._run_hooks('before_fetch', page, account, params)
             headers = dict(self.spec.get('headers') or {}); headers.update(cap.get('headers') or {})
             if headers:
                 await ctx.set_extra_http_headers({str(k): str(v) for k, v in headers.items()})
@@ -110,7 +139,7 @@ class DeclarativeAdapter(BasePlatformAdapter):
                 if items:
                     batches.extend(items)
                     if on_batch: await on_batch({'page':len(batches),'items':items})
-            page.on('response',on_response); await page.goto(cap.get('page_url') or self.home_url,wait_until='domcontentloaded'); await page.wait_for_timeout(int(cap.get('wait_ms',3000)))
+            page.on('response',on_response); await page.goto(cap.get('page_url') or self.home_url,wait_until='domcontentloaded'); await self._run_hooks('after_fetch_page', page, account, params); await page.wait_for_timeout(int(cap.get('wait_ms',3000)))
             for _ in range(max_rounds):
                 if (target and len({i['content_id'] for i in batches}) >= target) or (batches and not has_more):
                     break
