@@ -187,6 +187,20 @@ export function App() {
         PLATFORMS.forEach((p) => {
           p.isSupported = implemented.has(p.id);
         });
+        // 后端热加载平台（如 threads）不在静态列表中，动态追加
+        const known = new Set(PLATFORMS.map((p) => p.id));
+        for (const info of infos) {
+          if (known.has(info.platform)) continue;
+          PLATFORMS.push({
+            id: info.platform,
+            name: info.display_name,
+            icon: '',
+            color: '#64748B',
+            badgeBg: 'bg-slate-100 text-slate-600 border-slate-200',
+            isSupported: info.implemented,
+            tagline: '',
+          });
+        }
       } catch {
         /* 后端不可用时保持静态标记 */
       }
