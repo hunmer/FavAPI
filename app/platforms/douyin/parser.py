@@ -31,9 +31,11 @@ def parse_aweme(aweme: dict) -> dict:
         for k in ("digg_count", "comment_count", "share_count", "collect_count", "play_count")
     }
 
-    # 收藏时间：不同版本接口字段名不同，逐个尝试（epoch 秒 → ISO）
+    # 收藏时间：不同版本接口字段名不同，逐个尝试（epoch 秒 → ISO）。
+    # listcollection 当前响应通常不提供收藏时间，使用作品发布时间兜底，
+    # 确保收藏记录的 collected_at 可用于展示和排序。
     collected_at = None
-    for key in ("collect_time", "collected_at", "collect_date"):
+    for key in ("collect_time", "collected_at", "collect_date", "create_time"):
         ts = _as_int(aweme.get(key))
         if ts:
             try:

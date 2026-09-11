@@ -5,6 +5,7 @@
 """
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -49,6 +50,14 @@ def test_parse_aweme_missing_fields():
     assert row["content_id"] == "1"
     assert row["title"] is None and row["author_name"] is None
     assert row["duration"] is None and row["cover_url"] is None
+
+
+def test_parse_sample_collected_at_fallback():
+    sample_path = Path(__file__).resolve().parent.parent / "samples" / "douyin_favorites.json"
+    data = json.loads(sample_path.read_text(encoding="utf-8"))
+    row = parse_listcollection(data)["items"][0]
+    expected = datetime.fromtimestamp(data["aweme_list"][0]["create_time"]).astimezone().isoformat(timespec="seconds")
+    assert row["collected_at"] == expected
 
 
 def test_parse_listcollection_dedup_and_meta():

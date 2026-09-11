@@ -181,7 +181,10 @@ export function toScrapedItem(row: FavoriteRow, accountNameById: Map<string, str
     title: row.title || row.content_id,
     url: row.url || '',
     author: row.author_name || '—',
-    duration: row.duration ? fmtDuration(row.duration) : undefined,
+    // 抖音的 duration 存的是毫秒，格式化前先转秒
+    duration: row.duration
+      ? fmtDuration(row.platform === 'douyin' ? row.duration / 1000 : row.duration)
+      : undefined,
     likes: stats.digg_count ?? stats.like_count ?? 0,
     favorites: stats.collect_count ?? 0,
     folderName: row.fav_title || '默认收藏夹',
