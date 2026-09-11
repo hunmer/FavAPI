@@ -74,6 +74,33 @@ class BilibiliAdapter(BasePlatformAdapter):
             logger.info("[%s] 登录态检查：%s", account.account_id, "有效" if ok else "无效")
             return ok
 
+    async def refresh_profile(self, account: AccountContext) -> None:
+        """登录成功后回填主人信息：nav 接口取昵称/头像，list-all 取收藏夹列表。"""
+        async with browser.session(account.profile_path, headless=True) as ctx:
+            cookies = await ctx.cookies()
+            mid = next(
+                (c["value"] for c in cookies if c.get("name") == "DedeUserID" and c.get("value")),
+                "",
+            )
+            if not mid:
+                return
+            data = await self._api_get(ctx, constants.NAV_API, {}, {})
+            owner = {
+                "mid": str(data.get("mid") or mid),
+                "name": data.get("uname"),
+                "face": data.get("face"),
+            }
+            headers = {"Referer": f"https://space.bilibili.com/{owner['mid']}/favlist"}
+            folders_data = await self._api_get(
+                ctx, constants.FAV_FOLDER_LIST_API, {"up_mid": owner["mid"]}, headers
+            )
+            folders = parse_folder_list(folders_data)["folders"]
+            await self._save_owner(account.account_id, {"owner": owner, "folders": folders})
+            logger.info(
+                "[%s] 身份信息已回填：%s(%s)，%d 个收藏夹",
+                account.account_id, owner.get("name"), owner["mid"], len(folders),
+            )
+
     async def fetch_favorites(
         self, account: AccountContext, params: dict, on_batch=None
     ) -> FetchResult:

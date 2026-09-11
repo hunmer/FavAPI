@@ -132,9 +132,11 @@ async def _checks(client: httpx.AsyncClient) -> int:
     # 6. 任务记录生命周期
     task_id = new_id("task")
     await data_store.create_task(task_id, acc["account_id"], "douyin", "list_favorites", {"count": 20})
-    await data_store.update_task(task_id, status="success", result_count=3, started_at=now_iso(), finished_at=now_iso())
+    await data_store.update_task(task_id, status="success", result_count=3, new_favorites=2,
+                                 started_at=now_iso(), finished_at=now_iso())
     r = await client.get(f"/api/v1/tasks/{task_id}")
     check("tasks.detail", r.status_code == 200 and r.json()["status"] == "success")
+    check("tasks.new_favorites", r.json().get("new_favorites") == 2, r.text)
     r = await client.get("/api/v1/tasks")
     check("tasks.list_contains", any(t["task_id"] == task_id for t in r.json()["tasks"]))
 
@@ -181,12 +183,25 @@ async def _checks(client: httpx.AsyncClient) -> int:
         "SELECT COUNT(*) AS n FROM contents WHERE platform='douyin'")
     check("contents.kept_after_delete", row["n"] == 3)
 
-    # 9. Web 页面
-    for path in ("/", "/tasks", "/favorites"):
-        r = await client.get(path)
-        check(f"web.page {path}", r.status_code == 200 and "FavAPI" in r.text)
+    # 9. Web 控制台（web/dist SPA 静态托管；未构建时返回构建提示页）
+    r = await client.get("/")
+    check("web.page /", r.status_code == 200 and "FavAPI" in r.text)
 
-    # 10. OpenAPI
+    # 10. 统计接口
+    r = await client.get("/api/v1/stats")
+    s = r.json()
+    check("stats.fields", r.status_code == 200 and s["accounts_total"] >= 1
+          and all(k in s for k in ("favorites_total", "today_new_favorites",
+                                   "db_size_bytes", "data_dir_size_bytes", "schedules_active")), r.text)
+    check("stats.sizes", isinstance(s["data_dir_size_bytes"], int) and s["data_dir_size_bytes"] >= 0)
+
+    # 11. 登录后身份回填钩子（默认空实现，Bilibili 覆写）
+    from app.platforms import registry as _registry
+    bili = _registry.get_adapter("bilibili")
+    check("adapter.refresh_profile", hasattr(bili, "refresh_profile") and hasattr(
+        _registry.get_adapter("douyin"), "refresh_profile"))
+
+    # 12. OpenAPI
     r = await client.get("/openapi.json")
     check("openapi", r.status_code == 200)
 

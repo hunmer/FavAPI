@@ -52,3 +52,9 @@ class BasePlatformAdapter(ABC):
         await on_batch({"folder": ..., "page": ..., "items": [...], "total_fetched": ...})，
         便于调用方增量入库 / SSE 推送；不提供时行为与原同步抓取一致。
         """
+
+    async def refresh_profile(self, account: AccountContext) -> None:
+        """登录成功后回填账号身份信息（昵称/头像/收藏夹等，可选覆写）。
+
+        实现方自行写入账号 extra；失败不抛出（调用方已兜底，仅影响展示）。
+        """

@@ -94,7 +94,7 @@ async def list_favorites(
         f"SELECT COUNT(*) AS n FROM favorites f {where_sql}", tuple(params)
     )
     rows = await db.query_all(
-        f"""SELECT f.content_id, f.platform, f.fav_media_id, f.fav_title,
+        f"""SELECT f.account_id, f.content_id, f.platform, f.fav_media_id, f.fav_title,
                    f.collected_at, f.fetched_at,
                    c.title, c.author_name, c.cover_url, c.duration, c.statistics
             FROM favorites f LEFT JOIN contents c
@@ -113,6 +113,7 @@ async def list_favorites(
             statistics = {}
         items.append({
             "content_id": r["content_id"],
+            "account_id": r.get("account_id"),
             "platform": r["platform"],
             "title": r.get("title"),
             "author_name": r.get("author_name"),

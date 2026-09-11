@@ -10,6 +10,8 @@ HOME_URL = "https://www.bilibili.com/"
 FAV_FOLDER_LIST_API = "https://api.bilibili.com/x/v3/fav/folder/created/list-all"
 # resource/list：单个收藏夹内容，pn/ps 翻页
 FAV_RESOURCE_LIST_API = "https://api.bilibili.com/x/v3/fav/resource/list"
+# nav：当前登录用户信息（uname / face / mid）
+NAV_API = "https://api.bilibili.com/x/web-interface/nav"
 
 # 判定已登录的 cookie（任一存在且非空即视为登录）
 LOGIN_COOKIE_KEYS = ("SESSDATA",)

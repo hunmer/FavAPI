@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS fetch_tasks (
     request_params  TEXT,
     status          TEXT,
     result_count    INTEGER,
+    new_favorites   INTEGER,
     error_message   TEXT,
     started_at      TEXT,
     finished_at     TEXT
@@ -58,9 +59,25 @@ CREATE TABLE IF NOT EXISTS favorites (
     UNIQUE(account_id, platform, content_id, fav_media_id)
 );
 
+CREATE TABLE IF NOT EXISTS schedules (
+    schedule_id    TEXT PRIMARY KEY,
+    title          TEXT,
+    account_id     TEXT NOT NULL,
+    platform       TEXT NOT NULL,
+    action         TEXT DEFAULT 'list_favorites',
+    params         TEXT,
+    cron_expr      TEXT NOT NULL,
+    status         TEXT DEFAULT 'active',   -- active / paused
+    last_run_at    TEXT,
+    next_run_at    TEXT,
+    last_task_id   TEXT,
+    created_at     TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_favorites_account ON favorites(account_id, platform);
 CREATE INDEX IF NOT EXISTS idx_tasks_started ON fetch_tasks(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_contents_platform ON contents(platform);
+CREATE INDEX IF NOT EXISTS idx_schedules_due ON schedules(status, next_run_at);
 """
 
 
@@ -81,32 +98,36 @@ class Database:
         await self._conn.commit()
 
     async def _migrate(self):
-        """老库迁移：favorites 表补充收藏夹归属列（重建表保留原数据）。"""
+        """老库迁移。"""
         async with self.conn.execute("PRAGMA table_info(favorites)") as cur:
-            cols = [row[1] for row in await cur.fetchall()]
-        if "fav_media_id" in cols:
-            return
-        await self.conn.executescript("""
-            BEGIN;
-            CREATE TABLE favorites_new (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                account_id      TEXT,
-                platform        TEXT,
-                content_id      TEXT,
-                fav_media_id    TEXT DEFAULT '',
-                fav_title       TEXT DEFAULT '',
-                collected_at    TEXT,
-                fetched_at      TEXT,
-                UNIQUE(account_id, platform, content_id, fav_media_id)
-            );
-            INSERT INTO favorites_new (id, account_id, platform, content_id, fav_media_id,
-                                       fav_title, collected_at, fetched_at)
-              SELECT id, account_id, platform, content_id, '', '', collected_at, fetched_at FROM favorites;
-            DROP TABLE favorites;
-            ALTER TABLE favorites_new RENAME TO favorites;
-            CREATE INDEX IF NOT EXISTS idx_favorites_account ON favorites(account_id, platform);
-            COMMIT;
-        """)
+            fav_cols = [row[1] for row in await cur.fetchall()]
+        if "fav_media_id" not in fav_cols:
+            await self.conn.executescript("""
+                BEGIN;
+                CREATE TABLE favorites_new (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_id      TEXT,
+                    platform        TEXT,
+                    content_id      TEXT,
+                    fav_media_id    TEXT DEFAULT '',
+                    fav_title       TEXT DEFAULT '',
+                    collected_at    TEXT,
+                    fetched_at      TEXT,
+                    UNIQUE(account_id, platform, content_id, fav_media_id)
+                );
+                INSERT INTO favorites_new (id, account_id, platform, content_id, fav_media_id,
+                                           fav_title, collected_at, fetched_at)
+                  SELECT id, account_id, platform, content_id, '', '', collected_at, fetched_at FROM favorites;
+                DROP TABLE favorites;
+                ALTER TABLE favorites_new RENAME TO favorites;
+                CREATE INDEX IF NOT EXISTS idx_favorites_account ON favorites(account_id, platform);
+                COMMIT;
+            """)
+
+        async with self.conn.execute("PRAGMA table_info(fetch_tasks)") as cur:
+            task_cols = [row[1] for row in await cur.fetchall()]
+        if "new_favorites" not in task_cols:
+            await self.conn.execute("ALTER TABLE fetch_tasks ADD COLUMN new_favorites INTEGER")
 
     @property
     def conn(self) -> aiosqlite.Connection:

@@ -131,7 +131,9 @@ async def _run_task(task_id: str, account: dict, action: str, params: dict) -> d
         if result.meta:
             payload["meta"] = result.meta
         await data_store.update_task(
-            task_id, status="success", result_count=summary["result_count"], finished_at=now_iso()
+            task_id,
+            status="success", result_count=summary["result_count"],
+            new_favorites=summary["new_favorites"], finished_at=now_iso(),
         )
         await account_manager.save_cookie_snapshot(account_id)  # 抓取成功自动刷新快照
         return payload
@@ -216,7 +218,8 @@ async def stream_fetch_events(task_id: str, account: dict, adapter, action: str,
             if result.meta:
                 payload["meta"] = result.meta
             await data_store.update_task(
-                task_id, status="success", result_count=saved_count, finished_at=now_iso()
+                task_id, status="success", result_count=saved_count,
+                new_favorites=new_count, finished_at=now_iso()
             )
             await queue.put(payload)
             await account_manager.save_cookie_snapshot(account_id)  # 抓取成功自动刷新快照

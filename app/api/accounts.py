@@ -1,5 +1,6 @@
 """账号管理 API（PRD 3.1）。"""
 import asyncio
+import logging
 
 from fastapi import APIRouter, HTTPException
 
@@ -8,6 +9,8 @@ from app.platforms import registry
 from app.services import account_manager
 from app.services.task_executor import friendly_error
 from app.utils import now_iso
+
+logger = logging.getLogger("favapi.accounts")
 
 router = APIRouter(prefix="/api/v1/accounts", tags=["accounts"])
 
@@ -105,8 +108,11 @@ async def _do_login(account_id: str, adapter):
         if ok:
             await account_manager.update_account(account_id, status="active", last_login_at=now_iso())
             await account_manager.save_cookie_snapshot(account_id)  # 登录成功自动刷新快照
+            try:
+                await adapter.refresh_profile(account_manager.to_context(account))  # 回填昵称/头像/收藏夹
+            except Exception as exc:
+                logger.warning("账号 %s 身份信息回填失败（不影响登录）：%s", account_id, friendly_error(exc))
     except Exception as exc:  # 浏览器异常（如内核未安装）不改动账号状态，仅日志
-        from app.services.task_executor import logger
         logger.error("登录流程异常（%s）：%s", account_id, friendly_error(exc))
     finally:
         account_manager.clear_login_started(account_id)

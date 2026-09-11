@@ -58,13 +58,48 @@ class TaskOut(BaseModel):
     request_params: dict[str, Any] = Field(default_factory=dict)
     status: str | None = None
     result_count: int | None = None
+    new_favorites: int | None = None
     error_message: str | None = None
     started_at: str | None = None
     finished_at: str | None = None
 
 
+# ---------- 定时任务 ----------
+
+class ScheduleCreate(BaseModel):
+    account_id: str
+    cron_expr: str
+    title: str = ""
+    action: str = "list_favorites"
+    params: dict[str, Any] = Field(default_factory=dict)
+    status: str = "active"
+
+
+class ScheduleUpdate(BaseModel):
+    title: str | None = None
+    cron_expr: str | None = None
+    params: dict[str, Any] | None = None
+    status: str | None = None  # active / paused
+
+
+class ScheduleOut(BaseModel):
+    schedule_id: str
+    title: str | None = None
+    account_id: str
+    platform: str
+    action: str
+    params: dict[str, Any] = Field(default_factory=dict)
+    cron_expr: str
+    status: str
+    last_run_at: str | None = None
+    next_run_at: str | None = None
+    last_task_id: str | None = None
+    created_at: str | None = None
+
+
 class FavoriteItem(BaseModel):
     content_id: str
+    account_id: str | None = None
     platform: str
     title: str | None = None
     author_name: str | None = None
