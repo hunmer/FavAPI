@@ -361,7 +361,7 @@ export async function fetchAsync(platform: string, accountId: string, form: Scra
 export interface StreamEvent {
   type: 'task' | 'items' | 'done' | 'error';
   task_id?: string;
-  items?: Array<{ content_id: string; title?: string; author_name?: string; duration?: number; fav_title?: string | null; collected_at?: string }>;
+  items?: Array<{ content_id: string; title?: string; author_name?: string; cover_url?: string | null; url?: string | null; duration?: number; fav_title?: string | null; collected_at?: string }>;
   new_count?: number;
   total_fetched?: number;
   result_count?: number;

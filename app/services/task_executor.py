@@ -6,6 +6,7 @@ from app import config
 from app.platforms import registry
 from app.platforms.base import LoginExpiredError
 from app.services import account_manager, data_store
+from app.services.download_store import content_url
 from app.utils import new_id, now_iso
 
 logger = logging.getLogger("favapi.task")
@@ -24,12 +25,14 @@ def friendly_error(exc: Exception) -> str:
     return msg
 
 
-def _item_summaries(items: list[dict]) -> list[dict]:
+def _item_summaries(items: list[dict], platform: str) -> list[dict]:
     return [
         {
             "content_id": it["content_id"],
             "title": it.get("title"),
             "author_name": it.get("author_name"),
+            "cover_url": it.get("cover_url"),
+            "url": content_url(platform, it["content_id"]) or None,
             "duration": it.get("duration"),
             "fav_title": it.get("fav_title") or None,
             "collected_at": it.get("collected_at"),
@@ -134,7 +137,7 @@ async def _run_task(task_id: str, account: dict, action: str, params: dict) -> d
             "new_favorites": summary["new_favorites"],
             "cursor": result.cursor,
             "has_more": result.has_more,
-            "items": _item_summaries(result.items),
+            "items": _item_summaries(result.items, account["platform"]),
         }
         if result.meta:
             payload["meta"] = result.meta
@@ -207,7 +210,7 @@ async def stream_fetch_events(task_id: str, account: dict, adapter, action: str,
             "page": batch.get("page"),
             "new_count": len(fresh),
             "total_fetched": batch.get("total_fetched") or len(seen),
-            "items": _item_summaries(fresh),
+            "items": _item_summaries(fresh, account["platform"]),
         })
 
     async def _worker():

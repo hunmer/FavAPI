@@ -346,7 +346,7 @@ export function App() {
   ): ScrapedItem => ({
     id: it.content_id,
     title: it.title || it.content_id,
-    url: '#',
+    url: it.url || '#',
     author: it.author_name || '—',
     duration: it.duration ? `${Math.floor(it.duration / 60)}:${String(it.duration % 60).padStart(2, '0')}` : undefined,
     likes: 0,
@@ -354,7 +354,7 @@ export function App() {
     folderName: it.fav_title || folderFallback || '默认收藏夹',
     favTime: (it.collected_at || '').replace('T', ' ').slice(0, 19),
     crawlTime: new Date().toISOString().replace('T', ' ').slice(0, 19),
-    coverUrl: '',
+    coverUrl: it.cover_url || '',
     platform: account.platform,
     accountId: account.id,
     accountName: account.name,

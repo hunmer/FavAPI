@@ -9,6 +9,7 @@ description: 为 FavAPI 创建新平台适配器，优先使用声明式 platfor
 
 - 页面能触发 JSON 接口且字段稳定：使用声明式适配器。
 - 需要签名算法、复杂分页、特殊登录或多接口合并：实现 Python 适配器。
+- 页面展示的是登录后动态内容（例如 YouTube `feed/playlists` / `playlist?list=LL`），且接口返回 401、结构不稳定或只返回分组时：优先用已登录浏览器打开页面，从 DOM 提取 ID/条目，再调用专用接口或外部工具获取详情；不要假设页面 URL 可以直接交给外部工具。
 - 不修改现有 bilibili、xiaohongshu、douyin 行为；先用独立目录验证。
 
 ## 声明式适配器（推荐）
@@ -60,9 +61,20 @@ JS 脚本在页面上下文执行，接收 `{account_id, params}` 参数；Pytho
 
 代理：`proxy: "auto"`（默认）读取 `HTTPS_PROXY/HTTP_PROXY`，Windows 再读取 Internet Settings；也可填 URL 或 `{server, username, password}`。
 
+### 动态页面与外部工具实践
+
+- 先确认页面语义：`feed/playlists` 可能展示播放列表分组，`playlist?list=LL` 才是“喜欢的视频”条目；抓取 URL、字段和内容类型必须与页面实际展示一致。
+- 浏览器 DOM 抓取应等待 `domcontentloaded` 后再等待异步渲染，并通过滚动触发懒加载；使用稳定选择器（元素 ID、组件标签、`content-id-*` 等），不要依赖经常变化的 CSS 哈希类名。
+- 图片字段可能在 `currentSrc`、`src`、`data-src` 或 `srcset`，应按优先级读取；仍为空时可使用内容 ID 构造平台稳定缩略图 URL作为兜底。
+- 若复用 `yt-dlp` 等外部工具，先由浏览器解析需要登录的页面，再将具体条目 URL 交给工具；记录可执行文件、参数、返回码和 stderr 摘要。不要把 Cookie 值写入日志。
+- 账号 Cookie 快照转换为 Netscape 文件时保留 `secure` 属性，并按平台域名过滤；YouTube 通常需要同时保留 `youtube.com` 与 `google.com` 域名 Cookie。Cookie 仅存在不代表外部工具一定能通过认证，仍需用真实命令验证。
+- 流式抓取中必须在“加入列表”和触发 `on_batch` 之前执行 `count` 限制；最后再裁剪只能限制 `FetchResult`，无法撤回已经入库或推送的超额条目。
+
 ## Python 适配器
 
 在 `app/platforms/<platform>/adapter.py` 继承 `BasePlatformAdapter`，实现 `login`、`check_login_status`、`fetch_favorites`，返回 `FetchResult(items=...)`。在 `registry.py` 导入并 `register(Adapter())`；复杂解析逻辑放同目录 `parser.py`。
+
+专用适配器若使用平台目录资源（如 `icon`），应提供 `base_dir` 并在注册时传入实际平台目录；否则 `/api/v1/platforms/<platform>/icon` 无法定位文件。声明式适配器可直接在 `platform.json` 配置 `icon`，文件必须位于同一平台目录。
 
 ## 本地验证
 
@@ -73,6 +85,8 @@ Invoke-RestMethod -Method Post "http://127.0.0.1:8300/api/v1/platforms/reload"
 ```
 
 确认平台 `implemented=true`、包含 `list_favorites`，再创建账号并用真实 profile 登录。检查任务返回的 `items`、`cursor`、`has_more`。
+
+涉及浏览器或外部工具的平台还应执行一次真实小数量抓取（例如 `count=1` 或 `count=20`），核对日志中的页面 URL、发现条目数量、工具返回码、Cookie 名称（不含值）和最终入库数量；不要只以“登录成功”判断抓取链路可用。
 
 ## 生产导入与激活
 

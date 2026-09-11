@@ -57,19 +57,22 @@ class YouTubeAdapter(BasePlatformAdapter):
                     const link = el.querySelector('a[href*="watch?v="]');
                     const author = el.querySelector('a[href*="/channel/"]');
                     const image = el.querySelector('img');
+                    const imageUrl = image?.currentSrc || image?.src || image?.getAttribute('data-thumb') || image?.getAttribute('data-src') || image?.getAttribute('srcset')?.split(',')[0]?.trim().split(' ')[0] || '';
                     const duration = el.querySelector('[aria-label*="minute"], [aria-label*="second"]');
                     return {id, title: titleEl?.textContent?.trim() || '', url: link?.href || '',
-                        author: author?.textContent?.trim() || '', image: image?.src || '',
+                        author: author?.textContent?.trim() || '', image: imageUrl,
                         duration: duration?.getAttribute('aria-label') || ''};
                 })""")
                 fresh = []
                 for row in rows:
+                    if target and len(items) >= target:
+                        break
                     content_id = str(row.get("id") or "")
                     if not content_id or any(i["content_id"] == content_id for i in items):
                         continue
                     item = {"content_id": content_id, "title": row.get("title") or None,
                             "description": None, "author_name": row.get("author") or None,
-                            "cover_url": row.get("image") or None,
+                            "cover_url": row.get("image") or f"https://i.ytimg.com/vi/{content_id}/hqdefault.jpg",
                             "raw_data": json.dumps(row, ensure_ascii=False)}
                     items.append(item); fresh.append(item)
                 if fresh and on_batch:
