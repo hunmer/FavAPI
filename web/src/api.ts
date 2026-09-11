@@ -338,6 +338,8 @@ export interface FavoriteListOpts {
   author?: string;
   dateStart?: string;
   dateEnd?: string;
+  pubStart?: string;
+  pubEnd?: string;
   tags?: string[];
   q?: string;
   limit?: number;
@@ -352,6 +354,8 @@ export async function listFavorites(opts: FavoriteListOpts = {}): Promise<{ tota
   if (opts.author) p.set('author', opts.author);
   if (opts.dateStart) p.set('date_start', opts.dateStart);
   if (opts.dateEnd) p.set('date_end', opts.dateEnd);
+  if (opts.pubStart) p.set('pub_start', opts.pubStart);
+  if (opts.pubEnd) p.set('pub_end', opts.pubEnd);
   if (opts.tags?.length) p.set('tags', opts.tags.join(','));
   if (opts.q) p.set('q', opts.q);
   return request(`/favorites?${p.toString()}`);

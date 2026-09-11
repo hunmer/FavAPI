@@ -112,6 +112,8 @@ async def list_favorites(
     author: str | None = None,
     date_start: str | None = None,
     date_end: str | None = None,
+    pub_start: str | None = None,
+    pub_end: str | None = None,
     tags: str | None = Query(None, description="逗号分隔多标签，OR 匹配"),
     q: str | None = None,
     limit: int = Query(50, ge=1, le=5000),
@@ -119,7 +121,7 @@ async def list_favorites(
 ):
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
     result = await data_store.list_favorites(
-        account_id, platform, tag, folder, author, date_start, date_end, tag_list, q, limit, offset
+        account_id, platform, tag, folder, author, date_start, date_end, pub_start, pub_end, tag_list, q, limit, offset
     )
     result["items"] = [FavoriteItem(**i).model_dump() for i in result["items"]]
     return result

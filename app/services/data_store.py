@@ -5,6 +5,14 @@ import json
 from app.database import db
 from app.utils import now_iso
 
+# 作品发布日期（YYYY-MM-DD，本地时区）：各平台发布时间字段不一，均为 epoch 秒。
+# douyin=create_time / bilibili=ctime / wechat=createTime；xiaohongshu 接口不提供（为 NULL）。
+_PUBLISH_DATE_SQL = (
+    "date(COALESCE(json_extract(c.raw_data, '$.create_time'),"
+    " json_extract(c.raw_data, '$.ctime'),"
+    " json_extract(c.raw_data, '$.createTime')), 'unixepoch', 'localtime')"
+)
+
 
 # ---------- contents / favorites ----------
 
@@ -72,15 +80,14 @@ async def delete_favorites(refs: list[dict]) -> int:
     """批量删除收藏关系行（contents 主表保留，与标签删除行为一致）。
 
     refs: [{account_id, platform, content_id}]，按三元组精确删除。
+    executemany 一次提交（全选数千条时避免逐条往返）。
     """
-    deleted = 0
-    for r in refs:
-        cur = await db.execute(
-            "DELETE FROM favorites WHERE account_id = ? AND platform = ? AND content_id = ?",
-            (r.get("account_id"), r.get("platform"), r.get("content_id")),
-        )
-        deleted += cur.rowcount or 0
-    return deleted
+    rows = [(r.get("account_id"), r.get("platform"), r.get("content_id")) for r in refs]
+    cur = await db.executemany(
+        "DELETE FROM favorites WHERE account_id = ? AND platform = ? AND content_id = ?",
+        rows,
+    )
+    return cur.rowcount or 0
 
 
 async def clear_favorites(account_id: str) -> int:
@@ -105,6 +112,8 @@ async def list_favorites(
     author: str | None = None,
     date_start: str | None = None,
     date_end: str | None = None,
+    pub_start: str | None = None,
+    pub_end: str | None = None,
     tags: list[str] | None = None,
     q: str | None = None,
     limit: int = 50,
@@ -145,6 +154,15 @@ async def list_favorites(
     if date_end:
         where.append("substr(f.fetched_at, 1, 10) <= ?")
         params.append(date_end)
+    if pub_start or pub_end:
+        # 发布时间缺失的内容（如小红书）在启用发布时间过滤时排除
+        where.append(f"{_PUBLISH_DATE_SQL} IS NOT NULL")
+        if pub_start:
+            where.append(f"{_PUBLISH_DATE_SQL} >= ?")
+            params.append(pub_start)
+        if pub_end:
+            where.append(f"{_PUBLISH_DATE_SQL} <= ?")
+            params.append(pub_end)
     if tags:
         placeholders = ",".join("?" for _ in tags)
         where.append(f"EXISTS (SELECT 1 FROM json_each(c.tags) WHERE json_each.value IN ({placeholders}))")

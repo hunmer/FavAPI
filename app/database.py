@@ -203,6 +203,11 @@ class Database:
         await self.conn.commit()
         return cur
 
+    async def executemany(self, sql: str, rows: list[tuple]) -> aiosqlite.Cursor:
+        cur = await self.conn.executemany(sql, rows)
+        await self.conn.commit()
+        return cur
+
     async def query_one(self, sql: str, params=()) -> dict | None:
         async with self.conn.execute(sql, params) as cur:
             row = await cur.fetchone()
