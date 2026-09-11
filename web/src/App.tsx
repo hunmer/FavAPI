@@ -613,6 +613,10 @@ export function App() {
                     onToggleStatus={handleToggleStatus}
                     onToggleBrowser={handleToggleBrowser}
                     onDeleteAccount={handleDeleteAccount}
+                    onFavoritesCleared={(acc) => {
+                      reloadAccounts();
+                      showToast(`已清空「${acc.name}」的本地收藏`);
+                    }}
                     recentTasks={tasks.filter((t) => t.accountId === selectedAccount.id)}
                     allScrapedItems={scrapedItems.filter((i) => i.accountId === selectedAccount.id)}
                     onTriggerScrape={handleTriggerScrape}

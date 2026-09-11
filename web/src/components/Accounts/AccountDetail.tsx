@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Account, AccountStatus, TaskRecord, ScrapedItem, ScrapingFormData } from '../../types';
 import { PLATFORMS } from '../../data/mockFavData';
-import { uploadWechatJson } from '../../api';
+import { uploadWechatJson, clearFavorites, favoriteFacets } from '../../api';
 import {
   ArrowLeft,
   CheckCircle2,
@@ -21,6 +21,8 @@ import {
   Sparkles,
   RefreshCw,
   Terminal,
+  MoreVertical,
+  Eraser,
 } from 'lucide-react';
 
 interface AccountDetailProps {
@@ -32,6 +34,7 @@ interface AccountDetailProps {
   onToggleStatus: (account: Account) => void;
   onToggleBrowser: (account: Account) => void;
   onDeleteAccount: (account: Account) => void;
+  onFavoritesCleared?: (account: Account) => void;
   recentTasks: TaskRecord[];
   allScrapedItems: ScrapedItem[];
   onTriggerScrape: (formData: ScrapingFormData) => void;
@@ -48,6 +51,7 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
   onToggleStatus,
   onToggleBrowser,
   onDeleteAccount,
+  onFavoritesCleared,
   recentTasks,
   allScrapedItems,
   onTriggerScrape,
@@ -71,6 +75,30 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
   // Delete confirm dialog state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  // Action menu (dots) & clear-favorites state
+  const [showActionMenu, setShowActionMenu] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+  const [clearError, setClearError] = useState<string | null>(null);
+
+  // 本地库实时统计（favorites 表按账号聚合），概览卡片与清空确认框使用
+  const [localStats, setLocalStats] = useState<{ total: number; folderCount: number } | null>(null);
+
+  const reloadLocalStats = async () => {
+    try {
+      const facets = await favoriteFacets(account.id);
+      setLocalStats({ total: facets.total, folderCount: facets.folders.length });
+    } catch {
+      /* 统计失败静默，保留上次数值 */
+    }
+  };
+
+  useEffect(() => {
+    setLocalStats(null);
+    reloadLocalStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account.id]);
+
   // Active subtab inside account detail
   const [activeSubTab, setActiveSubTab] = useState<'scrape' | 'tasks' | 'folders'>('scrape');
 
@@ -86,6 +114,22 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
       profileUrlOrUid,
       jsonPath,
     });
+  };
+
+  // 清空本地库中该账号的全部收藏关系（后端一键清空接口）
+  const handleClearFavorites = async () => {
+    setIsClearing(true);
+    setClearError(null);
+    try {
+      await clearFavorites(account.id);
+      setShowClearConfirm(false);
+      reloadLocalStats();
+      onFavoritesCleared?.(account);
+    } catch (e) {
+      setClearError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setIsClearing(false);
+    }
   };
 
   return (
@@ -172,15 +216,48 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
             {account.status === 'disabled' ? '启用账号' : '禁用账号'}
           </button>
 
-          {/* Delete Account */}
-          <button
-            type="button"
-            onClick={() => setShowDeleteConfirm(true)}
-            className="p-2 rounded-xl bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 text-xs font-semibold shadow-2xs transition-colors"
-            title="删除此账号"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
+          {/* More actions menu (dots) */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowActionMenu((v) => !v)}
+              className="p-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 shadow-2xs transition-colors"
+              title="更多操作"
+            >
+              <MoreVertical className="w-3.5 h-3.5" />
+            </button>
+
+            {showActionMenu && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowActionMenu(false)} />
+                <div className="absolute right-0 mt-2 w-44 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 z-50 anim-modal-enter">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowActionMenu(false);
+                      setClearError(null);
+                      setShowClearConfirm(true);
+                    }}
+                    className="w-full px-4 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50 inline-flex items-center gap-2 transition-colors"
+                  >
+                    <Eraser className="w-3.5 h-3.5 text-amber-600" />
+                    清空收藏夹
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowActionMenu(false);
+                      setShowDeleteConfirm(true);
+                    }}
+                    className="w-full px-4 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 inline-flex items-center gap-2 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                    删除账号
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -247,13 +324,15 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
           <span className="text-xs font-semibold text-slate-500">收藏夹概览</span>
           <div className="mt-2 flex items-center justify-between">
             <span className="text-2xl font-extrabold text-slate-900">
-              {account.folders
-                ? account.folders.reduce((acc, f) => acc + f.count, 0)
-                : 0}
-              <span className="text-xs font-normal text-slate-500 ml-1">件收藏内容</span>
+              {localStats
+                ? localStats.total
+                : account.folders
+                  ? account.folders.reduce((acc, f) => acc + f.count, 0)
+                  : 0}
+              <span className="text-xs font-normal text-slate-500 ml-1">件收藏内容（本地库）</span>
             </span>
             <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full">
-              {account.folders?.length || 0} 个收藏夹
+              {localStats ? localStats.folderCount : account.folders?.length || 0} 个收藏夹
             </span>
           </div>
           <p className="text-[11px] text-slate-400 mt-2">
@@ -664,6 +743,41 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
           </div>
         )}
       </div>
+
+      {/* Clear Favorites Confirmation Modal */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="anim-modal-enter bg-white w-full max-w-md rounded-[28px] p-6 shadow-2xl border border-slate-100 space-y-4">
+            <h3 className="text-lg font-bold text-slate-900">确认清空收藏夹？</h3>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              将删除 <strong className="text-slate-800">{account.name}</strong> 在本地库中的全部收藏关系（共{' '}
+              {localStats ? localStats.total : 0} 件）。平台云端收藏不受影响，可随时重新抓取恢复。
+            </p>
+            {clearError && (
+              <p className="text-xs text-rose-600 bg-rose-50 p-2 rounded-xl">{clearError}</p>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                disabled={isClearing}
+                onClick={() => setShowClearConfirm(false)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={isClearing}
+                onClick={handleClearFavorites}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-xl shadow-xs disabled:opacity-50 inline-flex items-center gap-1.5"
+              >
+                {isClearing && <RefreshCw className="w-3 h-3 animate-spin" />}
+                {isClearing ? '清空中...' : '确认清空'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (

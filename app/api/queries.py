@@ -142,6 +142,13 @@ async def batch_delete_favorites(body: FavoritesBatchDelete):
     return {"deleted": deleted}
 
 
+@router.delete("/favorites")
+async def clear_favorites(account_id: str = Query(min_length=1)):
+    """按账号一键清空全部收藏关系（favorites 行），contents 主表保留。"""
+    deleted = await data_store.clear_favorites(account_id)
+    return {"deleted": deleted}
+
+
 
 @router.get("/tags")
 async def list_tags(limit: int = Query(100, ge=1, le=500)):

@@ -563,6 +563,11 @@ export async function deleteFavorites(
   return request('/favorites/batch-delete', { method: 'POST', body: JSON.stringify({ items }) });
 }
 
+/** 按账号一键清空本地库全部收藏关系（contents 主表保留）。 */
+export async function clearFavorites(accountId: string): Promise<{ deleted: number }> {
+  return request(`/favorites?account_id=${encodeURIComponent(accountId)}`, { method: 'DELETE' });
+}
+
 // ---------- 标签管理 ----------
 
 export interface TagDeleteResult {

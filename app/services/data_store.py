@@ -83,6 +83,12 @@ async def delete_favorites(refs: list[dict]) -> int:
     return deleted
 
 
+async def clear_favorites(account_id: str) -> int:
+    """按账号一键清空全部收藏关系行（contents 主表保留）。"""
+    cur = await db.execute("DELETE FROM favorites WHERE account_id = ?", (account_id,))
+    return cur.rowcount or 0
+
+
 _CONTENT_URL_TEMPLATES = {
     "douyin": "https://www.douyin.com/video/{content_id}",
     "bilibili": "https://www.bilibili.com/video/{content_id}",
