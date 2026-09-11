@@ -118,3 +118,12 @@ tests/                   # parser 单测 + API 冒烟（不依赖浏览器）
 - 抖音登录态检查采用 cookie 存在性启发式（`sessionid`）；失效会在抓取时被发现并标记账号 `expired`
 - 抓取依赖页面滚动触发接口，单次上限 500 条（`MAX_COUNT`），更多数据用 `cursor` 增量翻页
 - 登录/抓取会打开有头浏览器窗口，属预期行为；同一账号并发请求会串行排队
+### 微信收藏导入
+
+微信收藏适配器不需要扫码登录，使用 `list_favorites` 时在请求参数中提供 `json_path`，指向 JSON 文件。例如：
+
+```json
+{"json_path":"C:/path/to/messages.json", "count": 0}
+```
+
+请先使用 [LifeArchiveProject/WeChatDataAnalysis](https://github.com/LifeArchiveProject/WeChatDataAnalysis) 导出微信收藏数据，再导入生成的 `conversations/.../messages.json`。`count` 可限制本次导入数量，`cursor` 用于分批导入。

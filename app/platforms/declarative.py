@@ -21,7 +21,7 @@ def _walk(obj, path):
 class DeclarativeAdapter(BasePlatformAdapter):
     def __init__(self, spec: dict, base_dir: Path | None = None):
         self.spec=spec; self.platform=spec['platform']; self.display_name=spec.get('display_name',self.platform)
-        self.home_url=spec.get('home_url',''); self.icon=spec.get('icon',''); self.base_dir=base_dir
+        self.home_url=spec.get('home_url',''); self.homepage=spec.get('homepage') or self.home_url; self.icon=spec.get('icon',''); self.base_dir=base_dir
         self.supported_actions=tuple(spec.get('supported_actions',['list_favorites']))
         self.implemented=bool(spec.get('implemented',True)); self._capture=spec.get('capture',{})
 
@@ -56,6 +56,44 @@ class DeclarativeAdapter(BasePlatformAdapter):
             if m: return os.environ.get(m.group(1)) or None
         return value
 
+    def _has_login(self, cookies) -> bool:
+        keys = tuple(self.spec.get('login_cookies', []))
+        by_name = {str(c.get('name') or '').lower(): c.get('value') for c in cookies or []}
+        values = [by_name.get(str(k).lower()) for k in keys]
+        if str(self.spec.get('login_cookie_mode', 'any')).lower() == 'all':
+            return bool(values) and all(values)
+        return any(values)
+
+    @staticmethod
+    def _render_url(url: str, account, cookies=None) -> str:
+        """渲染声明式 URL 占位符（例如快手主页的 ``{userId}`）。
+
+        userId 优先从当前浏览器 Cookie 读取，也支持 account 属性作为回退。
+        未找到值时保留原 URL，避免破坏已有平台配置。
+        """
+        if not isinstance(url, str) or "{" not in url:
+            return url
+        values = {"account_id": getattr(account, "account_id", ""),
+                  "userId": getattr(account, "userId", "") or ""}
+        # 快手个人主页使用 eid（短字符串），而 userId Cookie 是数字账号 ID；
+        # 对 {userId} 占位符优先采用 eid，避免导航到错误的数字路径。
+        eid_value = ""
+        numeric_user_id = ""
+        for cookie in cookies or []:
+            name, value = cookie.get("name"), cookie.get("value")
+            if name == "eid" and value:
+                eid_value = value
+            elif name == "userId" and value:
+                numeric_user_id = value
+        if eid_value:
+            values["userId"] = eid_value
+        elif numeric_user_id:
+            values["userId"] = numeric_user_id
+        try:
+            return url.format_map(values)
+        except (KeyError, ValueError):
+            return url
+
     def _script_path(self, value):
         if not value or not self.base_dir: return None
         path = (self.base_dir / value).resolve()
@@ -88,11 +126,11 @@ class DeclarativeAdapter(BasePlatformAdapter):
         timeout=timeout or config.LOGIN_TIMEOUT; deadline=time.monotonic()+timeout
         async with browser.session(account.profile_path, headless=False, proxy=self._proxy()) as ctx:
             keys=tuple(self.spec.get('login_cookies',[]))
-            if browser.has_login_cookies(await ctx.cookies(), keys):
+            if self._has_login(await ctx.cookies()):
                 return True
-            page=ctx.pages[0] if ctx.pages else await ctx.new_page(); await self._run_hooks('before_login', page, account, {}); await page.goto(self.home_url,wait_until='domcontentloaded'); await self._run_hooks('after_login_page', page, account, {})
+            page=ctx.pages[0] if ctx.pages else await ctx.new_page(); await self._run_hooks('before_login', page, account, {}); await page.goto(self.homepage or self.home_url,wait_until='domcontentloaded'); await self._run_hooks('after_login_page', page, account, {})
             while time.monotonic()<deadline:
-                if browser.has_login_cookies(await ctx.cookies(),keys): return True
+                if self._has_login(await ctx.cookies()): return True
                 await asyncio.sleep(3)
         return False
 
@@ -128,7 +166,15 @@ class DeclarativeAdapter(BasePlatformAdapter):
                 except Exception: return
                 rows=_walk(data,cap.get('items_path',''))
                 cursor = self._value(data, cap.get('cursor_path',''), cursor)
-                has_more = bool(self._value(data, cap.get('has_more_path',''), has_more))
+                has_more_value = self._value(data, cap.get('has_more_path',''), has_more)
+                # 部分平台（如快手）仅返回字符串游标，末页使用空串或
+                # ``no_more`` 等哨兵值表示结束，而非显式布尔字段。
+                if isinstance(has_more_value, str):
+                    has_more = has_more_value.strip().lower() not in {
+                        '', '0', 'false', 'null', 'none', 'no_more', 'nomore', '-1'
+                    }
+                else:
+                    has_more = bool(has_more_value)
                 items=[]
                 for row in rows:
                     out={}
@@ -143,12 +189,12 @@ class DeclarativeAdapter(BasePlatformAdapter):
                 if items:
                     batches.extend(items)
                     if on_batch: await on_batch({'page':len(batches),'items':items})
-            page.on('response',on_response); await page.goto(cap.get('page_url') or self.home_url,wait_until='domcontentloaded'); await self._run_hooks('after_fetch_page', page, account, params); await page.wait_for_timeout(int(cap.get('wait_ms',3000)))
+            page.on('response',on_response); target_url = self._render_url(cap.get('page_url') or self.home_url, account, await ctx.cookies()); await page.goto(target_url,wait_until='domcontentloaded'); await self._run_hooks('after_fetch_page', page, account, params); await page.wait_for_timeout(int(cap.get('wait_ms',3000)))
             for _ in range(max_rounds):
                 if (target and len({i['content_id'] for i in batches}) >= target) or (batches and not has_more):
                     break
                 await page.mouse.wheel(0, scroll_step)
                 await page.wait_for_timeout(int(cap.get('scroll_wait_ms', 1500)))
-            if self.spec.get('login_cookies') and not browser.has_login_cookies(await ctx.cookies(),tuple(self.spec['login_cookies'])): raise LoginExpiredError(f'{self.display_name} 登录态缺失')
+            if self.spec.get('login_cookies') and not self._has_login(await ctx.cookies()): raise LoginExpiredError(f'{self.display_name} 登录态缺失')
         uniq={i['content_id']:i for i in batches}; items=list(uniq.values()); items=items[:target] if target else items
         return FetchResult(items=items,total=len(items),cursor=cursor,has_more=has_more)

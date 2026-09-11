@@ -180,7 +180,8 @@ async def toggle_browser(account_id: str):
     if browser.is_busy(account.get("profile_path") or "") and not browser.is_manual_open(account_id):
         raise HTTPException(status_code=409, detail="浏览器正被登录/抓取占用，请稍后再试")
     adapter = registry.get_adapter(account["platform"])
-    result = await browser.open_manual(account_id, account["profile_path"], adapter.home_url)
+    # 声明式平台可将抓取入口 home_url 与手动浏览官网 homepage 分离。
+    result = await browser.open_manual(account_id, account["profile_path"], getattr(adapter, "homepage", "") or adapter.home_url)
     return {"account_id": account_id, **result}
 
 

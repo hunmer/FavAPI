@@ -10,8 +10,6 @@ interface QRCodeLoginModalProps {
   onLoginDone: (accountId: string, ok: boolean) => void;
 }
 
-const POLL_INTERVAL = 3000;
-
 export const QRCodeLoginModal: React.FC<QRCodeLoginModalProps> = ({
   account,
   onClose,
@@ -22,7 +20,6 @@ export const QRCodeLoginModal: React.FC<QRCodeLoginModalProps> = ({
   const [errorMsg, setErrorMsg] = useState('');
   const [secondsLeft, setSecondsLeft] = useState(300); // 后端 LOGIN_TIMEOUT=300s
   const finishedRef = useRef(false);
-  const pollRef = useRef<number | undefined>(undefined);
 
   const platformMeta = PLATFORMS.find((p) => p.id === account.platform) || PLATFORMS[0];
 
@@ -30,7 +27,6 @@ export const QRCodeLoginModal: React.FC<QRCodeLoginModalProps> = ({
     (ok: boolean, message?: string) => {
       if (finishedRef.current) return;
       finishedRef.current = true;
-      window.clearInterval(pollRef.current);
       if (ok) {
         setStep('success');
         onLoginDone(account.id, true);
@@ -51,26 +47,12 @@ export const QRCodeLoginModal: React.FC<QRCodeLoginModalProps> = ({
         await api.startLogin(account.id);
         if (cancelled) return;
         setStep('waiting');
-        pollRef.current = window.setInterval(async () => {
-          try {
-            const s = await api.loginStatus(account.id);
-            if (s.busy) return; // 浏览器仍被登录流程占用，继续等待
-            // 登录 cookie 已经有效时立即结束，不等待后端收尾清理 logging_in 标记。
-            // 否则成功登录与清理标记之间的短暂窗口会让弹窗一直停在等待态。
-            if (s.logged_in || !s.logging_in) {
-              finish(!!s.logged_in, s.logged_in ? undefined : '未检测到登录态（超时或未扫码）');
-            }
-          } catch (e: any) {
-            finish(false, e.message);
-          }
-        }, POLL_INTERVAL);
       } catch (e: any) {
         if (!cancelled) finish(false, e.message);
       }
     })();
     return () => {
       cancelled = true;
-      window.clearInterval(pollRef.current);
     };
   // 登录流程按账号实例只启动一次。父组件刷新账号列表会重渲染弹窗，不能因此重复调用 startLogin。
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -192,7 +174,7 @@ export const QRCodeLoginModal: React.FC<QRCodeLoginModalProps> = ({
                   请在弹出的浏览器窗口中完成扫码
                 </p>
                 <p className="text-xs text-slate-400 mt-1">
-                  服务正在自动轮询检测登录进度（{secondsLeft} 秒后超时）
+                完成登录后点击下方按钮确认（{secondsLeft} 秒后超时）
                 </p>
               </div>
 
@@ -202,7 +184,7 @@ export const QRCodeLoginModal: React.FC<QRCodeLoginModalProps> = ({
                 onClick={handleManualCheck}
                 className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold underline"
               >
-                [我已完成扫码] 立即检查登录结果
+                我已登录
               </button>
             </div>
           )}

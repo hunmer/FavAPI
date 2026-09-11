@@ -151,14 +151,12 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
             type="button"
             onClick={() => onToggleBrowser(account)}
             className={`px-3 py-1.5 rounded-xl border text-xs font-semibold shadow-2xs inline-flex items-center gap-1.5 transition-colors ${
-              account.isBrowserOpen
-                ? 'bg-sky-50 border-sky-300 text-sky-800 hover:bg-sky-100'
-                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+              'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
             }`}
             title="以该账号独立 Profile 打开/关闭可视化 Chromium 浏览器"
           >
             <Monitor className="w-3.5 h-3.5" />
-            {account.isBrowserOpen ? '关闭浏览器' : '打开浏览器'}
+            打开浏览器
           </button>
 
           {/* Enable / Disable */}

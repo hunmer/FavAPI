@@ -30,6 +30,7 @@ class BasePlatformAdapter(ABC):
     platform: str = ""
     display_name: str = ""
     home_url: str = ""             # 平台首页（手动浏览窗口的起始页）
+    homepage: str = ""             # 手动浏览按钮打开的官网首页（可与抓取 URL 不同）
     icon: str = ""                 # 图标文件名（相对平台目录，供 /platforms/{id}/icon 下发）
     implemented: bool = True          # False = 占位平台
     supported_actions: tuple[str, ...] = ()
