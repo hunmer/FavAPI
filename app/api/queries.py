@@ -3,6 +3,7 @@ import asyncio
 import time
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, Field
 
 from app.models import FavoriteItem, TaskOut
 from app.services import data_store
@@ -107,6 +108,24 @@ async def list_favorites(
     result = await data_store.list_favorites(account_id, platform, tag, limit, offset)
     result["items"] = [FavoriteItem(**i).model_dump() for i in result["items"]]
     return result
+
+
+class FavoriteRef(BaseModel):
+    account_id: str
+    platform: str
+    content_id: str
+
+
+class FavoritesBatchDelete(BaseModel):
+    items: list[FavoriteRef] = Field(min_length=1)
+
+
+@router.post("/favorites/batch-delete")
+async def batch_delete_favorites(body: FavoritesBatchDelete):
+    """批量删除收藏关系（favorites 行），contents 主表保留。"""
+    deleted = await data_store.delete_favorites([i.model_dump() for i in body.items])
+    return {"deleted": deleted}
+
 
 
 @router.get("/tags")

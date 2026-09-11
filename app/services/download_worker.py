@@ -27,6 +27,7 @@ _PLATFORM_COOKIE_DOMAINS = {
     "bilibili": ("bilibili.com",),
     "douyin": ("douyin.com",),
     "xiaohongshu": ("xiaohongshu.com",),
+    "youtube": ("youtube.com", "google.com"),
 }
 
 _task: asyncio.Task | None = None
@@ -122,8 +123,9 @@ async def _write_cookies_file(download_id: str, account_id: str | None, platform
         # domain 以 . 开头表示对该站点所有子域生效
         flag = "TRUE" if domain.startswith(".") else "FALSE"
         expires = max(int(c.get("expires") or 0), 0)  # 会话 cookie(-1) 落为 0
+        secure = bool(c.get("secure")) or domain.endswith(("youtube.com", "google.com"))
         lines.append("\t".join([
-            domain, flag, c.get("path") or "/", "FALSE", str(expires),
+            domain, flag, c.get("path") or "/", "TRUE" if secure else "FALSE", str(expires),
             c.get("name") or "", c.get("value") or "",
         ]))
     tmp = downloads_root() / ".cookies" / f"{download_id}.cookies.txt"

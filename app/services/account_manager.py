@@ -136,6 +136,7 @@ async def save_cookie_snapshot(account_id: str, cookies: list[dict] | None = Non
                     "domain": c.get("domain"),
                     "path": c.get("path"),
                     "expires": c.get("expires"),
+                    "secure": bool(c.get("secure")),
                 }
                 for c in cookies or []
             ],

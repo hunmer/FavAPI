@@ -67,11 +67,26 @@ async def save_fetch_result(account: dict, items: list[dict]) -> dict:
     }
 
 
+async def delete_favorites(refs: list[dict]) -> int:
+    """批量删除收藏关系行（contents 主表保留，与标签删除行为一致）。
+
+    refs: [{account_id, platform, content_id}]，按三元组精确删除。
+    """
+    deleted = 0
+    for r in refs:
+        cur = await db.execute(
+            "DELETE FROM favorites WHERE account_id = ? AND platform = ? AND content_id = ?",
+            (r.get("account_id"), r.get("platform"), r.get("content_id")),
+        )
+        deleted += cur.rowcount or 0
+    return deleted
+
+
 _CONTENT_URL_TEMPLATES = {
     "douyin": "https://www.douyin.com/video/{content_id}",
     "bilibili": "https://www.bilibili.com/video/{content_id}",
     "xiaohongshu": "https://www.xiaohongshu.com/explore/{content_id}",
-    "youtube": "https://www.youtube.com/playlist?list={content_id}",
+    "youtube": "https://www.youtube.com/watch?v={content_id}",
 }
 
 

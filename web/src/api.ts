@@ -498,6 +498,15 @@ export async function listTags(limit = 100): Promise<{ tags: TagStatRow[]; group
   return request(`/tags?limit=${limit}`);
 }
 
+// ---------- 收藏批量删除 ----------
+
+/** 批量删除收藏关系（favorites 行），contents 主表保留。 */
+export async function deleteFavorites(
+  items: Array<{ account_id: string; platform: string; content_id: string }>
+): Promise<{ deleted: number }> {
+  return request('/favorites/batch-delete', { method: 'POST', body: JSON.stringify({ items }) });
+}
+
 // ---------- 标签管理 ----------
 
 export interface TagDeleteResult {
