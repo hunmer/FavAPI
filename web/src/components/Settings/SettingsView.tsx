@@ -60,6 +60,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [headlessMode, setHeadlessMode] = useState(false);
   const [requestInterval, setRequestInterval] = useState(2.0);
   const [requestTimeout, setRequestTimeout] = useState(30);
+  const [downloadDir, setDownloadDir] = useState('');
+  const [downloadConcurrency, setDownloadConcurrency] = useState(1);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   // loaded 之前的 state 变化来自初始加载，不触发自动保存
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -71,6 +73,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         setHeadlessMode(s.headless);
         setRequestInterval(s.request_interval);
         setRequestTimeout(s.request_timeout);
+        setDownloadDir(s.download_dir ?? '');
+        setDownloadConcurrency(s.download_concurrency ?? 1);
       })
       .catch(() => {})
       .finally(() => setSettingsLoaded(true));
@@ -85,12 +89,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         headless: headlessMode,
         request_interval: requestInterval,
         request_timeout: requestTimeout,
+        download_dir: downloadDir.trim(),
+        download_concurrency: downloadConcurrency,
       })
         .then(() => onShowToast('设置已自动保存', 'success'))
         .catch((err: any) => onShowToast(`设置保存失败：${err?.message || '未知错误'}`, 'error'));
     }, 800);
     return () => window.clearTimeout(timer);
-  }, [settingsLoaded, profilePath, headlessMode, requestInterval, requestTimeout]);
+  }, [settingsLoaded, profilePath, headlessMode, requestInterval, requestTimeout, downloadDir, downloadConcurrency]);
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -383,6 +389,57 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               onChange={(e) => setRequestTimeout(parseInt(e.target.value) || 30)}
               className="px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-800 dark:text-slate-100 focus:bg-white dark:focus:bg-slate-900 focus:border-sky-400 outline-none w-32"
             />
+          </div>
+        </div>
+
+        {/* Card 2.2: 下载设置 */}
+        <div className="bg-white dark:bg-[#161B26] rounded-3xl p-6 border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col gap-4 md:col-span-2">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center">
+              <HardDrive className="w-4 h-4" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-slate-900 dark:text-white">收藏下载设置</h4>
+              <p className="text-[11px] text-slate-400">
+                下载队列的保存位置与并发执行数（yt-dlp / videodl 任务按平台分子目录存放）
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-end gap-4">
+            <div className="flex flex-col gap-1.5 flex-1">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                下载保存位置
+                <span className="ml-1.5 font-normal text-slate-400">留空使用默认 data/downloads</span>
+              </label>
+              <input
+                type="text"
+                value={downloadDir}
+                onChange={(e) => setDownloadDir(e.target.value)}
+                placeholder="例如 D:/Favorites（相对路径相对程序目录）"
+                className="px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-800 dark:text-slate-100 focus:bg-white dark:focus:bg-slate-900 focus:border-sky-400 outline-none transition-all"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">并发下载数</label>
+              <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700">
+                {[1, 2, 3].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setDownloadConcurrency(n)}
+                    className={`px-4 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                      downloadConcurrency === n
+                        ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    {n} 路
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 

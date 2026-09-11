@@ -1,11 +1,13 @@
-"""下载工作器：后台循环串行执行下载队列（yt-dlp / videodl 子进程）。"""
+"""下载工作器：后台循环执行下载队列（yt-dlp / videodl 子进程），支持并发与暂停。"""
 import asyncio
 import logging
 import shutil
 import sys
+from pathlib import Path
 
 from app import config
 from app.services import download_store
+from app.services.app_settings import load_settings
 from app.utils import now_iso
 
 logger = logging.getLogger("favapi.downloader")
@@ -13,10 +15,35 @@ logger = logging.getLogger("favapi.downloader")
 CHECK_INTERVAL = 2            # 队列扫描间隔（秒）
 PROGRESS_WRITE_INTERVAL = 0.5  # 进度落库最小间隔（秒）
 
-DOWNLOADS_DIR = config.DATA_DIR / "downloads"
+# videodl 专用解析客户端映射（装好 videodl 后自动生效；未映射平台走其通用解析器）
+VIDEODL_CLIENTS = {
+    "bilibili": "BilibiliVideoClient",
+    "douyin": "SnapAnyVideoClient",
+    "xiaohongshu": "SnapAnyVideoClient",
+}
+
+# 平台 → Cookies 域名（注入 yt-dlp 时只保留对应平台的登录态）
+_PLATFORM_COOKIE_DOMAINS = {
+    "bilibili": ("bilibili.com",),
+    "douyin": ("douyin.com",),
+    "xiaohongshu": ("xiaohongshu.com",),
+}
 
 _task: asyncio.Task | None = None
 _running: dict[str, asyncio.subprocess.Process] = {}  # download_id -> 正在执行的子进程
+
+
+def downloads_root() -> Path:
+    """下载根目录：设置里可改（SettingsView「下载位置」），默认 data/downloads。"""
+    custom = str(load_settings().get("download_dir") or "").strip()
+    return Path(custom) if custom else config.DATA_DIR / "downloads"
+
+
+def _concurrency() -> int:
+    try:
+        return max(1, min(3, int(load_settings().get("download_concurrency") or 1)))
+    except (TypeError, ValueError):
+        return 1
 
 
 async def start():
@@ -42,32 +69,25 @@ async def stop():
 
 
 async def _run_forever():
+    inflight: set[asyncio.Task] = set()
     while True:
         try:
-            await tick()
+            inflight = {t for t in inflight if not t.done()}
+            while len(inflight) < _concurrency():
+                row = await download_store.next_pending()
+                if row is None:
+                    break
+                await download_store.update_download(
+                    row["download_id"], status="running", started_at=now_iso(), progress="启动下载器..."
+                )
+                inflight.add(asyncio.create_task(_run_one(row)))
         except asyncio.CancelledError:
+            for t in inflight:
+                t.cancel()
             raise
         except Exception:
             logger.exception("下载循环异常")
         await asyncio.sleep(CHECK_INTERVAL)
-
-
-async def tick():
-    """取最早的一条 pending 任务执行（串行，避免并发下载互相挤占带宽）。"""
-    row = await download_store.next_pending()
-    if row is None:
-        return
-    await download_store.update_download(
-        row["download_id"], status="running", started_at=now_iso(), progress="启动下载器..."
-    )
-    try:
-        await _run_one(row)
-    except Exception:
-        logger.exception("下载任务 %s 执行异常", row["download_id"])
-        await download_store.update_download(
-            row["download_id"], status="failed",
-            error_message="内部错误，详见服务日志", finished_at=now_iso(),
-        )
 
 
 def _resolve_command(downloader: str) -> list[str] | None:
@@ -80,9 +100,53 @@ def _resolve_command(downloader: str) -> list[str] | None:
     return None
 
 
+async def _write_cookies_file(download_id: str, account_id: str | None, platform: str) -> Path | None:
+    """把账号 cookie 快照写成 Netscape 格式供 yt-dlp 使用（无快照/无匹配域名返回 None）。"""
+    if not account_id:
+        return None
+    from app.services import account_manager
+
+    account = await account_manager.get_account(account_id)
+    if account is None:
+        return None
+    cookies = ((account.get("extra") or {}).get("cookies") or {}).get("cookies") or []
+    domains = _PLATFORM_COOKIE_DOMAINS.get(platform)
+    if domains:
+        cookies = [c for c in cookies if any(d in (c.get("domain") or "") for d in domains)]
+    if not cookies:
+        return None
+
+    lines = ["# Netscape HTTP Cookie File"]
+    for c in cookies:
+        domain = c.get("domain") or ""
+        # domain 以 . 开头表示对该站点所有子域生效
+        flag = "TRUE" if domain.startswith(".") else "FALSE"
+        expires = max(int(c.get("expires") or 0), 0)  # 会话 cookie(-1) 落为 0
+        lines.append("\t".join([
+            domain, flag, c.get("path") or "/", "FALSE", str(expires),
+            c.get("name") or "", c.get("value") or "",
+        ]))
+    tmp = downloads_root() / ".cookies" / f"{download_id}.cookies.txt"
+    tmp.parent.mkdir(parents=True, exist_ok=True)
+    tmp.write_text("\n".join(lines) + "\n", "utf-8")
+    return tmp
+
+
 async def _run_one(row: dict):
     download_id, url = row["download_id"], row["url"]
-    out_dir = DOWNLOADS_DIR / (row.get("platform") or "misc")
+    try:
+        await _execute(row)
+    except Exception:
+        logger.exception("下载任务 %s 执行异常", download_id)
+        await download_store.update_download(
+            download_id, status="failed",
+            error_message="内部错误，详见服务日志", finished_at=now_iso(),
+        )
+
+
+async def _execute(row: dict):
+    download_id, url, platform = row["download_id"], row["url"], row.get("platform") or ""
+    out_dir = downloads_root() / (platform or "misc")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     base = _resolve_command(row["downloader"])
@@ -95,12 +159,21 @@ async def _run_one(row: dict):
         )
         return
 
+    cookies_file = None
     if row["downloader"] == "yt-dlp":
         cmd = [*base, "--newline", "--no-playlist",
                "-o", str(out_dir / "%(title).80s.%(ext)s"), url]
+        cookies_file = await _write_cookies_file(download_id, row.get("account_id"), platform)
+        if cookies_file is not None:
+            cmd += ["--cookies", str(cookies_file)]
+            logger.info("任务 %s 已注入账号 %s 的 Cookies（%s）",
+                        download_id, row.get("account_id"), cookies_file.name)
         cwd = None
     else:
         cmd = [*base, "-i", url]
+        client = VIDEODL_CLIENTS.get(platform)
+        if client:
+            cmd += ["-a", client]
         cwd = out_dir
 
     logger.info("下载开始 %s：%s", download_id, " ".join(cmd))
@@ -125,9 +198,9 @@ async def _run_one(row: dict):
                 last_write = loop.time()
         returncode = await proc.wait()
 
-        # 取消：cancel() 已把状态置为 canceled，这里不覆盖
+        # 暂停/取消：对应操作已写入终态，这里不覆盖
         cur = await download_store.get_download(download_id)
-        if cur and cur["status"] == "canceled":
+        if cur and cur["status"] in ("canceled", "paused"):
             return
         if returncode == 0:
             await download_store.update_download(
@@ -144,10 +217,21 @@ async def _run_one(row: dict):
             logger.warning("下载失败 %s（退出码 %s）：%s", download_id, returncode, "\n".join(tail))
     finally:
         _running.pop(download_id, None)
+        if cookies_file is not None:
+            cookies_file.unlink(missing_ok=True)
+
+
+async def terminate(download_id: str) -> bool:
+    """终止正在执行的子进程（状态由调用方决定：暂停或取消）。"""
+    proc = _running.get(download_id)
+    if proc is None:
+        return False
+    proc.kill()
+    return True
 
 
 async def cancel(download_id: str) -> bool:
-    """终止正在执行的任务（标记 canceled 并杀掉子进程）。"""
+    """取消正在执行的任务（标记 canceled 并杀掉子进程）。"""
     proc = _running.get(download_id)
     if proc is None:
         return False

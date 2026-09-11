@@ -600,10 +600,11 @@ export interface DownloadRow {
   download_id: string;
   platform?: PlatformId | null;
   content_id?: string | null;
+  account_id?: string | null;
   title?: string | null;
   url: string;
   downloader: DownloaderId;
-  status: 'pending' | 'running' | 'success' | 'failed' | 'canceled';
+  status: 'pending' | 'running' | 'success' | 'failed' | 'canceled' | 'paused';
   progress?: string | null;
   output_path?: string | null;
   error_message?: string | null;
@@ -620,6 +621,7 @@ export async function listDownloads(): Promise<DownloadRow[]> {
 export async function createDownload(body: {
   content_id: string;
   platform: string;
+  account_id?: string;
   title?: string;
   url?: string;
   downloader?: DownloaderId;
@@ -629,6 +631,10 @@ export async function createDownload(body: {
 
 export async function retryDownload(id: string) {
   return request(`/downloads/${id}/retry`, { method: 'POST' });
+}
+
+export async function pauseDownload(id: string) {
+  return request(`/downloads/${id}/pause`, { method: 'POST' });
 }
 
 export async function deleteDownload(id: string) {
@@ -664,6 +670,8 @@ export interface AppSettings {
   headless: boolean;
   request_interval: number;
   request_timeout: number;
+  download_dir: string;        // 下载根目录，空 = 默认 data/downloads
+  download_concurrency: number; // 并发下载数 1-3
 }
 
 export function fetchAppSettings(): Promise<AppSettings> {

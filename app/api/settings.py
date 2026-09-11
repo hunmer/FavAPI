@@ -1,5 +1,4 @@
 """系统设置：Web 控制台本地偏好（头像、运行参数等）。"""
-import json
 import logging
 import time
 from pathlib import Path
@@ -9,6 +8,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app.config import DATA_DIR
+from app.services.app_settings import load_settings, save_settings
 
 logger = logging.getLogger("favapi.settings")
 
@@ -23,41 +23,19 @@ ALLOWED_TYPES = {
 }
 MAX_SIZE = 5 * 1024 * 1024
 
-# ---------- 运行参数设置（前端改动实时持久化到 settings.json） ----------
-SETTINGS_PATH = DATA_DIR / "settings.json"
-DEFAULT_SETTINGS = {
-    "profile_path": str(DATA_DIR / "profiles"),
-    "headless": False,
-    "request_interval": 2.0,
-    "request_timeout": 30,
-}
-
 
 class SettingsUpdate(BaseModel):
     profile_path: str | None = None
     headless: bool | None = None
     request_interval: float | None = Field(default=None, ge=1.0, le=5.0)
     request_timeout: int | None = Field(default=None, ge=1, le=600)
-
-
-def _load_settings() -> dict:
-    data = dict(DEFAULT_SETTINGS)
-    if SETTINGS_PATH.exists():
-        try:
-            data.update(json.loads(SETTINGS_PATH.read_text("utf-8")))
-        except (json.JSONDecodeError, OSError):
-            logger.warning("settings.json 解析失败，回退默认设置")
-    return data
-
-
-def _save_settings(data: dict) -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    SETTINGS_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), "utf-8")
+    download_dir: str | None = None          # 下载根目录，空 = 默认 data/downloads
+    download_concurrency: int | None = Field(default=None, ge=1, le=3)
 
 
 @router.get("")
 async def get_settings():
-    return _load_settings()
+    return load_settings()
 
 
 @router.put("")
@@ -65,9 +43,16 @@ async def update_settings(body: SettingsUpdate):
     patch = body.model_dump(exclude_none=True)
     if "profile_path" in patch and not patch["profile_path"].strip():
         raise HTTPException(400, "存储路径不能为空")
-    data = _load_settings()
+    if "download_dir" in patch:
+        patch["download_dir"] = patch["download_dir"].strip()
+        if patch["download_dir"]:
+            try:
+                Path(patch["download_dir"]).mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                raise HTTPException(400, f"下载目录不可用：{exc}")
+    data = load_settings()
     data.update(patch)
-    _save_settings(data)
+    save_settings(data)
     logger.info("设置已更新: %s", patch)
     return data
 

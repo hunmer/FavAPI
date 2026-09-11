@@ -12,7 +12,8 @@ def content_url(platform: str, content_id: str) -> str:
 
 
 async def create_download(platform: str, content_id: str, title: str = "",
-                          url: str = "", downloader: str = "yt-dlp") -> dict:
+                          url: str = "", downloader: str = "yt-dlp",
+                          account_id: str = "") -> dict:
     if downloader not in DOWNLOADERS:
         raise ValueError(f"downloader 仅支持 {' / '.join(DOWNLOADERS)}")
     url = url.strip() or content_url(platform, content_id)
@@ -21,7 +22,7 @@ async def create_download(platform: str, content_id: str, title: str = "",
 
     # 幂等：同 url + downloader 已在队列中（未完成）则直接返回已有任务
     row = await db.query_one(
-        "SELECT * FROM downloads WHERE url = ? AND downloader = ? AND status IN ('pending', 'running')",
+        "SELECT * FROM downloads WHERE url = ? AND downloader = ? AND status IN ('pending', 'running', 'paused')",
         (url, downloader),
     )
     if row:
@@ -31,6 +32,7 @@ async def create_download(platform: str, content_id: str, title: str = "",
         "download_id": new_id("dl"),
         "platform": platform,
         "content_id": content_id,
+        "account_id": account_id or None,
         "title": title,
         "url": url,
         "downloader": downloader,
@@ -43,9 +45,9 @@ async def create_download(platform: str, content_id: str, title: str = "",
         "finished_at": None,
     }
     await db.execute(
-        """INSERT INTO downloads (download_id, platform, content_id, title, url, downloader,
+        """INSERT INTO downloads (download_id, platform, content_id, account_id, title, url, downloader,
                status, progress, output_path, error_message, created_at, started_at, finished_at)
-           VALUES (:download_id, :platform, :content_id, :title, :url, :downloader,
+           VALUES (:download_id, :platform, :content_id, :account_id, :title, :url, :downloader,
                    :status, :progress, :output_path, :error_message, :created_at, :started_at, :finished_at)""",
         row,
     )
@@ -77,11 +79,26 @@ async def next_pending() -> dict | None:
 
 
 async def reset_download(download_id: str) -> dict | None:
-    """失败/取消后重新入队。"""
+    """失败/取消/暂停后重新入队。"""
     return await update_download(
         download_id, status="pending", progress=None, error_message=None,
         started_at=None, finished_at=None,
     )
+
+
+async def pause_download(download_id: str) -> dict | None:
+    """暂停：排队中直接挂起；下载中先落终态再终止子进程（避免被 worker 覆盖为 failed）。"""
+    row = await get_download(download_id)
+    if row is None or row["status"] not in ("pending", "running"):
+        return row
+    await update_download(
+        download_id, status="paused", progress="已暂停", finished_at=now_iso()
+    )
+    if row["status"] == "running":
+        from app.services import download_worker  # 延迟导入避免循环依赖
+
+        await download_worker.terminate(download_id)
+    return await get_download(download_id)
 
 
 async def delete_download(download_id: str) -> bool:

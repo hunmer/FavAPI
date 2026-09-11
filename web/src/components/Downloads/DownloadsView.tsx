@@ -12,6 +12,8 @@ import {
   RotateCcw,
   ExternalLink,
   HardDriveDownload,
+  PauseCircle,
+  PlayCircle,
 } from 'lucide-react';
 
 const STATUS_META: Record<DownloadRow['status'], { label: string; cls: string }> = {
@@ -20,6 +22,7 @@ const STATUS_META: Record<DownloadRow['status'], { label: string; cls: string }>
   success: { label: '已完成', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800' },
   failed: { label: '失败', cls: 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800' },
   canceled: { label: '已取消', cls: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800' },
+  paused: { label: '已暂停', cls: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800' },
 };
 
 export const DownloadsView: React.FC = () => {
@@ -54,6 +57,16 @@ export const DownloadsView: React.FC = () => {
     }
   };
 
+  const handlePause = async (row: DownloadRow) => {
+    if (row.status === 'running' && !window.confirm('将终止当前下载进程并暂停任务，未完成部分需恢复后重新下载，继续？')) return;
+    try {
+      await api.pauseDownload(row.download_id);
+      reload();
+    } catch (e: any) {
+      setError(e.message);
+    }
+  };
+
   const handleDelete = async (row: DownloadRow) => {
     const tip = row.status === 'running' ? '将终止正在进行的下载并移除记录' : '';
     if (tip && !window.confirm(`确定${tip}？`)) return;
@@ -69,7 +82,7 @@ export const DownloadsView: React.FC = () => {
     pending: rows.filter((r) => r.status === 'pending').length,
     running: rows.filter((r) => r.status === 'running').length,
     success: rows.filter((r) => r.status === 'success').length,
-    failed: rows.filter((r) => r.status === 'failed' || r.status === 'canceled').length,
+    failed: rows.filter((r) => r.status === 'failed' || r.status === 'canceled' || r.status === 'paused').length,
   };
 
   return (
@@ -107,7 +120,7 @@ export const DownloadsView: React.FC = () => {
           { label: '排队中', value: stats.pending, icon: Clock, cls: 'text-slate-500 dark:text-slate-400' },
           { label: '下载中', value: stats.running, icon: Loader2, cls: 'text-sky-500 dark:text-sky-400' },
           { label: '已完成', value: stats.success, icon: CheckCircle2, cls: 'text-emerald-500 dark:text-emerald-400' },
-          { label: '失败 / 取消', value: stats.failed, icon: AlertTriangle, cls: 'text-rose-500 dark:text-rose-400' },
+          { label: '失败 / 暂停', value: stats.failed, icon: AlertTriangle, cls: 'text-rose-500 dark:text-rose-400' },
         ].map((s) => (
           <div
             key={s.label}
@@ -198,14 +211,24 @@ export const DownloadsView: React.FC = () => {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1.5">
-                        {(r.status === 'failed' || r.status === 'canceled') && (
+                        {(r.status === 'pending' || r.status === 'running') && (
+                          <button
+                            type="button"
+                            onClick={() => handlePause(r)}
+                            className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer"
+                            title={r.status === 'running' ? '终止进程并暂停' : '暂停排队'}
+                          >
+                            <PauseCircle className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {(r.status === 'failed' || r.status === 'canceled' || r.status === 'paused') && (
                           <button
                             type="button"
                             onClick={() => handleRetry(r.download_id)}
                             className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 transition-colors cursor-pointer"
                             title="重新入队"
                           >
-                            <RotateCcw className="w-3.5 h-3.5" />
+                            {r.status === 'paused' ? <PlayCircle className="w-3.5 h-3.5" /> : <RotateCcw className="w-3.5 h-3.5" />}
                           </button>
                         )}
                         <a

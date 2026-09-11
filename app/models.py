@@ -121,8 +121,9 @@ class FavoriteItem(BaseModel):
 class DownloadCreate(BaseModel):
     content_id: str
     platform: str
+    account_id: str = ""    # 来源账号（yt-dlp 下载时携带其登录 Cookies）
     title: str = ""
-    url: str = ""       # 缺省时按平台模板用 content_id 生成
+    url: str = ""           # 缺省时按平台模板用 content_id 生成
     downloader: str = "yt-dlp"  # yt-dlp / videodl
 
 
@@ -130,6 +131,7 @@ class DownloadOut(BaseModel):
     download_id: str
     platform: str | None = None
     content_id: str | None = None
+    account_id: str | None = None
     title: str | None = None
     url: str
     downloader: str

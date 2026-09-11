@@ -23,7 +23,7 @@ async def list_downloads():
 async def create_download(body: DownloadCreate):
     try:
         row = await download_store.create_download(
-            body.platform, body.content_id, body.title, body.url, body.downloader
+            body.platform, body.content_id, body.title, body.url, body.downloader, body.account_id
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -37,6 +37,15 @@ async def retry_download(download_id: str):
         raise HTTPException(status_code=400, detail="任务仍在队列中，无需重试")
     await download_store.reset_download(download_id)
     return {"download_id": download_id, "status": "pending"}
+
+
+@router.post("/{download_id}/pause", status_code=202)
+async def pause_download(download_id: str):
+    await _get_or_404(download_id)
+    row = await download_store.pause_download(download_id)
+    if row and row["status"] != "paused":
+        raise HTTPException(status_code=400, detail=f"当前状态（{row['status']}）不支持暂停")
+    return {"download_id": download_id, "status": "paused"}
 
 
 @router.delete("/{download_id}")

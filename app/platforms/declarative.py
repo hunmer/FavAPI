@@ -117,7 +117,9 @@ class DeclarativeAdapter(BasePlatformAdapter):
             page=ctx.pages[0] if ctx.pages else await ctx.new_page()
             await self._run_hooks('before_fetch', page, account, params)
             headers = dict(self.spec.get('headers') or {}); headers.update(cap.get('headers') or {})
-            if headers:
+            # 全局注入自定义头会污染静态脚本请求并触发 CDN CORS 预检。
+            # 仅在平台明确声明时启用；页面原生请求通常已带所需头。
+            if headers and self.spec.get('apply_headers_globally', False):
                 await ctx.set_extra_http_headers({str(k): str(v) for k, v in headers.items()})
             async def on_response(resp):
                 nonlocal cursor, has_more

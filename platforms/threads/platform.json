@@ -6,10 +6,6 @@
   "login_cookies": ["sessionid", "ds_user_id", "Session"],
   "proxy": "auto",
   "supported_actions": ["list_favorites"],
-  "headers": {
-    "x-ig-app-id": "238260118697367",
-    "x-fb-friendly-name": "BarcelonaSavedPageRefetchableQuery"
-  },
   "capture": {
     "url_contains": "/graphql/query",
     "page_url": "https://www.threads.com/saved",

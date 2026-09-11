@@ -70,7 +70,9 @@ export const QRCodeLoginModal: React.FC<QRCodeLoginModalProps> = ({
       cancelled = true;
       window.clearInterval(pollRef.current);
     };
-  }, [account.id, finish]);
+  // 登录流程按账号实例只启动一次。父组件刷新账号列表会重渲染弹窗，不能因此重复调用 startLogin。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account.id]);
 
   // 倒计时
   useEffect(() => {

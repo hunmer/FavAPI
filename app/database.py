@@ -94,6 +94,7 @@ CREATE TABLE IF NOT EXISTS downloads (
     download_id    TEXT PRIMARY KEY,
     platform       TEXT,
     content_id     TEXT,
+    account_id     TEXT,                       -- 来源账号（下载时携带其 Cookies）
     title          TEXT,
     url            TEXT NOT NULL,
     downloader     TEXT DEFAULT 'yt-dlp',   -- yt-dlp / videodl
@@ -167,6 +168,11 @@ class Database:
             task_cols = [row[1] for row in await cur.fetchall()]
         if "new_favorites" not in task_cols:
             await self.conn.execute("ALTER TABLE fetch_tasks ADD COLUMN new_favorites INTEGER")
+
+        async with self.conn.execute("PRAGMA table_info(downloads)") as cur:
+            dl_cols = [row[1] for row in await cur.fetchall()]
+        if dl_cols and "account_id" not in dl_cols:
+            await self.conn.execute("ALTER TABLE downloads ADD COLUMN account_id TEXT")
 
         # 标签分组：首次启动物化内置体系，此后编辑/新建分组均以库为准
         from app.taxonomy import BUILTIN_TAG_GROUPS
