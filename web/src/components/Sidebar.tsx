@@ -19,6 +19,7 @@ interface SidebarProps {
   totalItemsCount?: number;
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
+  avatarUrl?: string | null;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -26,6 +27,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onTabChange,
   theme,
   onToggleTheme,
+  avatarUrl,
 }) => {
   const navItems: { id: NavTab; label: string; icon: React.ElementType }[] = [
     { id: 'dashboard', label: '总览看板', icon: LayoutDashboard },
@@ -103,7 +105,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           onClick={() => onTabChange('settings')}
         >
           <img
-            src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80"
+            src={avatarUrl ?? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80'}
             alt="Admin"
             className="w-10 h-10 rounded-full object-cover ring-2 ring-slate-700 group-hover:ring-sky-500 transition-all duration-200"
           />

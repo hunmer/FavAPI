@@ -86,7 +86,7 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
   };
 
   return (
-    <div id="account-detail-view" className="space-y-6 animate-in fade-in duration-200">
+    <div id="account-detail-view" className="space-y-6 anim-view-enter">
       {/* Top Bar: Back button & Title */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-200/80">
         <div className="flex items-center gap-3">
@@ -651,7 +651,7 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-[28px] p-6 shadow-2xl border border-slate-100 space-y-4">
+          <div className="anim-modal-enter bg-white w-full max-w-md rounded-[28px] p-6 shadow-2xl border border-slate-100 space-y-4">
             <h3 className="text-lg font-bold text-slate-900">确认删除账号？</h3>
             <p className="text-xs text-slate-500 leading-relaxed">
               此操作将删除账号 <strong className="text-slate-800">{account.name}</strong> 及其关联的收藏关系与本地 Chromium Profile 目录（{account.browserProfilePath}）。已入库的收藏元数据不会被抹除。

@@ -138,7 +138,7 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
 
           {showNotifications && (
-            <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-[#161B26] rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 p-3 z-50 animate-in fade-in zoom-in-95 duration-150">
+            <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-[#161B26] rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 p-3 z-50 anim-modal-enter">
               <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800 px-1">
                 <span className="text-xs font-bold text-slate-900 dark:text-white">同步通知</span>
                 <span className="text-[10px] text-sky-600 dark:text-sky-400 font-medium cursor-pointer hover:underline">全部已读</span>

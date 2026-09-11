@@ -99,13 +99,13 @@ export const QRCodeLoginModal: React.FC<QRCodeLoginModalProps> = ({
   return (
     <div
       id="qr-login-modal-backdrop"
-      className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+      className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 anim-backdrop-enter"
       onClick={onClose}
     >
       <div
         id="qr-login-modal"
         onClick={(e) => e.stopPropagation()}
-        className="bg-white w-full max-w-md rounded-[32px] shadow-2xl border border-slate-100 overflow-hidden flex flex-col"
+        className="anim-modal-enter bg-white w-full max-w-md rounded-[32px] shadow-2xl border border-slate-100 overflow-hidden flex flex-col"
       >
         {/* Header */}
         <div className="p-5 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
@@ -203,7 +203,7 @@ export const QRCodeLoginModal: React.FC<QRCodeLoginModalProps> = ({
 
           {step === 'success' && (
             <div className="py-6 space-y-4">
-              <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-xs animate-in zoom-in-50">
+              <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-xs anim-modal-enter">
                 <CheckCircle2 className="w-9 h-9" />
               </div>
               <div>

@@ -423,3 +423,25 @@ export async function deleteSchedule(id: string) {
 export async function triggerSchedule(id: string) {
   return request(`/schedules/${id}/trigger`, { method: 'POST' });
 }
+
+// ---------- 系统设置 / 头像 ----------
+
+export async function uploadAvatar(file: File): Promise<string> {
+  // multipart 上传，不能走 request()（它强制 JSON Content-Type）
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(`${BASE}/settings/avatar`, { method: 'POST', body: form });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((data as any).detail || res.statusText);
+  return (data as any).url as string;
+}
+
+export async function fetchAvatarUrl(): Promise<string | null> {
+  try {
+    const res = await fetch(`${BASE}/settings/avatar`);
+    // 时间戳参数用于破浏览器缓存
+    return res.ok ? `${BASE}/settings/avatar?t=${Date.now()}` : null;
+  } catch {
+    return null;
+  }
+}

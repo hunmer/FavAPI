@@ -39,7 +39,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
   });
 
   return (
-    <div id="tasks-view" className="space-y-6 animate-in fade-in duration-200">
+    <div id="tasks-view" className="space-y-6 anim-view-enter">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -134,13 +134,14 @@ export const TasksView: React.FC<TasksViewProps> = ({
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {filteredTasks.length > 0 ? (
-                filteredTasks.map((t) => {
+                filteredTasks.map((t, idx) => {
                   const platformMeta = PLATFORMS.find((p) => p.id === t.platform);
                   return (
                     <tr
                       key={t.id}
                       onClick={() => setSelectedTaskDetail(t)}
-                      className="hover:bg-slate-50/70 dark:hover:bg-slate-800/50 cursor-pointer transition-colors"
+                      className="anim-row-enter hover:bg-slate-50/70 dark:hover:bg-slate-800/50 cursor-pointer transition-colors"
+                      style={{ animationDelay: `${Math.min(idx * 20, 200)}ms` }}
                     >
                       <td className="py-3.5 px-4 font-mono font-bold text-slate-900 dark:text-slate-100">
                         {t.id}
@@ -217,12 +218,12 @@ export const TasksView: React.FC<TasksViewProps> = ({
       {/* Task Log Drawer Modal */}
       {selectedTaskDetail && (
         <div
-          className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+          className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 anim-backdrop-enter"
           onClick={() => setSelectedTaskDetail(null)}
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white dark:bg-[#161B26] w-full max-w-xl rounded-[32px] shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden flex flex-col max-h-[85vh]"
+            className="anim-modal-enter bg-white dark:bg-[#161B26] w-full max-w-xl rounded-[32px] shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden flex flex-col max-h-[85vh]"
           >
             <div className="p-5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
               <div>

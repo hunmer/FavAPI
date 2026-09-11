@@ -50,48 +50,58 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       {/* Left Column (Calendar with daily ingested collections list + Schedule Queue) */}
       <div className="w-full lg:w-[380px] xl:w-[420px] shrink-0 flex flex-col gap-6">
         {/* Calendar Card with integrated daily collections list */}
-        <CalendarCard 
-          scrapedItems={scrapedItems}
-          onViewAllData={onViewAllData}
-        />
+        <div className="anim-card-enter">
+          <CalendarCard
+            scrapedItems={scrapedItems}
+            onViewAllData={onViewAllData}
+          />
+        </div>
 
         {/* Schedule Queue Card */}
-        <ScheduleQueueCard
-          schedules={schedules}
-          onTriggerNow={onTriggerSchedule}
-          onOpenScheduleTab={onOpenScheduleTab}
-        />
+        <div className="anim-card-enter" style={{ animationDelay: '80ms' }}>
+          <ScheduleQueueCard
+            schedules={schedules}
+            onTriggerNow={onTriggerSchedule}
+            onOpenScheduleTab={onOpenScheduleTab}
+          />
+        </div>
       </div>
 
       {/* Right / Main Overview Column */}
       <div className="flex-1 flex flex-col gap-6 min-w-0">
         {/* Top 3 Stat Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <StatCard
-            title="已纳管账号"
-            value={`${stats?.accounts_active ?? accounts.filter((a) => a.status === 'active').length} / ${stats?.accounts_total ?? accounts.length}`}
-            subtitle={stats?.schedules_active ? `${stats.schedules_active} 个定时任务运行中` : '隔离 Profile 均正常映射'}
-            icon={Users}
-            iconColor="text-sky-600"
-            iconBg="bg-sky-50"
-            trend={{ text: stats?.tasks_running ? `${stats.tasks_running} 个任务执行中` : '全平台就绪', isPositive: true }}
-          />
-          <StatCard
-            title="累计入库收藏"
-            value={stats?.favorites_total ?? scrapedItems.length}
-            subtitle={`今日新增 ${stats?.today_new_favorites ?? 0} 条`}
-            icon={Bookmark}
-            iconColor="text-indigo-600"
-            iconBg="bg-indigo-50"
-          />
-          <StatCard
-            title="本地存储占用"
-            value={fmtSize(stats?.data_dir_size_bytes)}
-            subtitle={stats ? `SQLite ${fmtSize(stats.db_size_bytes)} · 内容元数据 ${stats.contents_total} 条` : 'SQLite + 浏览器 Profile'}
-            icon={HardDrive}
-            iconColor="text-purple-600"
-            iconBg="bg-purple-50"
-          />
+          <div className="anim-card-enter">
+            <StatCard
+              title="已纳管账号"
+              value={`${stats?.accounts_active ?? accounts.filter((a) => a.status === 'active').length} / ${stats?.accounts_total ?? accounts.length}`}
+              subtitle={stats?.schedules_active ? `${stats.schedules_active} 个定时任务运行中` : '隔离 Profile 均正常映射'}
+              icon={Users}
+              iconColor="text-sky-600"
+              iconBg="bg-sky-50"
+              trend={{ text: stats?.tasks_running ? `${stats.tasks_running} 个任务执行中` : '全平台就绪', isPositive: true }}
+            />
+          </div>
+          <div className="anim-card-enter" style={{ animationDelay: '60ms' }}>
+            <StatCard
+              title="累计入库收藏"
+              value={stats?.favorites_total ?? scrapedItems.length}
+              subtitle={`今日新增 ${stats?.today_new_favorites ?? 0} 条`}
+              icon={Bookmark}
+              iconColor="text-indigo-600"
+              iconBg="bg-indigo-50"
+            />
+          </div>
+          <div className="anim-card-enter" style={{ animationDelay: '120ms' }}>
+            <StatCard
+              title="本地存储占用"
+              value={fmtSize(stats?.data_dir_size_bytes)}
+              subtitle={stats ? `SQLite ${fmtSize(stats.db_size_bytes)} · 内容元数据 ${stats.contents_total} 条` : 'SQLite + 浏览器 Profile'}
+              icon={HardDrive}
+              iconColor="text-purple-600"
+              iconBg="bg-purple-50"
+            />
+          </div>
         </div>
 
         {/* Section: 活跃账号与抓取状态 */}
@@ -112,13 +122,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {accounts.map((account) => (
-              <ActiveAccountCard
-                key={account.id}
-                account={account}
-                onSelect={onSelectAccount}
-                onQuickSync={onQuickSyncAccount}
-              />
+            {accounts.map((account, idx) => (
+              <div key={account.id} className="anim-card-enter" style={{ animationDelay: `${Math.min(idx * 40, 240)}ms` }}>
+                <ActiveAccountCard
+                  account={account}
+                  onSelect={onSelectAccount}
+                  onQuickSync={onQuickSyncAccount}
+                />
+              </div>
             ))}
           </div>
         </div>

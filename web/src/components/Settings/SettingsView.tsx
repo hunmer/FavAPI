@@ -1,18 +1,23 @@
 import React, { useState } from 'react';
-import { 
-  Settings, 
-  Sliders, 
-  FolderOpen, 
-  HardDrive, 
-  ShieldCheck, 
-  Download, 
-  RefreshCw, 
-  CheckCircle2, 
+import {
+  Settings,
+  Sliders,
+  FolderOpen,
+  HardDrive,
+  ShieldCheck,
+  Download,
+  RefreshCw,
+  CheckCircle2,
   Save,
   Sun,
   Moon,
-  Palette
+  Palette,
+  UserCircle,
+  Loader2
 } from 'lucide-react';
+import { uploadAvatar } from '../../api';
+
+const DEFAULT_AVATAR = 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80';
 
 interface SettingsViewProps {
   onShowToast: (msg: string, type?: 'success' | 'info' | 'error') => void;
@@ -20,19 +25,40 @@ interface SettingsViewProps {
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
   onSetTheme: (theme: 'light' | 'dark') => void;
+  avatarUrl: string | null;
+  onAvatarChange: (url: string) => void;
 }
 
-export const SettingsView: React.FC<SettingsViewProps> = ({ 
-  onShowToast, 
+export const SettingsView: React.FC<SettingsViewProps> = ({
+  onShowToast,
   totalItemsCount,
   theme,
   onToggleTheme,
-  onSetTheme
+  onSetTheme,
+  avatarUrl,
+  onAvatarChange
 }) => {
   const [profilePath, setProfilePath] = useState('~/.favapi/profiles');
   const [headlessMode, setHeadlessMode] = useState(false);
   const [requestInterval, setRequestInterval] = useState(2.0);
   const [requestTimeout, setRequestTimeout] = useState(30);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || uploadingAvatar) return;
+    setUploadingAvatar(true);
+    try {
+      const url = await uploadAvatar(file);
+      onAvatarChange(url);
+      onShowToast('头像已更新，侧边栏即时生效');
+    } catch (err: any) {
+      onShowToast(`头像上传失败：${err?.message || '未知错误'}`, 'error');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
 
   const handleSave = () => {
     onShowToast('系统运行与抓取参数已成功保存！');
@@ -117,6 +143,50 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 暗色模式
               </button>
             </div>
+          </div>
+        </div>
+
+        {/* Card 0.5: 个人头像 */}
+        <div className="bg-white dark:bg-[#161B26] rounded-3xl p-6 border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col gap-4 md:col-span-2">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+              <UserCircle className="w-4 h-4" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-slate-900 dark:text-white">个人头像</h4>
+              <p className="text-[11px] text-slate-400">上传后将在侧边栏展示，支持 PNG / JPEG / WebP / GIF，不超过 5MB</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-5 pt-1">
+            <img
+              src={avatarUrl ?? DEFAULT_AVATAR}
+              alt="当前头像"
+              className="w-16 h-16 rounded-full object-cover ring-2 ring-slate-200 dark:ring-slate-700 shrink-0"
+            />
+            <label
+              className={`px-4 py-2.5 rounded-2xl text-xs font-semibold transition-all flex items-center gap-2 cursor-pointer border border-transparent ${
+                uploadingAvatar
+                  ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-wait'
+                  : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 dark:border-slate-700'
+              }`}
+            >
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                className="hidden"
+                disabled={uploadingAvatar}
+                onChange={handleAvatarUpload}
+              />
+              {uploadingAvatar ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  上传中...
+                </>
+              ) : (
+                '更换头像'
+              )}
+            </label>
           </div>
         </div>
 

@@ -29,13 +29,13 @@ export const CreateAccountModal: React.FC<CreateAccountModalProps> = ({
   return (
     <div
       id="create-account-modal-backdrop"
-      className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+      className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 anim-backdrop-enter"
       onClick={onClose}
     >
       <div
         id="create-account-modal"
         onClick={(e) => e.stopPropagation()}
-        className="bg-white w-full max-w-lg rounded-[28px] shadow-2xl border border-slate-100 overflow-hidden flex flex-col"
+        className="anim-modal-enter bg-white w-full max-w-lg rounded-[28px] shadow-2xl border border-slate-100 overflow-hidden flex flex-col"
       >
         {/* Header */}
         <div className="p-5 sm:p-6 bg-slate-50 border-b border-slate-100 flex items-center justify-between">

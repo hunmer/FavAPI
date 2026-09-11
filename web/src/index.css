@@ -7,3 +7,103 @@ html,
 body {
   overflow: hidden;
 }
+
+/* ============================================================
+   动效系统 — Corporate 人格（motion-design SKILL.md）
+   签名缓动: 入场 MD3 Emphasized / 屏内 Snappy UI
+   时长: quick 150ms / standard 250ms / slow 400ms
+   统一入场: 上浮 + 淡入（decelerate），模态叠加 scale
+   ============================================================ */
+:root {
+  --ease-in-entrance: cubic-bezier(0.05, 0.7, 0.1, 1); /* MD3 Emphasized：入场 */
+  --ease-screen: cubic-bezier(0.2, 0, 0, 1);           /* Snappy UI：屏内过渡 */
+  --dur-quick: 150ms;
+  --dur-standard: 250ms;
+  --dur-slow: 400ms;
+}
+
+/* 页面视图切换：淡入 + 上浮 12px（页面级 400-600ms 规范的下限） */
+@keyframes view-enter {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.anim-view-enter {
+  animation: view-enter var(--dur-slow, 400ms) var(--ease-in-entrance) both;
+}
+
+/* 卡片/列表项：淡入 + 上浮 20px（卡片 200-350ms 规范） */
+@keyframes card-enter {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.anim-card-enter {
+  animation: card-enter var(--dur-standard) var(--ease-in-entrance) backwards;
+}
+
+/* 表格行：更轻量（淡入 + 上浮 4px，避免整表跳跃） */
+@keyframes row-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.anim-row-enter {
+  animation: row-enter 200ms var(--ease-in-entrance) backwards;
+}
+
+/* 模态遮罩：纯淡入（轻量层 200ms） */
+@keyframes backdrop-enter {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.anim-backdrop-enter {
+  animation: backdrop-enter 200ms var(--ease-screen) both;
+}
+
+/* 模态面板：淡入 + scale 0.96→1 + 上浮 8px（模态 300-400ms，无 overshoot） */
+@keyframes modal-enter {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.anim-modal-enter {
+  animation: modal-enter 320ms var(--ease-in-entrance) both;
+}
+
+/* Toast：从右下滑入（微反馈，位移 + 淡入而非纯淡入） */
+@keyframes toast-enter {
+  from { opacity: 0; transform: translate(24px, 16px); }
+  to   { opacity: 1; transform: translate(0, 0); }
+}
+.anim-toast {
+  animation: toast-enter var(--dur-standard) var(--ease-in-entrance) both;
+}
+
+/* 错误反馈：水平抖动 ±8px、2 个来回、无 overshoot（错误要"坚决"） */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%      { transform: translateX(-8px); }
+  40%      { transform: translateX(8px); }
+  60%      { transform: translateX(-5px); }
+  80%      { transform: translateX(5px); }
+}
+.anim-shake {
+  animation: shake 350ms var(--ease-screen) both;
+}
+
+/* 环境层：空状态插画缓慢浮动（sine 循环，幅度 4px） */
+@keyframes ambient-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-4px); }
+}
+.anim-float {
+  animation: ambient-float 3.5s ease-in-out infinite;
+}
+
+/* 无障碍：用户偏好减少动效时全部关闭 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

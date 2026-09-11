@@ -38,13 +38,13 @@ export const CookiesModal: React.FC<CookiesModalProps> = ({ account, onClose }) 
   return (
     <div
       id="cookies-modal-backdrop"
-      className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+      className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 anim-backdrop-enter"
       onClick={onClose}
     >
       <div
         id="cookies-modal"
         onClick={(e) => e.stopPropagation()}
-        className="bg-white w-full max-w-2xl rounded-[32px] shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[85vh]"
+        className="anim-modal-enter bg-white w-full max-w-2xl rounded-[32px] shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[85vh]"
       >
         {/* Header */}
         <div className="p-5 sm:p-6 bg-slate-50 border-b border-slate-100 flex items-center justify-between">

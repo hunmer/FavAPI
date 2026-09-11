@@ -69,7 +69,7 @@ export const AccountsList: React.FC<AccountsListProps> = ({
   };
 
   return (
-    <div id="accounts-management-view" className="space-y-6 animate-in fade-in duration-200">
+    <div id="accounts-management-view" className="space-y-6 anim-view-enter">
       {/* Top Banner / Actions bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -163,13 +163,14 @@ export const AccountsList: React.FC<AccountsListProps> = ({
 
       {/* Account Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
-        {filteredAccounts.map((account) => {
+        {filteredAccounts.map((account, idx) => {
           const platform = PLATFORMS.find((p) => p.id === account.platform);
           return (
             <div
               key={account.id}
               id={`account-card-${account.id}`}
-              className="bg-white rounded-[26px] p-5 sm:p-6 border border-slate-200/80 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between group"
+              className="anim-card-enter bg-white rounded-[26px] p-5 sm:p-6 border border-slate-200/80 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between group"
+              style={{ animationDelay: `${Math.min(idx * 30, 240)}ms` }}
             >
               {/* Top row: Platform & Status */}
               <div>

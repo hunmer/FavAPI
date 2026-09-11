@@ -29,6 +29,9 @@ export function App() {
   // Theme State
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
 
+  // Avatar State（后端已上传的自定义头像，null 时用默认图）
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+
   const toggleTheme = () => {
     setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
   };
@@ -139,6 +142,8 @@ export function App() {
   // 初始加载：平台支持情况 + 各类数据 + 手动浏览窗口状态
   useEffect(() => {
     (async () => {
+      // 自定义头像（未上传时静默回退默认图）
+      api.fetchAvatarUrl().then(setAvatarUrl).catch(() => {});
       try {
         const infos = await api.listPlatforms();
         const implemented = new Set(infos.filter((i) => i.implemented).map((i) => i.platform));
@@ -420,9 +425,11 @@ export function App() {
     <div className={`h-screen overflow-hidden ${theme === 'dark' ? 'dark bg-[#0A0D14] text-slate-100' : 'bg-[#ECEEF2] text-slate-900'} flex items-center justify-center p-2 sm:p-4 lg:p-6 font-sans transition-colors duration-200`}>
       {/* Toast Banner */}
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-3 duration-200">
+        <div className="fixed bottom-6 right-6 z-50 anim-toast">
           <div
             className={`px-4 py-3 rounded-2xl shadow-xl border flex items-center gap-2.5 text-xs font-semibold ${
+              toast.type === 'error' ? 'anim-shake ' : ''
+            }${
               toast.type === 'success'
                 ? 'bg-emerald-950 text-white border-emerald-800'
                 : toast.type === 'error'
@@ -457,6 +464,7 @@ export function App() {
           totalItemsCount={scrapedItems.length}
           theme={theme}
           onToggleTheme={toggleTheme}
+          avatarUrl={avatarUrl}
         />
 
         {/* Right Main Container */}
@@ -495,7 +503,7 @@ export function App() {
 
             {/* View 2: 账号管理 */}
             {activeTab === 'accounts' && (
-              <div className="p-4 sm:p-6 lg:p-8">
+              <div className="anim-view-enter p-4 sm:p-6 lg:p-8">
                 {selectedAccount ? (
                   <AccountDetail
                     account={selectedAccount}
@@ -527,7 +535,7 @@ export function App() {
 
             {/* View 3: 收藏数据 */}
             {activeTab === 'data' && (
-              <div className="p-4 sm:p-6 lg:p-8">
+              <div className="anim-view-enter p-4 sm:p-6 lg:p-8">
                 <DataBrowserView
                   items={scrapedItems}
                   accounts={accounts}
@@ -538,7 +546,7 @@ export function App() {
 
             {/* View 4: 同步任务 */}
             {activeTab === 'tasks' && (
-              <div className="p-4 sm:p-6 lg:p-8">
+              <div className="anim-view-enter p-4 sm:p-6 lg:p-8">
                 <TasksView
                   tasks={tasks}
                   onManualRefresh={() => {
@@ -570,6 +578,8 @@ export function App() {
                 theme={theme}
                 onToggleTheme={toggleTheme}
                 onSetTheme={setTheme}
+                avatarUrl={avatarUrl}
+                onAvatarChange={setAvatarUrl}
               />
             )}
           </main>

@@ -126,16 +126,17 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
               暂无定时计划，点击右上角「新建计划」创建第一个自动化同步任务
             </div>
           )}
-          {schedules.map((item) => {
+          {schedules.map((item, idx) => {
             const platform = PLATFORMS.find((p) => p.id === item.platform) || PLATFORMS[0];
             const isActive = item.status === 'active';
 
             return (
               <div
                 key={item.id}
-                className={`bg-white rounded-3xl p-5 border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+                className={`anim-card-enter bg-white rounded-3xl p-5 border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
                   isActive ? 'border-slate-100 shadow-sm' : 'border-slate-100/60 bg-slate-50/50 opacity-70'
                 }`}
+                style={{ animationDelay: `${Math.min(idx * 40, 240)}ms` }}
               >
                 <div className="flex items-center gap-4 min-w-0">
                   <div
@@ -240,12 +241,12 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
       {/* Create Schedule Modal */}
       {showCreateModal && (
         <div
-          className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+          className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 anim-backdrop-enter"
           onClick={() => setShowCreateModal(false)}
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white w-full max-w-lg rounded-[28px] shadow-2xl border border-slate-100 overflow-hidden"
+            className="anim-modal-enter bg-white w-full max-w-lg rounded-[28px] shadow-2xl border border-slate-100 overflow-hidden"
           >
             <div className="p-5 sm:p-6 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
               <div>
@@ -368,12 +369,12 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
       {/* Delete Confirmation */}
       {deleteTarget && (
         <div
-          className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+          className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 anim-backdrop-enter"
           onClick={() => setDeleteTarget(null)}
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-white w-full max-w-md rounded-[28px] p-6 shadow-2xl border border-slate-100 space-y-4"
+            className="anim-modal-enter bg-white w-full max-w-md rounded-[28px] p-6 shadow-2xl border border-slate-100 space-y-4"
           >
             <h3 className="text-lg font-bold text-slate-900">确认删除定时计划？</h3>
             <p className="text-xs text-slate-500 leading-relaxed">
