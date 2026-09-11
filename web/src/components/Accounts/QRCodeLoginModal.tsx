@@ -55,7 +55,9 @@ export const QRCodeLoginModal: React.FC<QRCodeLoginModalProps> = ({
           try {
             const s = await api.loginStatus(account.id);
             if (s.busy) return; // 浏览器仍被登录流程占用，继续等待
-            if (!s.logging_in) {
+            // 登录 cookie 已经有效时立即结束，不等待后端收尾清理 logging_in 标记。
+            // 否则成功登录与清理标记之间的短暂窗口会让弹窗一直停在等待态。
+            if (s.logged_in || !s.logging_in) {
               finish(!!s.logged_in, s.logged_in ? undefined : '未检测到登录态（超时或未扫码）');
             }
           } catch (e: any) {
@@ -92,7 +94,9 @@ export const QRCodeLoginModal: React.FC<QRCodeLoginModalProps> = ({
   const handleManualCheck = async () => {
     try {
       const s = await api.loginStatus(account.id);
-      if (!s.busy && !s.logging_in) finish(!!s.logged_in, s.logged_in ? undefined : '未检测到登录态');
+      if (!s.busy && (s.logged_in || !s.logging_in)) {
+        finish(!!s.logged_in, s.logged_in ? undefined : '未检测到登录态');
+      }
     } catch (e: any) {
       finish(false, e.message);
     }

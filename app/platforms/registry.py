@@ -56,8 +56,10 @@ def _info(adapter: BasePlatformAdapter) -> dict:
 from app.platforms.bilibili.adapter import BilibiliAdapter  # noqa: E402
 from app.platforms.douyin.adapter import DouyinAdapter  # noqa: E402
 from app.platforms.xiaohongshu.adapter import XiaohongshuAdapter  # noqa: E402
+from app.platforms.youtube.adapter import YouTubeAdapter  # noqa: E402
 
 register(DouyinAdapter())
 register(BilibiliAdapter())
 register(XiaohongshuAdapter())
 load_declarative()
+register(YouTubeAdapter(config.PLATFORMS_DIR / "youtube"))
