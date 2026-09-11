@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { X, Plus, AlertCircle, Sparkles, Check } from 'lucide-react';
 import { PlatformId } from '../../types';
 import { listPlatforms, PlatformInfoRow } from '../../api';
+import { SiteIcon } from '../SiteIcon';
 
 interface CreateAccountModalProps {
   onClose: () => void;
@@ -97,7 +98,10 @@ export const CreateAccountModal: React.FC<CreateAccountModalProps> = ({
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-bold text-slate-900">{p.display_name}</span>
+                      <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5 min-w-0">
+                        <SiteIcon platform={p.platform} src={p.icon_url} name={p.display_name} className="w-4 h-4" />
+                        {p.display_name}
+                      </span>
                       {isSelected ? (
                         <span className="w-4 h-4 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px]">
                           <Check className="w-2.5 h-2.5 stroke-[3]" />

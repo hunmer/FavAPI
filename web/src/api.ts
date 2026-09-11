@@ -92,6 +92,7 @@ export interface PlatformInfoRow {
   display_name: string;
   implemented: boolean;
   supported_actions: string[];
+  icon_url?: string;
 }
 
 // ---------- 工具 ----------
@@ -495,6 +496,41 @@ export interface TagGroupRow {
 
 export async function listTags(limit = 100): Promise<{ tags: TagStatRow[]; groups: TagGroupRow[] }> {
   return request(`/tags?limit=${limit}`);
+}
+
+// ---------- 标签管理 ----------
+
+export interface TagDeleteResult {
+  contents_updated: number;
+  favorites_deleted: number;
+}
+
+/** 删除标签；deleteFavorites=true 时一并删除含该标签的收藏关系。 */
+export async function deleteTag(tag: string, deleteFavorites = false): Promise<TagDeleteResult> {
+  return request(`/tags/${encodeURIComponent(tag)}?delete_favorites=${deleteFavorites}`, { method: 'DELETE' });
+}
+
+export async function tagUsage(tag: string): Promise<{ tag: string; count: number }> {
+  return request(`/tags/${encodeURIComponent(tag)}/usage`);
+}
+
+export async function createTagGroup(name: string, tags: string[] = []): Promise<TagGroupRow> {
+  return request('/tag-groups', { method: 'POST', body: JSON.stringify({ name, tags }) });
+}
+
+export async function renameTagGroup(oldName: string, newName: string): Promise<TagGroupRow> {
+  return request(`/tag-groups/${encodeURIComponent(oldName)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ name: newName }),
+  });
+}
+
+/** 手动打标：整体覆盖某条内容的标签。 */
+export async function saveContentTags(contentId: string, tags: string[]) {
+  return request<{ content_id: string; tags: string[] }>(`/contents/${encodeURIComponent(contentId)}/tags`, {
+    method: 'PUT',
+    body: JSON.stringify({ tags }),
+  });
 }
 
 export interface TagStreamEvent {

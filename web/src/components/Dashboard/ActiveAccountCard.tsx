@@ -2,6 +2,7 @@ import React from 'react';
 import { Account } from '../../types';
 import { PLATFORMS } from '../../data/mockFavData';
 import { Play, ArrowUpRight, FolderHeart, CheckCircle2, AlertCircle, Clock, QrCode } from 'lucide-react';
+import { SiteIcon } from '../SiteIcon';
 
 interface ActiveAccountCardProps {
   account: Account;
@@ -28,8 +29,9 @@ export const ActiveAccountCard: React.FC<ActiveAccountCardProps> = ({
         <div className="flex items-center justify-between gap-2 mb-3">
           <div className="flex items-center gap-2">
             <span
-              className={`text-[11px] font-bold px-2.5 py-1 rounded-full border ${platformMeta.badgeBg}`}
+              className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full border ${platformMeta.badgeBg}`}
             >
+              <SiteIcon platform={account.platform} name={platformMeta.name} className="w-3.5 h-3.5" />
               {platformMeta.name.split(' ')[0]}
             </span>
             <span className="text-[11px] text-slate-400 dark:text-slate-400 font-mono">

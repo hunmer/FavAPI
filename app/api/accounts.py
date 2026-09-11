@@ -28,6 +28,25 @@ async def reload_platforms():
     return {"loaded": registry.load_declarative() , "platforms": registry.platform_infos()}
 
 
+@platforms_router.get("/platforms/{platform}/icon")
+async def platform_icon(platform: str):
+    """平台图标（platform.json 的 icon 字段指定的文件，位于平台目录内）。"""
+    from pathlib import Path
+
+    from fastapi.responses import FileResponse
+
+    adapter = registry.get_adapter(platform)
+    if adapter is None:
+        raise HTTPException(status_code=404, detail=f"未知平台：{platform}")
+    base_dir = getattr(adapter, "base_dir", None)
+    if not adapter.icon or not base_dir:
+        raise HTTPException(status_code=404, detail=f"{adapter.display_name} 未配置图标")
+    path = Path(base_dir) / adapter.icon
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail=f"图标文件不存在：{path.name}")
+    return FileResponse(path, media_type="image/x-icon")
+
+
 async def _get_account_or_404(account_id: str) -> dict:
     account = await account_manager.get_account(account_id)
     if account is None:

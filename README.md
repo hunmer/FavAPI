@@ -17,7 +17,7 @@
 生产环境可通过 `FAVAPI_PLATFORMS_DIR` 指定平台目录。每个平台放置一个
 `<platform>/platform.json`，声明 `home_url`、`login_cookies` 及响应拦截字段映射，服务启动自动加载；运行中调用 `POST /api/v1/platforms/reload` 刷新。Threads 示例位于 `platforms/threads/platform.json`。
 
-声明式平台可配置 Playwright 代理：`"proxy": "http://127.0.0.1:7890"`，或使用环境变量占位（如 Threads 的 `${FAVAPI_THREADS_PROXY}`）。也支持 `{"server":"http://...", "username":"...", "password":"..."}`。
+声明式平台可配置 Playwright 代理：默认值为 `"proxy": "auto"`，自动读取 `HTTPS_PROXY/HTTP_PROXY` 或 Windows 系统 Internet Settings；也可显式指定 `"http://127.0.0.1:7890"`，或使用带认证的 `{"server":"http://...", "username":"...", "password":"..."}`。
 
 ## 快速开始
 

@@ -58,6 +58,11 @@ CREATE TABLE IF NOT EXISTS ai_agents (
     created_at      TEXT
 );
 
+CREATE TABLE IF NOT EXISTS tag_groups (
+    group_name      TEXT PRIMARY KEY,
+    tags            TEXT NOT NULL     -- 组内标签 JSON 数组
+);
+
 CREATE TABLE IF NOT EXISTS favorites (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     account_id      TEXT,
@@ -145,6 +150,19 @@ class Database:
             task_cols = [row[1] for row in await cur.fetchall()]
         if "new_favorites" not in task_cols:
             await self.conn.execute("ALTER TABLE fetch_tasks ADD COLUMN new_favorites INTEGER")
+
+        # 标签分组：首次启动物化内置体系，此后编辑/新建分组均以库为准
+        from app.taxonomy import BUILTIN_TAG_GROUPS
+
+        row = await self.query_one("SELECT COUNT(*) AS n FROM tag_groups")
+        if not row or row["n"] == 0:
+            import json as _json
+
+            for group, tags in BUILTIN_TAG_GROUPS:
+                await self.conn.execute(
+                    "INSERT OR IGNORE INTO tag_groups (group_name, tags) VALUES (?, ?)",
+                    (group, _json.dumps(tags, ensure_ascii=False)),
+                )
 
     @property
     def conn(self) -> aiosqlite.Connection:

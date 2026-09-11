@@ -1,5 +1,6 @@
 """声明式 JSON 平台适配器。用于无需编写 Python 的简单收藏接口。"""
 import asyncio, json, logging, time, os, re
+from pathlib import Path
 from app import config
 from app.platforms.base import BasePlatformAdapter, FetchResult, AccountContext, LoginExpiredError
 from app.services import browser
@@ -18,13 +19,38 @@ def _walk(obj, path):
     return vals
 
 class DeclarativeAdapter(BasePlatformAdapter):
-    def __init__(self, spec: dict):
+    def __init__(self, spec: dict, base_dir: Path | None = None):
         self.spec=spec; self.platform=spec['platform']; self.display_name=spec.get('display_name',self.platform)
-        self.home_url=spec.get('home_url',''); self.supported_actions=tuple(spec.get('supported_actions',['list_favorites']))
+        self.home_url=spec.get('home_url',''); self.icon=spec.get('icon',''); self.base_dir=base_dir
+        self.supported_actions=tuple(spec.get('supported_actions',['list_favorites']))
         self.implemented=bool(spec.get('implemented',True)); self._capture=spec.get('capture',{})
 
     def _proxy(self):
         value = self.spec.get('proxy')
+        if value is None:
+            value = 'auto'
+        if isinstance(value, str) and value.strip().lower() == 'auto':
+            # 优先使用常见环境变量；Windows 桌面代理再回退到 Internet Settings。
+            for key in ('HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy'):
+                if os.environ.get(key):
+                    return os.environ[key]
+            if os.name == 'nt':
+                try:
+                    import winreg
+                    key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Software\Microsoft\Windows\CurrentVersion\Internet Settings')
+                    enabled = winreg.QueryValueEx(key, 'ProxyEnable')[0]
+                    server = winreg.QueryValueEx(key, 'ProxyServer')[0]
+                    winreg.CloseKey(key)
+                    if enabled and server:
+                        # 注册表可能返回 http=host:port;https=host:port，优先 HTTPS。
+                        parts = dict(p.split('=', 1) for p in str(server).split(';') if '=' in p)
+                        server = parts.get('https') or parts.get('http') or server
+                        if not str(server).startswith(('http://', 'https://', 'socks5://')):
+                            server = 'http://' + str(server)
+                        return server
+                except (OSError, ImportError, ValueError):
+                    pass
+            return None
         if isinstance(value, str):
             m = re.fullmatch(r"\$\{([^}]+)\}", value.strip())
             if m: return os.environ.get(m.group(1)) or None

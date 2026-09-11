@@ -33,7 +33,7 @@ def load_declarative(directory=None) -> list[str]:
     if not root.exists(): return loaded
     for path in root.glob("*/platform.json"):
         try:
-            spec=json.loads(path.read_text(encoding="utf-8")); adapter=DeclarativeAdapter(spec)
+            spec=json.loads(path.read_text(encoding="utf-8")); adapter=DeclarativeAdapter(spec, base_dir=path.parent)
             register(adapter); loaded.append(adapter.platform)
         except Exception as exc:
             logger.warning("平台声明加载失败 %s: %s", path, exc)
@@ -41,12 +41,15 @@ def load_declarative(directory=None) -> list[str]:
 
 
 def _info(adapter: BasePlatformAdapter) -> dict:
-    return {
+    info = {
         "platform": adapter.platform,
         "display_name": adapter.display_name,
         "implemented": adapter.implemented,
         "supported_actions": list(adapter.supported_actions),
     }
+    if adapter.icon:
+        info["icon_url"] = f"/api/v1/platforms/{adapter.platform}/icon"
+    return info
 
 
 # 导入即注册（抖音 / Bilibili / 小红书）

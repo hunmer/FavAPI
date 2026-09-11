@@ -1,9 +1,10 @@
 {
   "platform": "threads",
   "display_name": "Threads",
+  "icon": "favicon.ico",
   "home_url": "https://www.threads.com/saved",
   "login_cookies": ["sessionid", "csrftoken"],
-  "proxy": "${FAVAPI_THREADS_PROXY}",
+  "proxy": "auto",
   "supported_actions": ["list_favorites"],
   "headers": {
     "x-ig-app-id": "238260118697367",
