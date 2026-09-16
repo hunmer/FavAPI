@@ -206,7 +206,8 @@ async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progre
         page += 1
         items = batch["items"]
         total_fetched += len(items)
-        page_lo = _cursor_time(batch["cursor"])  # 本页条目收藏时间下界（末页无游标视为 -∞）
+        page_cursor = batch["cursor"]
+        page_lo = _cursor_time(page_cursor)  # 本页条目收藏时间下界（末页无游标视为 -∞）
         matched_this_page = 0
         refined_reached_end = False
 
@@ -226,10 +227,11 @@ async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progre
                 matched = items  # 整页收藏时间都在目标内
             else:
                 # 跨边界页：收藏稀疏时段一页可能跨越数月，页级判定失效。
-                # 从本页起点游标开始逐条精翻（count=1 时游标即该条收藏时间），判定精确。
+                # 从本页起点游标开始逐条精翻（count=1 时游标即该条收藏时间），只覆盖当前页。
                 sub_cursor = server_cursor
-                page_lo = None  # 精翻后更新为本段实际到达的时间
+                scan_lo = None
                 pending: list[str] = []
+                refined_to_page_boundary = False
 
                 while True:
                     b1 = await asyncio.to_thread(
@@ -240,13 +242,17 @@ async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progre
                     if t1 is None:
                         logger.warning("cancel_collect 精翻游标无效：cursor=%s", next_cursor)
                         break
-                    page_lo = t1
+                    scan_lo = t1
                     if dt_from is not None and t1 < dt_from:
                         break  # 越过下界
                     if (dt_from is None or t1 >= dt_from) and (dt_to is None or t1 <= dt_to):
                         pending.extend(
                             it["content_id"] for it in b1["items"] if it.get("content_id")
                         )
+                    # 已经覆盖到原始 count=20 页的末尾，交回主分页，避免继续逐条扫空游标。
+                    if page_cursor and next_cursor <= page_cursor:
+                        refined_to_page_boundary = True
+                        break
                     if not b1["has_more"] or not next_cursor:
                         refined_reached_end = True
                         break
@@ -272,7 +278,11 @@ async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progre
                     )
                 matched = []  # 已在精翻中处理
                 items = []    # 精翻已覆盖本页区间，避免主循环重复取消
-                if sub_cursor != server_cursor:
+                if refined_to_page_boundary:
+                    page_lo = _cursor_time(page_cursor)
+                else:
+                    page_lo = scan_lo
+                if not refined_to_page_boundary and sub_cursor != server_cursor:
                     server_cursor = sub_cursor  # 主循环从精翻到达的位置继续
                     skip_advance = True
         else:

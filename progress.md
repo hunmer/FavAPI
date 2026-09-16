@@ -58,3 +58,9 @@
 | What's the goal? | 修复按收藏时间匹配失败和进度显示异常 |
 | What have I learned? | 见 `findings.md` |
 | What have I done? | 见上方记录 |
+
+### Phase 4: 真实快照复现
+- **Status:** in_progress
+- Actions taken:
+  - 用户反馈修复后仍出现第 49 页跨到 2024-12-31，仅命中 1 条。
+  - 准备抓取不含 cookie 的只读响应快照。

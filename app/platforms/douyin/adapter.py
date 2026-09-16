@@ -79,7 +79,7 @@ class DouyinAdapter(BasePlatformAdapter):
         ApiOperation(
             op_id="cancel_collect_multi",
             name="批量取消收藏",
-            description="按视频 ID 或收藏日期区间批量取消抖音收藏（边拉边取消，操作不可恢复）",
+            description="按视频 ID、加入收藏时间或视频发布时间批量取消抖音收藏（操作不可恢复）",
             danger=True,
             params=(
                 ApiOperationParam(
@@ -89,7 +89,7 @@ class DouyinAdapter(BasePlatformAdapter):
                 ),
                 ApiOperationParam(
                     key="date_from", label="按日期区间：从", type="date",
-                    help="填日期区间时自动拉取该区间的收藏并全部取消，无需手填 ID",
+                    help="填日期区间时自动拉取并取消，无需手填 ID；具体按加入收藏时间或视频发布时间由下方选项决定",
                 ),
                 ApiOperationParam(
                     key="date_to", label="按日期区间：至", type="date",
@@ -98,10 +98,10 @@ class DouyinAdapter(BasePlatformAdapter):
                 ApiOperationParam(
                     key="time_mode", label="日期判定方式", type="select",
                     options=(
-                        ("collected", "按收藏时间（推荐，页级近似）"),
-                        ("published", "按发布时间（无收藏时间时兜底）"),
+                        ("collected", "按加入收藏时间（推荐）"),
+                        ("published", "按视频发布时间"),
                     ),
-                    help="接口不返回单条收藏时间：按收藏时间以整页游标判定，边界页用发布时间近似",
+                    help="加入收藏时间来自收藏列表游标；视频发布时间来自视频自身 create_time",
                 ),
             ),
         ),

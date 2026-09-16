@@ -4,7 +4,7 @@
 修复 `cancel_collect_multi` 日期区间模式匹配 2025 年收藏始终为 0，并消除前端进度日志中的 `undefined`。
 
 ## Current Phase
-Phase 3
+Phase 4
 
 ## Phases
 
@@ -22,6 +22,12 @@ Phase 3
 - [x] 增加或更新针对性测试
 - [x] 运行静态检查和测试
 - **Status:** complete
+
+### Phase 4: 真实快照复现
+- [ ] 保存当前账号只读收藏分页到临时目录
+- [ ] 离线对比分页与精翻游标/条目
+- [ ] 修复并回归验证
+- **Status:** in_progress
 
 ## Key Questions
 1. 收藏时间的真实响应字段与时间单位是什么？
