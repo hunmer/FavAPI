@@ -118,18 +118,27 @@ def fetch_listcollection_page(cookie_header: str, cursor: int = 0, count: int = 
     return parse_listcollection(data)
 
 
+def _cursor_time(cursor: int):
+    """服务端游标（微秒时间戳）→ 本页最后一条的真实收藏时间（aware datetime）；无效返回 None。"""
+    from datetime import datetime as _dt
+
+    if not cursor or cursor < 1e14:  # 微秒时间戳量级 1e15+，过小视为无效
+        return None
+    try:
+        return _dt.fromtimestamp(cursor / 1e6).astimezone()
+    except (OSError, OverflowError, ValueError):
+        return None
+
+
 async def fetch_listcollection(cookie_header: str, cursor: int, count: int, on_batch=None,
                                stop_before: "object | None" = None):
     """按服务端游标翻页直到取满 count（0=全部）或 has_more=false。
 
-    stop_before（aware datetime）：收藏按时间倒序，当某页条目全部有 collected_at
-    且最旧一条已早于 stop_before 时提前终止（后续页更旧不可能命中），日期区间场景用。
+    stop_before（aware datetime）：列表按真实收藏时间倒序且收藏时间 ≥ 发布时间，
+    游标即本页最后一条的收藏时间 —— 游标早于下界时后续条目的发布时间也必然早于
+    下界（collected_at 兜底发布时间也不会命中），提前终止零遗漏。
     返回 (全部 items, 最后一批的 has_more)。
     """
-    from datetime import datetime as _dt
-
-    from app.utils import item_collected_time
-
     server_cursor = cursor
     collected: list[dict] = []
     page = 0
@@ -149,11 +158,10 @@ async def fetch_listcollection(cookie_header: str, cursor: int, count: int, on_b
             return collected, False
         if count and len(collected) >= count:
             return collected, True
-        if stop_before is not None and batch["items"]:
-            times = [item_collected_time(it) for it in batch["items"]]
-            # 全页时间可解析且最旧一条早于下界 → 后续页更旧，提前终止
-            if all(t is not None for t in times) and min(times) < stop_before:
-                logger.info("listcollection 第 %d 页最旧条目早于下界，提前终止", page)
+        if stop_before is not None:
+            scanned_until = _cursor_time(batch["cursor"])
+            if scanned_until and scanned_until < stop_before:
+                logger.info("listcollection 第 %d 页游标(%s)早于下界，提前终止", page, scanned_until)
                 return collected, True
         server_cursor = batch["cursor"]
         await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
@@ -186,11 +194,12 @@ def cancel_collect_page(cookie_header: str, aweme_ids: list[str]) -> dict:
 async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progress=None) -> dict:
     """按收藏日期区间边拉边取消：每页拉取 → 过滤 [from, to] → 命中当页立即取消 → 上报进度。
 
-    收藏按时间倒序，整页最旧一条早于 dt_from 时提前终止（后续不可能命中）。
-    on_progress(info) 每页回调：{"page", "oldest_collected_at", "matched_this_page",
-    "canceled", "total_fetched"}，其中 oldest_collected_at 为当前翻到的最早收藏时间。
+    列表按真实收藏时间倒序，游标即本页最后一条的收藏时间；收藏时间 ≥ 发布时间，
+    故游标早于 dt_from 时提前终止与发布时间兜底过滤零冲突（后续条目必然不命中）。
+    on_progress(info) 每页回调：{"page", "oldest_collected_at"（已翻到的收藏时间），
+    "matched_this_page", "canceled", "total_fetched"}。
     """
-    from app.utils import filter_by_date_window, item_collected_time
+    from app.utils import filter_by_date_window
 
     server_cursor = 0
     canceled_total = 0
@@ -204,8 +213,7 @@ async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progre
         page += 1
         items = batch["items"]
         total_fetched += len(items)
-        times = [item_collected_time(it) for it in items]
-        oldest = min((t for t in times if t is not None), default=None)
+        scanned_until = _cursor_time(batch["cursor"])
 
         matched = filter_by_date_window(items, dt_from, dt_to)
         ids = [it["content_id"] for it in matched if it.get("content_id")]
@@ -219,7 +227,7 @@ async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progre
             await on_progress({
                 "type": "progress",
                 "page": page,
-                "oldest_collected_at": oldest.isoformat(timespec="seconds") if oldest else None,
+                "oldest_collected_at": scanned_until.isoformat(timespec="seconds") if scanned_until else None,
                 "matched_this_page": len(ids),
                 "canceled": canceled_total,
                 "total_fetched": total_fetched,
@@ -227,9 +235,9 @@ async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progre
 
         if not batch["has_more"] or not batch["cursor"]:
             break
-        if dt_from is not None and items and all(t is not None for t in times) and oldest < dt_from:
+        if dt_from is not None and scanned_until and scanned_until < dt_from:
             stop_early = True
-            logger.info("cancel_collect 第 %d 页最旧条目早于下界，提前终止", page)
+            logger.info("cancel_collect 第 %d 页游标(%s)早于下界，提前终止", page, scanned_until)
             break
         server_cursor = batch["cursor"]
         await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)

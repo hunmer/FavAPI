@@ -27,9 +27,13 @@ def parse_date_window(params: dict) -> tuple[datetime | None, datetime | None]:
 
     def _parse(value: str, name: str) -> datetime:
         try:
-            return datetime.strptime(value[:10], "%Y-%m-%d")
+            dt = datetime.strptime(value[:10], "%Y-%m-%d")
         except ValueError:
             raise ValueError(f"{name} 格式无效：{value}（应为 YYYY-MM-DD）")
+        # 年份合理性：拦下 date 输入框误解析出的 0026 / 2601 之类荒谬年份
+        if not (2000 <= dt.year <= 2100):
+            raise ValueError(f"{name} 年份超出合理范围（2000-2100）：{value}")
+        return dt
 
     dt_from = _parse(raw_from, "date_from") if raw_from else None
     dt_to = _parse(raw_to, "date_to") if raw_to else None
