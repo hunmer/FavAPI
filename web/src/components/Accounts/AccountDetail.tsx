@@ -945,120 +945,139 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
         </div>
       )}
 
-      {/* API Operation Execute Modal */}
+      {/* API Operation Execute Modal（左：表单 / 右：执行结果） */}
       {activeOp && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="anim-modal-enter bg-white w-full max-w-md rounded-[28px] p-6 shadow-2xl border border-slate-100 space-y-4 max-h-[85vh] overflow-y-auto">
-            <div>
-              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                {activeOp.name}
-                {activeOp.danger && (
-                  <span className="text-[10px] bg-rose-100 text-rose-600 px-2 py-0.5 rounded-full font-semibold">
-                    危险操作
-                  </span>
-                )}
-              </h3>
-              {activeOp.description && (
-                <p className="text-xs text-slate-500 mt-1">{activeOp.description}</p>
-              )}
-            </div>
-
-            {activeOp.params.map((p) => (
-              <div key={p.key}>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                  {p.label}
-                  {p.required && <span className="text-rose-500 ml-0.5">*</span>}
-                </label>
-                {p.type === 'textarea' ? (
-                  <textarea
-                    value={opForm[p.key] || ''}
-                    onChange={(e) => setOpForm((f) => ({ ...f, [p.key]: e.target.value }))}
-                    placeholder={p.placeholder}
-                    rows={5}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-slate-900"
-                  />
-                ) : (
-                  <input
-                    type={p.type === 'number' ? 'number' : p.type === 'date' ? 'date' : 'text'}
-                    value={opForm[p.key] || ''}
-                    onChange={(e) => setOpForm((f) => ({ ...f, [p.key]: e.target.value }))}
-                    placeholder={p.placeholder}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
-                  />
-                )}
-                {p.help && <p className="text-[11px] text-slate-400 mt-1">{p.help}</p>}
-              </div>
-            ))}
-
-            {showOpDangerConfirm && (
-              <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 p-3 rounded-xl flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                该操作不可恢复！再次点击「确认执行」将真正提交到平台。
-              </p>
-            )}
-
-            {(opRunning || opEvents.length > 0) && (
-              <div className="rounded-xl border border-slate-200 bg-slate-950 p-3 max-h-44 overflow-y-auto space-y-1">
-                <div className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-1">
-                  实时执行日志 {opRunning && <span className="animate-pulse">▍</span>}
+          <div className="anim-modal-enter bg-white w-full max-w-3xl rounded-[28px] p-6 shadow-2xl border border-slate-100 max-h-[85vh] overflow-y-auto">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* 左栏：参数表单 */}
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                    {activeOp.name}
+                    {activeOp.danger && (
+                      <span className="text-[10px] bg-rose-100 text-rose-600 px-2 py-0.5 rounded-full font-semibold">
+                        危险操作
+                      </span>
+                    )}
+                  </h3>
+                  {activeOp.description && (
+                    <p className="text-xs text-slate-500 mt-1">{activeOp.description}</p>
+                  )}
                 </div>
-                {opEvents.map((ev, i) => (
-                  <div
-                    key={i}
-                    className={`text-[11px] font-mono leading-relaxed ${
-                      ev.type === 'error'
-                        ? 'text-rose-400'
-                        : ev.type === 'done'
-                          ? 'text-emerald-400'
-                          : ev.type === 'matched'
-                            ? 'text-amber-300'
-                            : 'text-slate-300'
-                    }`}
-                  >
-                    {ev.type === 'error' ? `✗ ${ev.message}` : describeOpEvent(ev)}
+
+                {activeOp.params.map((p) => (
+                  <div key={p.key}>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      {p.label}
+                      {p.required && <span className="text-rose-500 ml-0.5">*</span>}
+                    </label>
+                    {p.type === 'textarea' ? (
+                      <textarea
+                        value={opForm[p.key] || ''}
+                        onChange={(e) => setOpForm((f) => ({ ...f, [p.key]: e.target.value }))}
+                        placeholder={p.placeholder}
+                        rows={5}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-slate-900"
+                      />
+                    ) : (
+                      <input
+                        type={p.type === 'number' ? 'number' : p.type === 'date' ? 'date' : 'text'}
+                        value={opForm[p.key] || ''}
+                        onChange={(e) => setOpForm((f) => ({ ...f, [p.key]: e.target.value }))}
+                        placeholder={p.placeholder}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                      />
+                    )}
+                    {p.help && <p className="text-[11px] text-slate-400 mt-1">{p.help}</p>}
                   </div>
                 ))}
+
+                {showOpDangerConfirm && (
+                  <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 p-3 rounded-xl flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                    该操作不可恢复！再次点击「确认执行」将真正提交到平台。
+                  </p>
+                )}
+
+                <div className="flex justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    disabled={opRunning}
+                    onClick={() => setActiveOp(null)}
+                    className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl disabled:opacity-50"
+                  >
+                    关闭
+                  </button>
+                  <button
+                    type="button"
+                    disabled={opRunning || (activeOp.params.some((p) => p.required) && activeOp.params.some((p) => p.required && !(opForm[p.key] || '').trim()))}
+                    onClick={submitOperation}
+                    className={`px-5 py-2 text-xs font-bold text-white rounded-xl shadow-xs disabled:opacity-50 inline-flex items-center gap-1.5 ${
+                      activeOp.danger
+                        ? 'bg-rose-600 hover:bg-rose-700'
+                        : 'bg-slate-900 hover:bg-slate-800'
+                    }`}
+                  >
+                    {opRunning && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                    {opRunning
+                      ? '执行中...'
+                      : showOpDangerConfirm
+                        ? '确认执行'
+                        : '执行'}
+                  </button>
+                </div>
               </div>
-            )}
 
-            {opResult && (
-              <pre
-                className={`text-[11px] font-mono p-3 rounded-xl max-h-40 overflow-auto whitespace-pre-wrap ${
-                  opResult.ok
-                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                    : 'bg-rose-50 text-rose-700 border border-rose-200'
-                }`}
-              >
-                {opResult.text}
-              </pre>
-            )}
+              {/* 右栏：执行结果（实时日志 + 返回 JSON） */}
+              <div className="space-y-3 flex flex-col md:border-l md:border-slate-100 md:pl-6">
+                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  执行结果
+                </div>
 
-            <div className="flex justify-end gap-2 pt-1">
-              <button
-                type="button"
-                disabled={opRunning}
-                onClick={() => setActiveOp(null)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl disabled:opacity-50"
-              >
-                关闭
-              </button>
-              <button
-                type="button"
-                disabled={opRunning || (activeOp.params.some((p) => p.required) && activeOp.params.some((p) => p.required && !(opForm[p.key] || '').trim()))}
-                onClick={submitOperation}
-                className={`px-5 py-2 text-xs font-bold text-white rounded-xl shadow-xs disabled:opacity-50 inline-flex items-center gap-1.5 ${
-                  activeOp.danger
-                    ? 'bg-rose-600 hover:bg-rose-700'
-                    : 'bg-slate-900 hover:bg-slate-800'
-                }`}
-              >
-                {opRunning && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
-                {opRunning
-                  ? '执行中...'
-                  : showOpDangerConfirm
-                    ? '确认执行'
-                    : '执行'}
-              </button>
+                {opRunning || opEvents.length > 0 ? (
+                  <div className="rounded-xl border border-slate-200 bg-slate-950 p-3 h-56 md:h-72 overflow-y-auto space-y-1 shrink-0">
+                    <div className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-1">
+                      实时日志 {opRunning && <span className="animate-pulse">▍</span>}
+                    </div>
+                    {opEvents.map((ev, i) => (
+                      <div
+                        key={i}
+                        className={`text-[11px] font-mono leading-relaxed ${
+                          ev.type === 'error'
+                            ? 'text-rose-400'
+                            : ev.type === 'done'
+                              ? 'text-emerald-400'
+                              : 'text-slate-300'
+                        }`}
+                      >
+                        {ev.type === 'error' ? `✗ ${ev.message}` : describeOpEvent(ev)}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 h-56 md:h-72 flex flex-col items-center justify-center text-center gap-1.5 shrink-0">
+                    <Terminal className="w-5 h-5 text-slate-300" />
+                    <span className="text-[11px] text-slate-400">
+                      填写左侧参数并点击「执行」
+                      <br />
+                      此处将实时显示执行进度与结果
+                    </span>
+                  </div>
+                )}
+
+                {opResult && (
+                  <pre
+                    className={`text-[11px] font-mono p-3 rounded-xl max-h-40 overflow-auto whitespace-pre-wrap ${
+                      opResult.ok
+                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                        : 'bg-rose-50 text-rose-700 border border-rose-200'
+                    }`}
+                  >
+                    {opResult.text}
+                  </pre>
+                )}
+              </div>
             </div>
           </div>
         </div>
