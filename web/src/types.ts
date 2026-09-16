@@ -99,6 +99,7 @@ export interface ScrapingFormData {
   count: number; // 0 = all
   startCursor: string;
   isAsync: boolean;
+  method?: 'browser' | 'api'; // 抓取执行方式：浏览器模拟 / API 直连（平台需支持）
   // Bilibili specific
   folderUrlOrUid?: string;
   mediaId?: string;

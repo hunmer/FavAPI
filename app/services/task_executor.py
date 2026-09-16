@@ -62,6 +62,8 @@ async def validate_fetch(
             f"不支持的操作：{action}（{adapter.display_name} 当前支持：{', '.join(adapter.supported_actions)}）"
         )
     try:
+        # 统一校验抓取方式（未实现 API 直连的平台提前拒绝），再走平台自有参数校验
+        adapter.resolve_fetch_method(params or {})
         adapter.validate_params(params or {})
     except ValueError as exc:
         raise FetchValidationError(str(exc))

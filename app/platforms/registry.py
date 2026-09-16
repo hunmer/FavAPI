@@ -46,6 +46,7 @@ def _info(adapter: BasePlatformAdapter) -> dict:
         "display_name": adapter.display_name,
         "implemented": adapter.implemented,
         "supported_actions": list(adapter.supported_actions),
+        "api_fetch_implemented": adapter.api_fetch_implemented,
     }
     if adapter.icon:
         info["icon_url"] = f"/api/v1/platforms/{adapter.platform}/icon"

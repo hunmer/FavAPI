@@ -64,6 +64,7 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
   const [count, setCount] = useState<number>(20);
   const [startCursor, setStartCursor] = useState<string>('');
   const [isAsync, setIsAsync] = useState<boolean>(false);
+  const [fetchMethod, setFetchMethod] = useState<'browser' | 'api'>('browser');
   const [selectedFolderMediaId, setSelectedFolderMediaId] = useState<string>(
     account.folders && account.folders[0] ? account.folders[0].mediaId : ''
   );
@@ -108,6 +109,7 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
       count,
       startCursor,
       isAsync,
+      method: fetchMethod,
       mediaId: selectedFolderMediaId,
       folderUrlOrUid: customFolderUrlOrUid,
       pageIntervalSec,
@@ -422,7 +424,7 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
           <div className="p-6">
             <form onSubmit={handleStartScraping} className="space-y-6">
               {/* Parameters Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 {/* Count (0 = all) */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
@@ -484,6 +486,28 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
                   </div>
                   <p className="text-[11px] text-slate-400 mt-1">
                     推荐大量抓取时使用异步模式。
+                  </p>
+                </div>
+
+                {/* Fetch method: browser simulation vs direct API */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
+                    执行方式
+                  </label>
+                  <select
+                    value={fetchMethod}
+                    onChange={(e) => setFetchMethod(e.target.value as 'browser' | 'api')}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  >
+                    <option value="browser">浏览器模拟 (兼容性最好)</option>
+                    {platform.apiFetch && (
+                      <option value="api">API 请求 (直连，更快)</option>
+                    )}
+                  </select>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    {fetchMethod === 'api'
+                      ? '接口直连抓取，速度快、无需打开浏览器窗口。'
+                      : '通过 Chromium 会话滚动页面并拦截响应抓取。'}
                   </p>
                 </div>
               </div>

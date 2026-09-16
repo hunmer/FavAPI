@@ -34,6 +34,9 @@ class BasePlatformAdapter(ABC):
     icon: str = ""                 # 图标文件名（相对平台目录，供 /platforms/{id}/icon 下发）
     implemented: bool = True          # False = 占位平台
     supported_actions: tuple[str, ...] = ()
+    # 收藏列表是否支持 API 直连抓取（params.method="api"）；
+    # 支持的平台覆写为 True 并实现 fetch_favorites_api，在 fetch_favorites 开头分发
+    api_fetch_implemented: bool = False
 
     @abstractmethod
     async def login(self, account: AccountContext, timeout: float | None = None) -> bool:
@@ -44,16 +47,43 @@ class BasePlatformAdapter(ABC):
         """检查登录态是否有效。"""
 
     def validate_params(self, params: dict) -> None:
-        """抓取前参数校验（可选覆写）；不合法抛 ValueError，由任务执行器转为 400。"""
+        """抓取前参数校验（可选覆写）；不合法抛 ValueError，由任务执行器转为 400。
+
+        默认校验抓取方式 method 的合法性（未实现 API 直连的平台提前拒绝）。
+        """
+        self.resolve_fetch_method(params)
 
     @abstractmethod
     async def fetch_favorites(self, account: AccountContext, params: dict, on_batch=None) -> FetchResult:
-        """抓取收藏列表，params 支持 count / cursor 等。
+        """抓取收藏列表，params 支持 count / cursor / method 等。
 
         on_batch 提供时（流式抓取）：每抓到一批 items 调用一次
         await on_batch({"folder": ..., "page": ..., "items": [...], "total_fetched": ...})，
         便于调用方增量入库 / SSE 推送；不提供时行为与原同步抓取一致。
+
+        params.method = "api" 时走接口直连（需平台实现 fetch_favorites_api 且
+        api_fetch_implemented = True），缺省 "browser" 浏览器模拟；分发见 resolve_fetch_method。
         """
+
+    def resolve_fetch_method(self, params: dict) -> str:
+        """解析收藏抓取执行方式（browser=浏览器模拟 / api=接口直连）。
+
+        不合法或平台未实现 api 时抛 ValueError，由任务执行器转为 400；
+        fetch_favorites 实现开头应调用本方法完成 method 分发。
+        """
+        method = str((params or {}).get("method") or "browser").lower()
+        if method not in ("browser", "api"):
+            raise ValueError(f"未知抓取方式 method={method}（可选 browser / api）")
+        if method == "api" and not self.api_fetch_implemented:
+            raise ValueError(f"{self.display_name} 暂不支持 API 请求方式，请使用浏览器模拟")
+        return method
+
+    async def fetch_favorites_api(self, account: AccountContext, params: dict, on_batch=None) -> FetchResult:
+        """收藏列表 API 直连抓取（可选实现，签名与 fetch_favorites 一致）。
+
+        默认未实现；支持的平台在 fetch_favorites 中按 resolve_fetch_method 分发到这里。
+        """
+        raise NotImplementedError(f"{self.display_name} 未实现 API 请求抓取方式")
 
     async def refresh_profile(self, account: AccountContext) -> None:
         """登录成功后回填账号身份信息（昵称/头像/收藏夹等，可选覆写）。

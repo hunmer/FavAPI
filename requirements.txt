@@ -4,3 +4,4 @@ aiosqlite
 playwright
 httpx
 croniter
+curl_cffi

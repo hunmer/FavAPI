@@ -1,0 +1,161 @@
+# 平台收藏抓取「API 请求」模式接入指南
+
+> 背景：FavAPI 各平台的收藏抓取原本只有「浏览器模拟」一种方式（起 Chromium → 滚动页面 → 拦截 XHR 响应），单页 20 条要 3~5 秒，全量抓取动辄数分钟。
+> 2026-09 抖音平台率先落地了「API 请求」直连模式（curl-impersonate 模拟 Chrome 指纹 + profile cookies 直连接口），39 条收藏 3.8 秒拿完，快一个量级。
+> 本文档交代原理、通用架构，以及**如何为一个新平台复刻这套流程**：Chrome DevTools 抓包分析 → 用户登录 → Python 原型验证 → 落地到 platform 代码。
+
+## 1. 原理：为什么不能直接用 httpx/requests 请求
+
+多数平台（抖音、小红书等）的风控不只看 cookie 和签名，还看**客户端 TLS / HTTP2 指纹**：
+
+| 客户端 | 结果（抖音实测） |
+|---|---|
+| 浏览器 fetch | ✅ 正常返回 |
+| node 原生 https / Python httpx | ❌ HTTP 200 但响应体为空（`Content-Length: 0`） |
+| cycletls（自定义 JA3 的 Go uTLS） | ❌ 同样空响应 —— 只模拟 ClientHello 不够 |
+| **curl_cffi（curl-impersonate，`impersonate="chrome"`）** | ✅ **完整复刻 Chrome 的 TLS + HTTP2 帧/头部顺序，正常返回** |
+
+**空响应（HTTP 200 + len=0）就是指纹拦截的典型特征**，遇到它不要怀疑 cookies，先换 curl_cffi。
+
+附带结论（抖音 2026-09 实测）：`a_bogus` 签名当前不做强校验（乱码/缺失均可通过），拦截全靠指纹层。其他平台自行验证，不要假设。
+
+## 2. 已落地的通用架构
+
+任何平台想支持 API 模式，只需在现有抽象上做三件事，执行层和前端全部复用：
+
+### 2.1 后端（`app/platforms/`）
+
+- **`base.py`** —— `BasePlatformAdapter` 已内置：
+  - `api_fetch_implemented: bool = False`：能力声明，平台覆写为 `True`
+  - `resolve_fetch_method(params)`：解析 `params.method`（`browser`/`api`），未实现 api 的平台抛 `ValueError`
+  - `fetch_favorites_api()`：API 模式入口，默认 `NotImplementedError`
+  - `validate_params()` 默认实现已包含 method 校验
+- **`app/services/task_executor.py`** —— `validate_fetch` 里统一调 `adapter.resolve_fetch_method(params)`，
+  不支持的平台在提交阶段直接 400（**不要依赖各平台 validate_params 是否调 super**，BilibiliAdapter 覆写时就没调，踩过）
+- **`app/platforms/registry.py`** —— `_info` 已输出 `api_fetch_implemented` 字段（`GET /api/v1/platforms` 可查）
+
+请求链路：`POST /api/v1/fetch` → `params.method="api"` → `adapter.fetch_favorites` 开头分发：
+
+```python
+async def fetch_favorites(self, account, params, on_batch=None) -> FetchResult:
+    if self.resolve_fetch_method(params) == "api":
+        return await self.fetch_favorites_api(account, params, on_batch)
+    return await self._fetch_favorites_browser(account, params, on_batch)
+```
+
+### 2.2 前端（`web/src/`）
+
+- `types.ts`：`ScrapingFormData.method?: 'browser' | 'api'`
+- `api.ts`：`formToParams` 已透传 `params.method`
+- `data/mockFavData.ts`：`PlatformMeta.apiFetch?: boolean`，支持的平台置 `true`（select 里才会出现「API 请求」选项）
+- `components/Accounts/AccountDetail.tsx`：抓取表单已有「执行方式」select（浏览器模拟 / API 请求），按 `platform.apiFetch` 动态出选项
+
+### 2.3 依赖
+
+`requirements.txt` 已加 `curl_cffi`。新环境记得 `pip install -r requirements.txt`。
+
+## 3. 新平台接入流程（四步）
+
+以抖音为参照模板，代码在 `app/platforms/douyin/`（adapter.py / api_client.py / constants.py / parser.py）。
+
+### 第一步：Chrome DevTools 抓包分析（不开玩笑，这一步定成败）
+
+用 chrome-devtools MCP（或其他 DevTools）连接一个真实浏览器，搞清楚平台前端**到底怎么请求收藏列表**：
+
+1. **连接并导航**：`new_page` 打开平台收藏页 URL（抖音是 `/user/self?showTab=favorite_collection`）。
+2. **让用户登录**：触发登录弹窗（截图二维码给用户扫），登录后从任意 XHR 请求头里能拿到完整 cookie（含 HttpOnly）。
+3. **抓收藏列表请求**：`list_network_requests` 过滤 xhr/fetch，找到真正的收藏列表接口，**逐项记录**：
+   - **HTTP 方法**：抖音 `listcollection` 是 **POST**（用 GET 会 404 `Unsupported path(Janus)`，这个坑查了半小时）
+   - **URL + query 公共参数**：完整复制（device_platform/aid/version_code 等一长串，保持与浏览器一致最稳）
+   - **请求体**：抖音 POST body 只有 `count=10&cursor=0`（form-urlencoded）
+   - **特殊 header**：如 `x-secsdk-csrf-token: DOWNGRADE`
+   - **响应结构**：字段名、翻页 cursor 语义
+4. **小心同名接口陷阱**：抖音同时存在 `mix/listcollection`（返回「收藏的**合集**」`mix_infos`）和 `aweme/listcollection`（收藏的**视频** `aweme_list`），别抓错。看清响应顶层字段再下结论。
+5. **对照实验**（判断哪些参数/签名必需）：在页面 console 里用 fetch 重放，分别试
+   原样 / 篡改签名 / 去掉签名 / 去掉可疑 header，观察哪些是硬性要求。抖音实测 a_bogus/msToken 都可省。
+
+### 第二步：Python 原型验证（`.venv` 里跑一次性脚本）
+
+```python
+from curl_cffi import requests
+r = requests.post(url, data=f"count=10&cursor={cursor}",
+                  headers={...含 cookie...}, impersonate="chrome", timeout=20)
+```
+
+验证三件事：
+
+1. **认证方式**：cookies 从哪来。FavAPI 的账号体系用 playwright 持久化 profile，
+   读 cookie 见 `douyin/api_client.py::profile_cookie_header`（起一次无头 Chromium 读 cookies 后关闭）。
+2. **翻页语义**：抖音 cursor 是**服务端返回的时间戳 token**（上一页响应里的 `cursor` 字段作为下一页入参），不是偏移量。
+   对外 `FetchResult.cursor` 仍保持与浏览器模式一致的「已抓条数偏移」语义，内部自行转换。
+3. **节流**：翻页间隔别太快（抖音用 0.8s/页），防风控。
+
+### 第三步：落地到 platform 代码
+
+照 douyin 的结构：
+
+| 文件 | 内容 |
+|---|---|
+| `constants.py` | 接口 URL、每页条数、翻页间隔 |
+| `api_client.py` | `profile_cookie_header()`（profile → cookie 头）+ `fetch_xxx_page()`（单页，同步）+ `fetch_xxx()`（翻页循环，async，`asyncio.to_thread` 包同步请求） |
+| `adapter.py` | `api_fetch_implemented = True`；`fetch_favorites` 开头两行分发；实现 `fetch_favorites_api`（解析 count/cursor → 调 api_client → 组装 FetchResult，on_batch 逐批回调） |
+| `parser.py` | 复用/扩展响应解析（douyin 直接复用了浏览器模式的 `parse_listcollection`） |
+
+前端只需一步：`web/src/data/mockFavData.ts` 该平台加 `apiFetch: true`。
+
+### 第四步：验证清单
+
+```bash
+# 1. adapter 直测（含流式回调）
+.venv/Scripts/python.exe -c "..."   # 参照 douyin：构造 AccountContext 调 fetch_favorites({'method':'api','count':N})
+
+# 2. HTTP 链路（server 起在 8300）
+curl -X POST http://127.0.0.1:8300/api/v1/fetch -H "Content-Type: application/json" \
+  -d '{"platform":"<id>","account_id":"<acc>","action":"list_favorites","params":{"method":"api","count":10}}'
+
+# 3. 校验兜底：不支持的平台应 400
+curl ... -d '{"platform":"bilibili",...,"params":{"method":"api"}}'   # → 400 暂不支持
+
+# 4. 回归：默认（不带 method）浏览器模式不受影响
+
+# 5. 前端：账号详情 → 抓取表单出现「执行方式」select → 选 API 请求 → 抓取成功
+```
+
+## 4. 踩坑记录（全部实测过，别再踩）
+
+1. **GET/POST 搞错**：抖音 listcollection 必须 POST，GET 返回 `404 Unsupported path(Janus)`（网关层按方法路由）。
+2. **空响应 = 指纹拦截**：HTTP 200 + `Content-Length: 0`。换 curl_cffi `impersonate="chrome"`，不要在 cookies 上浪费时间。
+3. **uvicorn `--reload` 下 playwright 异步 API 起不来**：Windows 上 reload 模式的 event loop 是 SelectorEventLoop，
+   不支持子进程，`async_playwright().start()` 抛 `NotImplementedError`。**解决**：读 cookies 用
+   `asyncio.to_thread` + `sync_playwright`（同步 API 在线程内自建循环）。注意这也会导致浏览器模式在 dev 下失败——
+   浏览器相关功能用 `server` 命令（无 reload）验证。
+4. **平台覆写 `validate_params` 会绕过基类 method 校验**：所以统一校验放在 `task_executor.validate_fetch` 里强制执行。
+5. **curl_cffi 是同步库**：async 上下文里必须 `await asyncio.to_thread(fn, ...)`，否则阻塞整个事件循环。
+6. **登录态判定复用** `browser.has_login_cookies(cookies, LOGIN_COOKIE_KEYS)`，失效抛 `LoginExpiredError`，
+   任务执行器会自动把账号标记 expired。
+7. **procm 双实例**：dev 命令曾起过两个实例抢 8300 端口，排查前先 `procm list` 看重复。
+
+## 5. 平台支持现状
+
+| 平台 | 浏览器模拟 | API 请求 | 备注 |
+|---|---|---|---|
+| douyin | ✅ | ✅ | 首个落地，代码即模板 |
+| bilibili | ✅ | ❌ | 接口带 WBI 签名，按本指南流程接入 |
+| xiaohongshu | ✅ | ❌ | 风控较严（x-s 签名），原型阶段多花时间 |
+| wechat | JSON 导入 | — | 无浏览器抓取概念，不适用 |
+| youtube / kuaishou / threads | 视实现 | ❌ | 按需接入 |
+
+## 6. 快速回顧：一次成功接入的样子
+
+```
+Chrome DevTools 连浏览器 → 用户扫码登录 → 抓包记录接口细节
+    ↓
+Python 一次性脚本：profile cookies + curl_cffi(impersonate="chrome") 原型打通
+    ↓
+constants.py / api_client.py / adapter.py 三件套 + mockFavData.ts 加 apiFetch
+    ↓
+四项验证（直测 / HTTP / 400 兜底 / 回归浏览器模式）→ 前端实测
+```
+
+抖音全流程参考提交：`app/platforms/douyin/api_client.py`（新增）、`adapter.py`（分发 + fetch_favorites_api）、
+`base.py` / `task_executor.py` / `registry.py`（通用层）、前端 4 文件（types / api / mockFavData / AccountDetail）。

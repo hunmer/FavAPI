@@ -11,6 +11,7 @@ from app.platforms.base import (
     LoginExpiredError,
 )
 from app.services import browser
+from . import api_client
 from . import constants
 from .parser import parse_listcollection
 
@@ -49,6 +50,7 @@ class DouyinAdapter(BasePlatformAdapter):
     implemented = True
     # list_collects / get_collect_videos 为 PRD 预留的后续 action
     supported_actions = ("list_favorites",)
+    api_fetch_implemented = True  # 收藏列表支持 API 直连（params.method="api"）
 
     async def login(self, account: AccountContext, timeout: float | None = None) -> bool:
         """打开有头浏览器等待扫码；检测到 sessionid 即成功。"""
@@ -137,6 +139,46 @@ class DouyinAdapter(BasePlatformAdapter):
         logger.info("[%s] 身份信息已回填：%s(%s)", account.account_id, owner.get("nickname"), owner["uid"])
 
     async def fetch_favorites(
+        self, account: AccountContext, params: dict, on_batch=None
+    ) -> FetchResult:
+        if self.resolve_fetch_method(params) == "api":
+            return await self.fetch_favorites_api(account, params, on_batch)
+        return await self._fetch_favorites_browser(account, params, on_batch)
+
+    async def fetch_favorites_api(
+        self, account: AccountContext, params: dict, on_batch=None
+    ) -> FetchResult:
+        """API 直连：profile cookies + curl-impersonate Chrome 指纹 POST listcollection。
+
+        cursor 语义与浏览器模式一致（已抓取条数偏移）；接口翻页内部用服务端游标。
+        """
+        raw_count = params.get("count")
+        if raw_count in (None, ""):
+            count = constants.DEFAULT_COUNT
+        else:
+            count = max(0, min(int(raw_count), constants.MAX_COUNT))  # 0 = 全部
+        skip = max(0, int(params.get("cursor") or 0))
+        logger.info(
+            "[%s] API 直连抓取收藏：count=%s cursor=%d", account.account_id, count or "全部", skip
+        )
+
+        cookie_header = await api_client.profile_cookie_header(account.profile_path)
+        collected, last_has_more = await api_client.fetch_listcollection(
+            cookie_header, cursor=0, count=(count + skip) if count else 0, on_batch=on_batch
+        )
+        window = collected[skip:] if not count else collected[skip: skip + count]
+        logger.info(
+            "[%s] API 直连抓取完成：共 %d 条，返回 [%d:%d] %d 条",
+            account.account_id, len(collected), skip, skip + len(window), len(window),
+        )
+        return FetchResult(
+            items=window,
+            cursor=skip + len(window),
+            has_more=last_has_more and (not count or len(collected) >= skip + count),
+            total=len(collected),
+        )
+
+    async def _fetch_favorites_browser(
         self, account: AccountContext, params: dict, on_batch=None
     ) -> FetchResult:
         raw_count = params.get("count")
