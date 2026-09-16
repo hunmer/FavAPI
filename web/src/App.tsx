@@ -26,7 +26,7 @@ import { SettingsView } from './components/Settings/SettingsView';
 import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
 import { DevInspector } from './components/DevInspector';
 import { AnimatePresence, motion } from 'motion/react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 
 // 视图切换缓动（motion-design 规范）：入场 MD3 Emphasized 减速 / 出场 MD3 Accelerate 加速
 // 入场 400ms > 出场 200ms（Enter 比 Exit 长 30-50%），总时长落在页面过渡 400-600ms 区间
@@ -72,6 +72,29 @@ export function App() {
   const [stats, setStats] = useState<api.StatsData | null>(null);
   const [browserOpenIds, setBrowserOpenIds] = useState<Set<string>>(new Set());
 
+  // 选中账号 ↔ URL ?account= 同步：UI 操作时 push 写入（后退键可退回列表），
+  // 浏览器 POP 导航（后退/前进/手动改 hash/刷新）时以 URL 为准反推选中态
+  const openAccountDetail = useCallback(
+    (acc: Account) => {
+      setSelectedAccount(acc);
+      navigate(`/accounts?account=${encodeURIComponent(acc.id)}`);
+    },
+    [navigate]
+  );
+
+  const closeAccountDetail = useCallback(() => {
+    setSelectedAccount(null);
+    if (location.pathname.startsWith('/accounts')) navigate('/accounts');
+  }, [navigate, location.pathname]);
+
+  // 浏览器后退/前进（POP）或刷新加载：按 URL ?account= 恢复选中账号
+  const navigationType = useNavigationType();
+  useEffect(() => {
+    if (navigationType !== 'POP' || activeTab !== 'accounts') return;
+    const urlAccountId = new URLSearchParams(location.search).get('account');
+    const next = urlAccountId ? accounts.find((a) => a.id === urlAccountId) ?? null : null;
+    if ((selectedAccount?.id ?? null) !== (next?.id ?? null)) setSelectedAccount(next);
+  }, [navigationType, activeTab, location.search, accounts, selectedAccount]);
 
   // Modals State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -298,7 +321,7 @@ export function App() {
   const handleDeleteAccount = async (account: Account) => {
     try {
       await api.deleteAccount(account.id);
-      if (selectedAccount?.id === account.id) setSelectedAccount(null);
+      if (selectedAccount?.id === account.id) closeAccountDetail();
       showToast(`已删除账号「${account.name}」及其浏览器 Profile`);
       reloadAccounts().then((map) => {
         reloadFavorites(map);
@@ -592,10 +615,7 @@ export function App() {
                 onOpenCreateAccount={() => setIsCreateModalOpen(true)}
                 onViewAllData={(date) => navigate(date ? `/data?date=${date}&date_end=${date}` : '/data')}
                 onOpenScheduleTab={() => setActiveTab('schedule')}
-                onQuickSyncAccount={(acc) => {
-                  setSelectedAccount(acc);
-                  setActiveTab('accounts');
-                }}
+                onQuickSyncAccount={openAccountDetail}
                 onLoginAccount={(acc) => setLoginModalAccount(acc)}
                 onTriggerSchedule={handleTriggerSchedule}
               />
@@ -607,7 +627,7 @@ export function App() {
                 {selectedAccount ? (
                   <AccountDetail
                     account={selectedAccount}
-                    onBack={() => setSelectedAccount(null)}
+                    onBack={closeAccountDetail}
                     onOpenLoginModal={(acc) => setLoginModalAccount(acc)}
                     onOpenCookiesModal={(acc) => setCookiesModalAccount(acc)}
                     onCheckHealth={handleQuickCheckHealth}
@@ -627,7 +647,7 @@ export function App() {
                 ) : (
                   <AccountsList
                     accounts={accounts}
-                    onSelectAccount={(acc) => setSelectedAccount(acc)}
+                    onSelectAccount={openAccountDetail}
                     onOpenCreateModal={() => setIsCreateModalOpen(true)}
                     onOpenLoginModal={(acc) => setLoginModalAccount(acc)}
                     onQuickCheckHealth={handleQuickCheckHealth}
