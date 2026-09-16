@@ -26,6 +26,27 @@ class LoginExpiredError(Exception):
     """登录态失效：抓取中途检测到未登录时抛出，由任务执行器标记账号 expired。"""
 
 
+@dataclass
+class ApiOperationParam:
+    """API 操作表单的一个输入项（前端据此渲染弹窗表单）。"""
+    key: str
+    label: str
+    type: str = "text"        # text | textarea | number | date
+    required: bool = False
+    placeholder: str = ""
+    help: str = ""
+
+
+@dataclass
+class ApiOperation:
+    """平台对外暴露的一个可执行 API 操作（写操作 / 管理类，与收藏抓取分离）。"""
+    op_id: str
+    name: str
+    description: str = ""
+    params: list[ApiOperationParam] = field(default_factory=list)
+    danger: bool = False      # 前端弹二次确认
+
+
 class BasePlatformAdapter(ABC):
     platform: str = ""
     display_name: str = ""
@@ -37,6 +58,8 @@ class BasePlatformAdapter(ABC):
     # 收藏列表是否支持 API 直连抓取（params.method="api"）；
     # 支持的平台覆写为 True 并实现 fetch_favorites_api，在 fetch_favorites 开头分发
     api_fetch_implemented: bool = False
+    # 平台对外暴露的可执行 API 操作（写操作/管理类）；元数据下发前端渲染卡片+表单
+    api_operations: tuple[ApiOperation, ...] = ()
 
     @abstractmethod
     async def login(self, account: AccountContext, timeout: float | None = None) -> bool:
@@ -84,6 +107,23 @@ class BasePlatformAdapter(ABC):
         默认未实现；支持的平台在 fetch_favorites 中按 resolve_fetch_method 分发到这里。
         """
         raise NotImplementedError(f"{self.display_name} 未实现 API 请求抓取方式")
+
+    def get_api_operation(self, op_id: str) -> ApiOperation | None:
+        for op in self.api_operations:
+            if op.op_id == op_id:
+                return op
+        return None
+
+    async def execute_api_operation(
+        self, op_id: str, account: AccountContext, params: dict, on_event=None
+    ) -> dict:
+        """执行一个 API 操作（可选实现）；返回结果 dict 原样下发前端。
+
+        默认未实现；支持的平台按 op_id 分发到具体操作，参数不合法抛 ValueError（API 层转 400）。
+        on_event(evt: dict) 提供时（流式执行）：阶段性进度逐条回调
+        （如 {"type": "stage"|"matched"|"progress", ...}），便于 SSE 推送。
+        """
+        raise NotImplementedError(f"{self.display_name} 未实现 API 操作：{op_id}")
 
     async def refresh_profile(self, account: AccountContext) -> None:
         """登录成功后回填账号身份信息（昵称/头像/收藏夹等，可选覆写）。

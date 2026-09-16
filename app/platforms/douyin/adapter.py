@@ -1,16 +1,20 @@
 """抖音适配器：扫码登录 / 登录态检查 / 收藏列表抓取（响应拦截 + 滚动加载）。"""
 import asyncio
 import logging
+import re
 import time
 
 from app import config
 from app.platforms.base import (
     AccountContext,
+    ApiOperation,
+    ApiOperationParam,
     BasePlatformAdapter,
     FetchResult,
     LoginExpiredError,
 )
 from app.services import browser
+from app.utils import filter_by_date_window, parse_date_window
 from . import api_client
 from . import constants
 from .parser import parse_listcollection
@@ -51,6 +55,135 @@ class DouyinAdapter(BasePlatformAdapter):
     # list_collects / get_collect_videos 为 PRD 预留的后续 action
     supported_actions = ("list_favorites",)
     api_fetch_implemented = True  # 收藏列表支持 API 直连（params.method="api"）
+    api_operations = (
+        ApiOperation(
+            op_id="list_favorites",
+            name="获取收藏视频列表",
+            description="API 直连拉取当前账号收藏列表（只读，不入库），可选按收藏日期过滤",
+            params=(
+                ApiOperationParam(
+                    key="count", label="数量 (0 为全部)", type="number",
+                    placeholder="默认 20",
+                    help="返回条数上限；日期区间过滤在抓取后应用",
+                ),
+                ApiOperationParam(
+                    key="date_from", label="收藏日期从", type="date",
+                    help="可选；无收藏时间时按发布时间判定",
+                ),
+                ApiOperationParam(
+                    key="date_to", label="收藏日期至", type="date",
+                    help="可选，闭区间（含当天）",
+                ),
+            ),
+        ),
+        ApiOperation(
+            op_id="cancel_collect_multi",
+            name="批量取消收藏",
+            description="按视频 ID 或收藏日期区间批量取消抖音收藏（每 20 个一批，操作不可恢复）",
+            danger=True,
+            params=(
+                ApiOperationParam(
+                    key="aweme_ids", label="视频 ID 列表", type="textarea",
+                    placeholder="ID 之间用逗号或换行分隔，例如：\n7684881459982748963\n7684870473406074122",
+                    help="与日期区间二选一；填写日期区间时忽略本项",
+                ),
+                ApiOperationParam(
+                    key="date_from", label="按日期区间：从", type="date",
+                    help="填日期区间时自动拉取该区间的收藏并全部取消，无需手填 ID",
+                ),
+                ApiOperationParam(
+                    key="date_to", label="按日期区间：至", type="date",
+                    help="闭区间（含当天）；无收藏时间的条目按发布时间判定",
+                ),
+            ),
+        ),
+    )
+
+    async def execute_api_operation(
+        self, op_id: str, account: AccountContext, params: dict, on_event=None
+    ) -> dict:
+        if op_id == "list_favorites":
+            return await self._op_list_favorites(account, params, on_event)
+        if op_id == "cancel_collect_multi":
+            return await self._op_cancel_collect(account, params, on_event)
+        raise ValueError(f"未知操作：{op_id}")
+
+    async def _op_list_favorites(self, account: AccountContext, params: dict, on_event=None) -> dict:
+        """只读拉取收藏列表（可选日期过滤），返回摘要，不入库。"""
+        raw_count = str((params or {}).get("count") or "").strip()
+        count = min(max(int(raw_count), 0), constants.MAX_COUNT) if raw_count.isdigit() else constants.DEFAULT_COUNT
+        dt_from, dt_to = parse_date_window(params or {})
+        logger.info("[%s] API 操作 list_favorites：count=%s 区间=%s~%s",
+                    account.account_id, count or "全部", dt_from, dt_to)
+
+        async def _collect_progress(batch: dict):
+            if on_event:
+                await on_event({
+                    "type": "stage", "stage": "collecting",
+                    "page": batch.get("page"), "total_fetched": len(batch.get("items") or []),
+                })
+
+        cookie_header = await api_client.profile_cookie_header(account.profile_path)
+        collected, has_more = await api_client.fetch_listcollection(
+            cookie_header, cursor=0, count=count, stop_before=dt_from, on_batch=_collect_progress
+        )
+        matched = filter_by_date_window(collected, dt_from, dt_to)
+        summaries = [
+            {
+                "content_id": it.get("content_id"),
+                "title": it.get("title"),
+                "author_name": it.get("author_name"),
+                "collected_at": it.get("collected_at"),
+            }
+            for it in matched[:100]
+        ]
+        return {
+            "total": len(collected),
+            "matched": len(matched),
+            "has_more": has_more,
+            "items": summaries,
+            "note": "仅展示前 100 条摘要" if len(matched) > 100 else "",
+        }
+
+    async def _op_cancel_collect(self, account: AccountContext, params: dict, on_event=None) -> dict:
+        """批量取消收藏：视频 ID 列表 / 收藏日期区间二选一（日期优先）。
+
+        日期区间模式为管道式：逐页拉取，当页命中的立即取消并上报进度
+        （含当前翻到的最早收藏时间与累计取消条数），翻过下界即提前终止。
+        """
+        raw = str((params or {}).get("aweme_ids") or "")
+        aweme_ids = [t.strip() for t in re.split(r"[\s,，;；]+", raw) if t.strip()]
+        dt_from, dt_to = parse_date_window(params or {})
+        if not aweme_ids and not (dt_from or dt_to):
+            raise ValueError("请填写视频 ID 列表或收藏日期区间（二选一）")
+        if any(not t.isdigit() for t in aweme_ids):
+            raise ValueError("aweme_ids 含非数字 ID，请检查输入")
+
+        async def _progress(info: dict):
+            if on_event:
+                await on_event(info)
+
+        cookie_header = await api_client.profile_cookie_header(account.profile_path)
+        if dt_from or dt_to:
+            logger.info("[%s] 按日期区间取消收藏（边拉边取消）：%s ~ %s", account.account_id, dt_from, dt_to)
+            result = await api_client.cancel_collect_by_window(
+                cookie_header, dt_from, dt_to, on_progress=_progress
+            )
+            if result["canceled"] == 0:
+                result["note"] = "该日期区间内没有匹配的收藏，未执行取消"
+            logger.info("[%s] 批量取消收藏完成：%s", account.account_id, result)
+            return result
+
+        logger.info("[%s] 批量取消收藏（按 ID 列表）：%d 条", account.account_id, len(aweme_ids))
+
+        async def _batch_progress(info: dict):
+            if on_event:
+                await on_event({"type": "progress", **info})
+
+        result = await api_client.cancel_collect_multi(cookie_header, aweme_ids, on_progress=_batch_progress)
+        result["matched"] = len(aweme_ids)
+        logger.info("[%s] 批量取消收藏完成：%s", account.account_id, result)
+        return result
 
     async def login(self, account: AccountContext, timeout: float | None = None) -> bool:
         """打开有头浏览器等待扫码；检测到 sessionid 即成功。"""

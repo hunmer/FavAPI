@@ -1,11 +1,15 @@
 """账号管理 API（PRD 3.1）。"""
 import asyncio
+import json
 import logging
 
 from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from app import config
 
 from app.models import AccountCreate, AccountOut, AccountUpdate
+from app.platforms.base import LoginExpiredError
 from app.platforms import registry
 from app.services import account_manager
 from app.services.task_executor import friendly_error
@@ -54,6 +58,91 @@ async def refresh_profile(account_id: str):
     except Exception as exc:
         raise HTTPException(status_code=503, detail=friendly_error(exc))
     return {"account_id": account_id, "status": "ok"}
+
+
+class OperationExecute(BaseModel):
+    params: dict = {}
+
+
+async def _validate_operation(account_id: str, op_id: str) -> tuple[dict, object]:
+    """操作执行前置校验，返回 (account, adapter)。"""
+    account = await _get_account_or_404(account_id)
+    adapter = _require_adapter(account["platform"])
+    if adapter.get_api_operation(op_id) is None:
+        raise HTTPException(404, f"{adapter.display_name} 不支持操作：{op_id}")
+    if account["status"] == "disabled":
+        raise HTTPException(400, f"账号 {account_id} 已禁用，请先启用")
+    return account, adapter
+
+
+@router.post("/{account_id}/operations/{op_id}")
+async def execute_operation(account_id: str, op_id: str, body: OperationExecute):
+    """执行平台 API 操作（写操作/管理类，与抓取 task 体系分离，同步返回结果）。"""
+    account, adapter = await _validate_operation(account_id, op_id)
+    try:
+        result = await adapter.execute_api_operation(
+            op_id, account_manager.to_context(account), body.params or {}
+        )
+    except LoginExpiredError as exc:
+        await account_manager.update_account(account_id, status="expired")
+        raise HTTPException(409, str(exc))
+    except ValueError as exc:  # 参数问题 → 400
+        raise HTTPException(400, str(exc))
+    except Exception as exc:
+        logger.exception("API 操作 %s/%s 执行失败", account_id, op_id)
+        raise HTTPException(502, friendly_error(exc))
+    return {"account_id": account_id, "op_id": op_id, "status": "success", "result": result}
+
+
+@router.post("/{account_id}/operations/{op_id}/stream")
+async def execute_operation_stream(account_id: str, op_id: str, body: OperationExecute):
+    """SSE 流式执行 API 操作：阶段进度（拉取/匹配）逐批推送，结束推 done/error。
+
+    事件格式 data: {"type": "stage"|"matched"|"progress"|"done"|"error", ...}；
+    客户端断开时后台执行自动取消。
+    """
+    account, adapter = await _validate_operation(account_id, op_id)
+
+    queue: asyncio.Queue = asyncio.Queue()
+
+    async def on_event(evt: dict):
+        await queue.put(evt)
+
+    async def _run():
+        try:
+            result = await adapter.execute_api_operation(
+                op_id, account_manager.to_context(account), body.params or {}, on_event=on_event
+            )
+            await queue.put({"type": "done", "result": result})
+        except LoginExpiredError as exc:
+            await account_manager.update_account(account_id, status="expired")
+            await queue.put({"type": "error", "message": str(exc)})
+        except ValueError as exc:
+            await queue.put({"type": "error", "message": str(exc)})
+        except Exception as exc:
+            logger.exception("API 操作 %s/%s 流式执行失败", account_id, op_id)
+            await queue.put({"type": "error", "message": friendly_error(exc)})
+        finally:
+            await queue.put(None)
+
+    task = asyncio.create_task(_run())
+
+    async def sse():
+        try:
+            while True:
+                evt = await queue.get()
+                if evt is None:
+                    break
+                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+        finally:
+            if not task.done():  # 客户端断开 → 取消后台执行
+                task.cancel()
+
+    return StreamingResponse(
+        sse(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @platforms_router.get("/platforms/{platform}/icon")

@@ -159,3 +159,39 @@ constants.py / api_client.py / adapter.py 三件套 + mockFavData.ts 加 apiFetc
 
 抖音全流程参考提交：`app/platforms/douyin/api_client.py`（新增）、`adapter.py`（分发 + fetch_favorites_api）、
 `base.py` / `task_executor.py` / `registry.py`（通用层）、前端 4 文件（types / api / mockFavData / AccountDetail）。
+
+## 7. 平台 API 操作（写操作 / 管理类）
+
+与收藏抓取（fetch/task 体系）平行的另一条通道：`ApiOperation` 声明 → 前端「平台 API 操作」卡片
+（账号详情页，按 `/api/v1/platforms` 下发的元数据动态渲染）→ 点击弹表单 → `execute_api_operation` 执行。
+
+### 7.1 后端三件套
+
+1. `base.py`：`ApiOperation` / `ApiOperationParam`（表单 schema：key/label/type/required/placeholder/help，
+   type 支持 text | textarea | number | date；`danger=True` 前端弹二次确认）+ adapter 的
+   `api_operations` 声明与 `execute_api_operation(op_id, account, params)` 分发。
+2. 路由：`POST /api/v1/accounts/{account_id}/operations/{op_id}`（body `{"params": {...}}`），
+   同步执行返回结果 JSON；参数问题 400 / 登录失效 409 并标记 expired / 其余 502。
+3. registry `_info` 自动把 `api_operations` 元数据下发给前端，**前端零改动**即可出新卡片。
+
+### 7.2 抖音已实现的操作
+
+| op_id | 说明 | 参数 |
+|---|---|---|
+| `list_favorites` | 只读拉取收藏列表（可选日期过滤，不入库） | count / date_from / date_to |
+| `cancel_collect_multi` | 批量取消收藏，**ID 列表与日期区间二选一**（日期优先） | aweme_ids / date_from / date_to |
+
+日期区间过滤复用 `app/utils.py::parse_date_window / filter_by_date_window`
+（collected_at 缺失由 parser 兜底发布时间）；task_executor 的抓取过滤也走同一份实现。
+
+### 7.3 性能要点：提前终止
+
+收藏列表按时间倒序，翻页时传 `stop_before=dt_from`：某页全部条目可解析时间且最旧一条已早于下界
+即停止翻页（后续更旧不可能命中）。抖音 2300+ 条收藏，近期区间从 5 分钟降到 ~1 秒；
+`date_from` 早于全部收藏时仍会翻完（正确行为，匹配需要全量）。
+
+### 7.4 新平台接入
+
+同第 3 节流程抓包拿到接口 → `api_client.py` 写请求函数（curl_cffi）→ adapter 声明 `ApiOperation`
+并在 `execute_api_operation` 按 op_id 分发 → 前端自动出卡片。危险操作记得 `danger=True`。
+

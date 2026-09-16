@@ -88,12 +88,31 @@ export interface ScheduleRow {
   created_at?: string | null;
 }
 
+export interface OperationParamSpec {
+  key: string;
+  label: string;
+  type: string; // text | textarea | number | date
+  required: boolean;
+  placeholder: string;
+  help: string;
+}
+
+export interface OperationSpec {
+  op_id: string;
+  name: string;
+  description: string;
+  danger: boolean;
+  params: OperationParamSpec[];
+}
+
 export interface PlatformInfoRow {
   platform: PlatformId;
   display_name: string;
   implemented: boolean;
   supported_actions: string[];
   icon_url?: string;
+  api_fetch_implemented?: boolean;
+  api_operations?: OperationSpec[];
 }
 
 // ---------- 工具 ----------
@@ -222,6 +241,81 @@ export function toSchedule(row: ScheduleRow, accountNameById: Map<string, string
 export async function listPlatforms(): Promise<PlatformInfoRow[]> {
   const data = await request<{ platforms: PlatformInfoRow[] }>('/platforms');
   return data.platforms;
+}
+
+/** 执行平台 API 操作（写操作/管理类，同步返回结果）。 */
+export async function executeOperation(
+  accountId: string,
+  opId: string,
+  params: Record<string, any>
+): Promise<Record<string, any>> {
+  return request(`/accounts/${accountId}/operations/${opId}`, {
+    method: 'POST',
+    body: JSON.stringify({ params }),
+  });
+}
+
+export interface OperationStreamEvent {
+  type: 'stage' | 'matched' | 'progress' | 'done' | 'error';
+  stage?: string;
+  page?: number;
+  total_fetched?: number;
+  matched?: number;
+  items?: Array<{ content_id?: string; title?: string | null; collected_at?: string | null }>;
+  batch_no?: number;
+  total_batches?: number;
+  done?: number;
+  ids?: string[];
+  // 日期区间管道式取消的进度字段
+  oldest_collected_at?: string | null;
+  matched_this_page?: number;
+  canceled?: number;
+  result?: Record<string, any>;
+  message?: string;
+}
+
+/** SSE 流式执行平台 API 操作：阶段进度逐条回调，结束返回 done 事件；失败抛错。 */
+export async function executeOperationStream(
+  accountId: string,
+  opId: string,
+  params: Record<string, any>,
+  onEvent: (ev: OperationStreamEvent) => void
+): Promise<OperationStreamEvent> {
+  const res = await fetch(`${BASE}/accounts/${accountId}/operations/${opId}/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ params }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as any).detail || res.statusText);
+  }
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let doneEv: OperationStreamEvent | null = null;
+
+  while (true) {
+    const { value, done: finished } = await reader.read();
+    if (finished) break;
+    buffer += decoder.decode(value, { stream: true });
+    let idx: number;
+    while ((idx = buffer.indexOf('\n\n')) >= 0) {
+      const chunk = buffer.slice(0, idx).trim();
+      buffer = buffer.slice(idx + 2);
+      if (!chunk.startsWith('data:')) continue;
+      let ev: OperationStreamEvent;
+      try {
+        ev = JSON.parse(chunk.slice(5).trim());
+      } catch {
+        continue;
+      }
+      if (ev.type === 'error') throw new Error(ev.message || '操作执行失败');
+      onEvent(ev);
+      if (ev.type === 'done') doneEv = ev;
+    }
+  }
+  return doneEv || { type: 'done' };
 }
 
 export async function listAccounts(): Promise<AccountRow[]> {

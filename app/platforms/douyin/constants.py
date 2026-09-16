@@ -14,6 +14,11 @@ LISTCOLLECTION_URL = "https://www.douyin.com/aweme/v1/web/aweme/listcollection/"
 API_PAGE_COUNT = 20          # API 直连每页条数（服务端单页上限 20）
 API_PAGE_INTERVAL_SEC = 0.8  # API 直连翻页间隔（防风控节流）
 
+# 批量取消收藏（POST，body 为 aweme_ids / aweme_type_map）
+CANCEL_COLLECT_URL = "https://www.douyin.com/aweme/v1/web/aweme/cancel/collect/multi/"
+CANCEL_COLLECT_BATCH = 20    # 单次取消上限（分批防风控）
+CANCEL_COLLECT_INTERVAL_SEC = 0.5
+
 # 当前登录用户资料接口（个人主页加载时页面自身会调用，拦截复用；签名由页面 JS 完成）
 PROFILE_SELF_API = "/aweme/v1/web/user/profile/self"
 

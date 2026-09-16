@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Account, AccountStatus, TaskRecord, ScrapedItem, ScrapingFormData } from '../../types';
 import { PLATFORMS } from '../../data/mockFavData';
-import { uploadWechatJson, clearFavorites, favoriteFacets } from '../../api';
+import { uploadWechatJson, clearFavorites, favoriteFacets, listPlatforms, executeOperationStream, OperationStreamEvent, OperationSpec } from '../../api';
 import {
   ArrowLeft,
   CheckCircle2,
@@ -23,6 +23,7 @@ import {
   Terminal,
   MoreVertical,
   Eraser,
+  Zap,
 } from 'lucide-react';
 
 interface AccountDetailProps {
@@ -77,6 +78,77 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
 
   // Delete confirm dialog state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // Platform API operations（功能卡片 + 弹窗表单执行，SSE 流式）
+  const [operations, setOperations] = useState<OperationSpec[]>([]);
+  const [activeOp, setActiveOp] = useState<OperationSpec | null>(null);
+  const [opForm, setOpForm] = useState<Record<string, string>>({});
+  const [opRunning, setOpRunning] = useState(false);
+  const [opResult, setOpResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const [opEvents, setOpEvents] = useState<OperationStreamEvent[]>([]);
+  const [showOpDangerConfirm, setShowOpDangerConfirm] = useState(false);
+
+  useEffect(() => {
+    setOperations([]);
+    listPlatforms()
+      .then((rows) => {
+        const row = rows.find((r) => r.platform === account.platform);
+        setOperations(row?.api_operations || []);
+      })
+      .catch(() => {/* 拉取失败静默：不显示卡片区 */});
+  }, [account.platform]);
+
+  const openOperationModal = (op: OperationSpec) => {
+    setActiveOp(op);
+    setOpForm(Object.fromEntries(op.params.map((p) => [p.key, ''])));
+    setOpResult(null);
+    setOpEvents([]);
+    setShowOpDangerConfirm(false);
+  };
+
+  const describeOpEvent = (ev: OperationStreamEvent): string => {
+    switch (ev.type) {
+      case 'stage':
+        return `拉取收藏列表：第 ${ev.page} 页（本页 ${ev.total_fetched} 条）`;
+      case 'progress': {
+        // 日期区间管道式取消：带日期位置与累计取消数；ID 列表模式：分批进度
+        if (ev.oldest_collected_at) {
+          const oldest = ev.oldest_collected_at.slice(0, 10);
+          return `第 ${ev.page} 页 · 已翻至 ${oldest} · 本页命中 ${ev.matched_this_page} 条 · 累计取消 ${ev.canceled} 条`;
+        }
+        return `取消进度：第 ${ev.batch_no}/${ev.total_batches} 批完成（累计 ${ev.done} 条）`;
+      }
+      case 'done': {
+        const r = ev.result || {};
+        const pages = r.pages ? `，翻 ${r.pages} 页` : r.batches ? `，共 ${r.batches} 批` : '';
+        return `完成：匹配 ${r.matched ?? '-'} 条，已取消 ${r.canceled ?? '-'} 条${pages}`;
+      }
+      default:
+        return '';
+    }
+  };
+
+  const submitOperation = async () => {
+    if (!activeOp) return;
+    if (activeOp.danger && !showOpDangerConfirm) {
+      setShowOpDangerConfirm(true);
+      return;
+    }
+    setOpRunning(true);
+    setOpResult(null);
+    setOpEvents([]);
+    try {
+      const done = await executeOperationStream(account.id, activeOp.op_id, opForm, (ev) => {
+        setOpEvents((prev) => [...prev, ev]);
+      });
+      setOpResult({ ok: true, text: JSON.stringify(done.result ?? done, null, 2) });
+    } catch (e) {
+      setOpEvents((prev) => [...prev, { type: 'error', message: e instanceof Error ? e.message : String(e) }]);
+      setOpResult({ ok: false, text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setOpRunning(false);
+    }
+  };
 
   // Action menu (dots) & clear-favorites state
   const [showActionMenu, setShowActionMenu] = useState(false);
@@ -346,6 +418,45 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
           </p>
         </div>
       </div>
+
+      {/* Platform API Operations cards */}
+      {operations.length > 0 && (
+        <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-2xs">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+              <Zap className="w-4 h-4 text-amber-500" />
+              平台 API 操作
+            </h4>
+            <span className="text-[11px] text-slate-400">点击卡片填写参数后执行</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+            {operations.map((op) => (
+              <button
+                key={op.op_id}
+                type="button"
+                onClick={() => openOperationModal(op)}
+                className={`p-3 rounded-xl border text-left transition-all ${
+                  op.danger
+                    ? 'border-rose-200 hover:border-rose-300 hover:bg-rose-50/50'
+                    : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                }`}
+              >
+                <div className="flex items-center justify-between text-xs font-bold mb-1">
+                  <span className={op.danger ? 'text-rose-700' : 'text-slate-900'}>{op.name}</span>
+                  {op.danger && (
+                    <span className="text-[9px] bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded font-semibold">
+                      危险操作
+                    </span>
+                  )}
+                </div>
+                <div className="text-[11px] text-slate-500 leading-snug line-clamp-2">
+                  {op.description}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Bilibili Folders Preview list (if exists) */}
       {account.folders && account.folders.length > 0 && (
@@ -828,6 +939,125 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
               >
                 {isClearing && <RefreshCw className="w-3 h-3 animate-spin" />}
                 {isClearing ? '清空中...' : '确认清空'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* API Operation Execute Modal */}
+      {activeOp && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="anim-modal-enter bg-white w-full max-w-md rounded-[28px] p-6 shadow-2xl border border-slate-100 space-y-4 max-h-[85vh] overflow-y-auto">
+            <div>
+              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                {activeOp.name}
+                {activeOp.danger && (
+                  <span className="text-[10px] bg-rose-100 text-rose-600 px-2 py-0.5 rounded-full font-semibold">
+                    危险操作
+                  </span>
+                )}
+              </h3>
+              {activeOp.description && (
+                <p className="text-xs text-slate-500 mt-1">{activeOp.description}</p>
+              )}
+            </div>
+
+            {activeOp.params.map((p) => (
+              <div key={p.key}>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                  {p.label}
+                  {p.required && <span className="text-rose-500 ml-0.5">*</span>}
+                </label>
+                {p.type === 'textarea' ? (
+                  <textarea
+                    value={opForm[p.key] || ''}
+                    onChange={(e) => setOpForm((f) => ({ ...f, [p.key]: e.target.value }))}
+                    placeholder={p.placeholder}
+                    rows={5}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  />
+                ) : (
+                  <input
+                    type={p.type === 'number' ? 'number' : p.type === 'date' ? 'date' : 'text'}
+                    value={opForm[p.key] || ''}
+                    onChange={(e) => setOpForm((f) => ({ ...f, [p.key]: e.target.value }))}
+                    placeholder={p.placeholder}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  />
+                )}
+                {p.help && <p className="text-[11px] text-slate-400 mt-1">{p.help}</p>}
+              </div>
+            ))}
+
+            {showOpDangerConfirm && (
+              <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 p-3 rounded-xl flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                该操作不可恢复！再次点击「确认执行」将真正提交到平台。
+              </p>
+            )}
+
+            {(opRunning || opEvents.length > 0) && (
+              <div className="rounded-xl border border-slate-200 bg-slate-950 p-3 max-h-44 overflow-y-auto space-y-1">
+                <div className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-1">
+                  实时执行日志 {opRunning && <span className="animate-pulse">▍</span>}
+                </div>
+                {opEvents.map((ev, i) => (
+                  <div
+                    key={i}
+                    className={`text-[11px] font-mono leading-relaxed ${
+                      ev.type === 'error'
+                        ? 'text-rose-400'
+                        : ev.type === 'done'
+                          ? 'text-emerald-400'
+                          : ev.type === 'matched'
+                            ? 'text-amber-300'
+                            : 'text-slate-300'
+                    }`}
+                  >
+                    {ev.type === 'error' ? `✗ ${ev.message}` : describeOpEvent(ev)}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {opResult && (
+              <pre
+                className={`text-[11px] font-mono p-3 rounded-xl max-h-40 overflow-auto whitespace-pre-wrap ${
+                  opResult.ok
+                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                    : 'bg-rose-50 text-rose-700 border border-rose-200'
+                }`}
+              >
+                {opResult.text}
+              </pre>
+            )}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                disabled={opRunning}
+                onClick={() => setActiveOp(null)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl disabled:opacity-50"
+              >
+                关闭
+              </button>
+              <button
+                type="button"
+                disabled={opRunning || (activeOp.params.some((p) => p.required) && activeOp.params.some((p) => p.required && !(opForm[p.key] || '').trim()))}
+                onClick={submitOperation}
+                className={`px-5 py-2 text-xs font-bold text-white rounded-xl shadow-xs disabled:opacity-50 inline-flex items-center gap-1.5 ${
+                  activeOp.danger
+                    ? 'bg-rose-600 hover:bg-rose-700'
+                    : 'bg-slate-900 hover:bg-slate-800'
+                }`}
+              >
+                {opRunning && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                {opRunning
+                  ? '执行中...'
+                  : showOpDangerConfirm
+                    ? '确认执行'
+                    : '执行'}
               </button>
             </div>
           </div>

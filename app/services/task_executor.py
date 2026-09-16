@@ -1,14 +1,13 @@
 """抓取任务执行器：任务生命周期（pending → running → success / failed）+ 结果入库。"""
 import asyncio
 import logging
-from datetime import datetime, time as dtime
 
 from app import config
 from app.platforms import registry
 from app.platforms.base import LoginExpiredError
 from app.services import account_manager, data_store
 from app.services.download_store import content_url
-from app.utils import new_id, now_iso
+from app.utils import filter_by_date_window, new_id, now_iso, parse_date_window
 
 logger = logging.getLogger("favapi.task")
 
@@ -19,56 +18,15 @@ class FetchValidationError(ValueError):
     """请求参数 / 账号状态问题，API 层转为 400。"""
 
 
-def _parse_date(value: str, name: str) -> datetime:
+# 日期区间解析/过滤的公共实现在 app.utils（API 操作也复用）；此处包一层保留校验语义
+def _date_window(params: dict) -> tuple:
     try:
-        return datetime.strptime(str(value).strip()[:10], "%Y-%m-%d")
-    except ValueError:
-        raise FetchValidationError(f"{name} 格式无效：{value}（应为 YYYY-MM-DD）")
+        return parse_date_window(params)
+    except ValueError as exc:
+        raise FetchValidationError(str(exc))
 
 
-def _date_window(params: dict) -> tuple[datetime | None, datetime | None]:
-    """解析 params.date_from / date_to（YYYY-MM-DD）为本地时区边界（闭区间，含起止当天）。"""
-    raw_from = str(params.get("date_from") or "").strip()
-    raw_to = str(params.get("date_to") or "").strip()
-    if not raw_from and not raw_to:
-        return None, None
-    dt_from = _parse_date(raw_from, "date_from") if raw_from else None
-    dt_to = _parse_date(raw_to, "date_to") if raw_to else None
-    if dt_from and dt_to and dt_from > dt_to:
-        raise FetchValidationError("date_from 不能晚于 date_to")
-    # 闭区间：from 取当天 00:00、to 取当天 23:59:59.999999，均转本地 aware 与 collected_at 对齐
-    if dt_from:
-        dt_from = datetime.combine(dt_from, dtime.min).astimezone()
-    if dt_to:
-        dt_to = datetime.combine(dt_to, dtime.max).astimezone()
-    return dt_from, dt_to
-
-
-def _item_time(item: dict) -> datetime | None:
-    """collected_at（ISO）→ aware datetime；naive 视为本地时间。"""
-    raw = str(item.get("collected_at") or "").strip()
-    if not raw:
-        return None
-    try:
-        dt = datetime.fromisoformat(raw)
-    except ValueError:
-        return None
-    return dt.astimezone() if dt.tzinfo is None else dt
-
-
-def _filter_by_date_window(items: list[dict], dt_from: datetime | None, dt_to: datetime | None) -> list[dict]:
-    """按收藏时间过滤（collected_at 由各平台 parser 兜底为发布时间）；无法判定时间的条目丢弃。"""
-    kept = []
-    for it in items:
-        ts = _item_time(it)
-        if ts is None:
-            continue
-        if dt_from and ts < dt_from:
-            continue
-        if dt_to and ts > dt_to:
-            continue
-        kept.append(it)
-    return kept
+_filter_by_date_window = filter_by_date_window
 
 
 def friendly_error(exc: Exception) -> str:
