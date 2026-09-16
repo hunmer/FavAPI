@@ -8,7 +8,7 @@ import {
   TaskRecord,
   ScheduledSync,
 } from './types';
-import { PLATFORMS } from './data/mockFavData';
+import { PLATFORMS } from './data/platforms';
 import * as api from './api';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
@@ -202,6 +202,7 @@ export function App() {
             badgeBg: 'bg-slate-100 text-slate-600 border-slate-200',
             isSupported: info.implemented,
             tagline: '',
+            apiFetch: !!info.api_fetch_implemented,
           });
         }
       } catch {

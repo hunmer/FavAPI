@@ -3,31 +3,57 @@
     "server": {
       "script": ".venv/Scripts/python.exe",
       "args": ["main.py"],
-      "desc": "启动 FavAPI 服务（127.0.0.1:8300）"
+      "desc": "（Windows）启动 FavAPI 服务（127.0.0.1:8300）"
     },
     "dev": {
       "script": ".venv/Scripts/python.exe",
       "args": ["-m", "uvicorn", "app.server:app", "--host", "127.0.0.1", "--port", "8300", "--reload"],
-      "desc": "开发模式（热重载）启动 FavAPI 服务"
+      "desc": "（Windows）开发模式（热重载）启动 FavAPI 服务"
     },
     "test-parser": {
       "script": ".venv/Scripts/python.exe",
       "args": ["tests/test_parser.py"],
-      "desc": "抖音解析器单元测试"
+      "desc": "（Windows）抖音解析器单元测试"
     },
     "test-smoke": {
       "script": ".venv/Scripts/python.exe",
       "args": ["tests/smoke_test.py"],
-      "desc": "API + 数据层冒烟测试（自动使用临时数据目录，不依赖浏览器）"
+      "desc": "（Windows）API + 数据层冒烟测试（自动使用临时数据目录，不依赖浏览器）"
     },
     "install-browser": {
       "script": ".venv/Scripts/python.exe",
       "args": ["-m", "playwright", "install", "chromium"],
-      "desc": "安装 Playwright Chromium 浏览器内核（首次使用前必须执行一次）"
+      "desc": "（Windows）安装 Playwright Chromium 浏览器内核（首次使用前必须执行一次）"
+    },
+    "server-mac": {
+      "script": ".venv/bin/python",
+      "args": ["main.py"],
+      "desc": "（macOS）启动 FavAPI 服务（127.0.0.1:8300）"
+    },
+    "dev-mac": {
+      "script": ".venv/bin/python",
+      "args": ["-m", "uvicorn", "app.server:app", "--host", "127.0.0.1", "--port", "8300", "--reload"],
+      "desc": "（macOS）开发模式（热重载）启动 FavAPI 服务"
+    },
+    "test-parser-mac": {
+      "script": ".venv/bin/python",
+      "args": ["tests/test_parser.py"],
+      "desc": "（macOS）抖音解析器单元测试"
+    },
+    "test-smoke-mac": {
+      "script": ".venv/bin/python",
+      "args": ["tests/smoke_test.py"],
+      "desc": "（macOS）API + 数据层冒烟测试（自动使用临时数据目录，不依赖浏览器）"
+    },
+    "install-browser-mac": {
+      "script": ".venv/bin/python",
+      "args": ["-m", "playwright", "install", "chromium"],
+      "desc": "（macOS）安装 Playwright Chromium 浏览器内核（首次使用前必须执行一次）"
     },
     "web": {
       "script": "node",
       "args": ["node_modules/vite/bin/vite.js"],
+      "cwd": "web",
       "desc": "前端 web 控制台 dev 服务（127.0.0.1:3000，含 DevInspector 元素定位）"
     }
   }

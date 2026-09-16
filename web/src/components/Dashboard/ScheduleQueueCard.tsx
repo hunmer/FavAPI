@@ -1,6 +1,6 @@
 import React from 'react';
 import { ScheduledSync } from '../../types';
-import { PLATFORMS } from '../../data/mockFavData';
+import { PLATFORMS } from '../../data/platforms';
 import { Play, Plus, Clock, ArrowRight } from 'lucide-react';
 
 interface ScheduleQueueCardProps {

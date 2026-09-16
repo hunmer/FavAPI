@@ -22,4 +22,4 @@ npm run build   # 产物输出到 web/dist
 - `src/api.ts` — 后端接口封装 + UI 类型映射（snake_case → console 类型）
 - `src/App.tsx` — 数据流编排（加载 / 5s 轮询 / 各类操作回调）
 - `src/components/` — 视图组件（Dashboard / Accounts / Data / Tasks / Schedule / Settings）
-- `src/data/mockFavData.ts` — 仅保留 `PLATFORMS` 平台元数据（isSupported 在运行时按后端实现情况更新）
+- `src/data/platforms.ts` — `PLATFORMS` 平台静态元数据（isSupported 在运行时按后端实现情况更新，未收录平台动态追加）

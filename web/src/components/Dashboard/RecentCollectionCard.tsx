@@ -1,6 +1,6 @@
 import React from 'react';
 import { ScrapedItem } from '../../types';
-import { PLATFORMS } from '../../data/mockFavData';
+import { PLATFORMS } from '../../data/platforms';
 import { Heart, Star, ExternalLink, Folder } from 'lucide-react';
 
 interface RecentCollectionCardProps {

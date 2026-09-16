@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ScheduledSync, Account } from '../../types';
 import { AgentConfigRow } from '../../api';
-import { PLATFORMS } from '../../data/mockFavData';
+import { PLATFORMS } from '../../data/platforms';
 import { CalendarCard } from '../Dashboard/CalendarCard';
 import {
   CalendarDays,

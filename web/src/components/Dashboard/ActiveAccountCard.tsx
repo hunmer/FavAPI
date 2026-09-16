@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import { uploadWechatJson } from '../../api';
 import { Account } from '../../types';
-import { PLATFORMS } from '../../data/mockFavData';
+import { PLATFORMS } from '../../data/platforms';
 import { Play, ArrowUpRight, FolderHeart, CheckCircle2, AlertCircle, Clock, QrCode, User } from 'lucide-react';
 import { SiteIcon, usePlatformInfo } from '../SiteIcon';
 

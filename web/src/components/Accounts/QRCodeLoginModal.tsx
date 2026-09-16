@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, QrCode, RefreshCw, CheckCircle2, AlertTriangle, Smartphone, ShieldCheck, Monitor } from 'lucide-react';
 import { Account } from '../../types';
-import { PLATFORMS } from '../../data/mockFavData';
+import { PLATFORMS } from '../../data/platforms';
 import * as api from '../../api';
 
 interface QRCodeLoginModalProps {

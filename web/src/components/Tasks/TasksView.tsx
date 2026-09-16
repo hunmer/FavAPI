@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { TaskRecord, PlatformId } from '../../types';
-import { PLATFORMS } from '../../data/mockFavData';
+import { PLATFORMS } from '../../data/platforms';
 import {
   ListTodo,
   RefreshCw,

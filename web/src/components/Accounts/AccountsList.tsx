@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Account, AccountStatus, PlatformId } from '../../types';
-import { PLATFORMS } from '../../data/mockFavData';
+import { PLATFORMS } from '../../data/platforms';
 import * as api from '../../api';
 import { Plus, CheckCircle2, AlertTriangle, Ban, RefreshCw, QrCode, ArrowUpRight, Search, Clock, Monitor, ChevronRight } from 'lucide-react';
 import { SiteIcon, usePlatformInfos } from '../SiteIcon';

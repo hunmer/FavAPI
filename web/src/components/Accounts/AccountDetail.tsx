@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Account, AccountStatus, TaskRecord, ScrapedItem, ScrapingFormData } from '../../types';
-import { PLATFORMS } from '../../data/mockFavData';
+import { PLATFORMS } from '../../data/platforms';
 import { uploadWechatJson, clearFavorites, favoriteFacets, listPlatforms, executeOperationStream, OperationStreamEvent, OperationSpec } from '../../api';
 import {
   ArrowLeft,

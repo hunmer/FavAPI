@@ -11,7 +11,7 @@ import {
   Clock
 } from 'lucide-react';
 import { ScrapedItem } from '../../types';
-import { PLATFORMS } from '../../data/mockFavData';
+import { PLATFORMS } from '../../data/platforms';
 
 interface CalendarCardProps {
   scrapedItems?: ScrapedItem[];
