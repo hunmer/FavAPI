@@ -162,6 +162,7 @@ def cancel_collect_page(cookie_header: str, aweme_ids: list[str]) -> dict:
         {"aweme_type_map": json.dumps(type_map, separators=(",", ":"))}
     )
     url = constants.CANCEL_COLLECT_URL + "?" + urlencode(_QUERY_PARAMS)
+    logger.info("cancel_collect_page 请求：url=%s params=%s", url, body)
     response = requests.post(
         url, data=body, headers={**_HEADERS, "cookie": cookie_header},
         impersonate="chrome", timeout=20,
@@ -169,11 +170,86 @@ def cancel_collect_page(cookie_header: str, aweme_ids: list[str]) -> dict:
     response.raise_for_status()
     data = response.json()
     fatal_ids = data.get("fatal_ids") or []
-    if data.get("status_code") != 0 or fatal_ids:
+    status_code = data.get("status_code")
+    if status_code != 0 or fatal_ids:
         raise RuntimeError(
-            f"取消收藏失败：status_code={data.get('status_code')} fatal_ids={fatal_ids}"
+            f"取消收藏失败：status_code={status_code} fatal_ids={fatal_ids} "
+            f"message={data.get('status_msg') or data.get('message') or ''}"
         )
     return data
+
+
+def cancel_collect_single(cookie_header: str, aweme_id: str) -> dict:
+    """通过收藏切换接口取消单个视频（action=0, aweme_type=107）。"""
+    url = constants.CANCEL_COLLECT_SINGLE_URL + "?" + urlencode(_QUERY_PARAMS)
+    params = {"action": 0, "aweme_id": aweme_id, "aweme_type": 107}
+    logger.info("cancel_collect_single 请求：url=%s params=%s", url, params)
+    response = requests.post(
+        url,
+        data=urlencode(params),
+        headers={**_HEADERS, "cookie": cookie_header},
+        impersonate="chrome", timeout=20,
+    )
+    response.raise_for_status()
+    data = response.json()
+    if data.get("status_code") != 0 or data.get("collects_flag") is not False:
+        raise RuntimeError(
+            f"单视频取消收藏失败：status_code={data.get('status_code')} "
+            f"collects_flag={data.get('collects_flag')} "
+            f"message={data.get('status_msg') or data.get('message') or ''}"
+        )
+    return data
+
+
+async def _cancel_collect_batch_with_retry(cookie_header: str, aweme_ids: list[str]) -> int:
+    """取消一批收藏；status_code=5 时退避重试，避免风控瞬时失败中断整项任务。"""
+    # 抖音对小于整批的请求偶发返回成功但实际不生效，逐 ID 请求可避免该情况。
+    if len(aweme_ids) < constants.CANCEL_COLLECT_BATCH:
+        logger.info("取消收藏小批次改为逐条处理：%d 条", len(aweme_ids))
+        total = 0
+        for aweme_id in aweme_ids:
+            total += await _cancel_collect_single_with_retry(cookie_header, aweme_id)
+        return total
+    for attempt in range(1, constants.CANCEL_COLLECT_RETRIES + 1):
+        try:
+            await asyncio.to_thread(cancel_collect_page, cookie_header, aweme_ids)
+            return len(aweme_ids)
+        except RuntimeError as exc:
+            error_text = str(exc)
+            if "status_code=5" in error_text and "参数不合法" in error_text:
+                if len(aweme_ids) <= 1:
+                    logger.warning("跳过参数不合法的收藏 ID：%s", aweme_ids[0])
+                    return 0
+                midpoint = len(aweme_ids) // 2
+                logger.warning(
+                    "取消收藏批次参数不合法，拆分为 %d/%d 条继续处理",
+                    midpoint, len(aweme_ids) - midpoint,
+                )
+                left = await _cancel_collect_batch_with_retry(cookie_header, aweme_ids[:midpoint])
+                right = await _cancel_collect_batch_with_retry(cookie_header, aweme_ids[midpoint:])
+                return left + right
+            if "status_code=5" not in error_text or attempt >= constants.CANCEL_COLLECT_RETRIES:
+                raise
+            delay = constants.CANCEL_COLLECT_INTERVAL_SEC * (2 ** attempt)
+            logger.warning(
+                "取消收藏批次遇到 status_code=5，第 %d/%d 次重试，%d 条，等待 %.1fs：%s",
+                attempt, constants.CANCEL_COLLECT_RETRIES, len(aweme_ids), delay, exc,
+            )
+            await asyncio.sleep(delay)
+
+
+async def _cancel_collect_single_with_retry(cookie_header: str, aweme_id: str) -> int:
+    for attempt in range(1, constants.CANCEL_COLLECT_RETRIES + 1):
+        try:
+            await asyncio.to_thread(cancel_collect_single, cookie_header, aweme_id)
+            return 1
+        except RuntimeError as exc:
+            if "status_code=5" in str(exc) and "参数不合法" in str(exc):
+                logger.warning("跳过参数不合法的收藏 ID：%s", aweme_id)
+                return 0
+            if attempt >= constants.CANCEL_COLLECT_RETRIES or "status_code=5" not in str(exc):
+                raise
+            await asyncio.sleep(constants.CANCEL_COLLECT_INTERVAL_SEC * (2 ** attempt))
 
 
 async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progress=None,
@@ -225,11 +301,10 @@ async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progre
         await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
 
     # 必须等收藏列表完整扫描结束后再删除，避免删除当前页改变 cursor 导致漏扫。
-    # 扫描完成后按接口上限分批取消；当前接口单次最多 100 条。
+    # 扫描完成后按较小批次取消，降低接口返回“参数不合法”的概率。
     for i in range(0, len(matched_ids), constants.CANCEL_COLLECT_BATCH):
         chunk = matched_ids[i:i + constants.CANCEL_COLLECT_BATCH]
-        await asyncio.to_thread(cancel_collect_page, cookie_header, chunk)
-        canceled_total += len(chunk)
+        canceled_total += await _cancel_collect_batch_with_retry(cookie_header, chunk)
         logger.info("cancel_collect 扫描完成后取消第 %d 批：%d 条（累计 %d）",
                     i // constants.CANCEL_COLLECT_BATCH + 1, len(chunk), canceled_total)
         if on_progress:
@@ -262,14 +337,15 @@ async def cancel_collect_multi(cookie_header: str, aweme_ids: list[str], on_prog
     """
     batches = [aweme_ids[i: i + constants.CANCEL_COLLECT_BATCH]
                for i in range(0, len(aweme_ids), constants.CANCEL_COLLECT_BATCH)]
+    canceled_total = 0
     for i, chunk in enumerate(batches, start=1):
-        await asyncio.to_thread(cancel_collect_page, cookie_header, chunk)
-        done = min(i * constants.CANCEL_COLLECT_BATCH, len(aweme_ids))
+        canceled = await _cancel_collect_batch_with_retry(cookie_header, chunk)
+        canceled_total += canceled
         logger.info("cancel_collect 第 %d/%d 批：%d 条", i, len(batches), len(chunk))
         if on_progress:
             await on_progress({
-                "batch_no": i, "total_batches": len(batches), "done": done, "ids": chunk,
+                "batch_no": i, "total_batches": len(batches), "done": canceled_total, "ids": chunk,
             })
         if i < len(batches):
             await asyncio.sleep(constants.CANCEL_COLLECT_INTERVAL_SEC)
-    return {"total": len(aweme_ids), "batches": len(batches), "canceled": len(aweme_ids)}
+    return {"total": len(aweme_ids), "batches": len(batches), "canceled": canceled_total}

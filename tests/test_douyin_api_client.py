@@ -11,6 +11,66 @@ def _cursor(value: str) -> int:
 
 
 class CancelCollectWindowTest(unittest.TestCase):
+    def test_retries_status_code_5(self):
+        attempts = []
+
+        def fake_cancel(_cookie, _ids):
+            attempts.append(1)
+            if len(attempts) < 3:
+                raise RuntimeError("取消收藏失败：status_code=5 fatal_ids=[] message=操作频繁")
+            return {"status_code": 0}
+
+        with (
+            patch.object(api_client, "cancel_collect_page", fake_cancel),
+            patch.object(api_client.constants, "CANCEL_COLLECT_INTERVAL_SEC", 0),
+        ):
+            asyncio.run(api_client._cancel_collect_batch_with_retry("cookie", [f"id-{i}" for i in range(20)]))
+        self.assertEqual(len(attempts), 3)
+
+    def test_splits_invalid_batch_and_skips_invalid_single_id(self):
+        calls = []
+
+        def fake_cancel(_cookie, ids):
+            calls.append(list(ids))
+            if len(ids) > 1:
+                raise RuntimeError("取消收藏失败：status_code=5 fatal_ids=[] message=参数不合法")
+            if ids[0] == "bad":
+                raise RuntimeError("取消收藏失败：status_code=5 fatal_ids=[] message=参数不合法")
+            return {"status_code": 0}
+
+        with (
+            patch.object(api_client, "cancel_collect_page", fake_cancel),
+            patch.object(api_client, "cancel_collect_single", lambda c, i: fake_cancel(c, [i])),
+            patch.object(api_client.constants, "CANCEL_COLLECT_BATCH", 4),
+        ):
+            canceled = asyncio.run(api_client._cancel_collect_batch_with_retry(
+                "cookie", ["good-1", "bad", "good-2", "good-3"],
+            ))
+
+        self.assertEqual(canceled, 3)
+        self.assertEqual(calls, [
+            ["good-1", "bad", "good-2", "good-3"],
+            ["good-1"], ["bad"], ["good-2"], ["good-3"],
+        ])
+
+    def test_small_batch_is_sent_one_id_at_a_time(self):
+        calls = []
+
+        def fake_cancel(_cookie, ids):
+            calls.append(list(ids))
+            return {"status_code": 0}
+
+        with (
+            patch.object(api_client, "cancel_collect_page", fake_cancel),
+            patch.object(api_client, "cancel_collect_single", lambda _cookie, item_id: (calls.append([item_id]) or {"status_code": 0, "collects_flag": False})),
+        ):
+            canceled = asyncio.run(api_client._cancel_collect_batch_with_retry(
+                "cookie", ["id-1", "id-2"],
+            ))
+
+        self.assertEqual(canceled, 2)
+        self.assertEqual(calls, [["id-1"], ["id-2"]])
+
     def test_collects_all_matches_before_canceling(self):
         cursor_1 = _cursor("2026-08-01T00:00:00+08:00")
         responses = iter([
@@ -36,7 +96,7 @@ class CancelCollectWindowTest(unittest.TestCase):
                 datetime.fromisoformat("2026-01-01T00:00:00+08:00"),
             ))
 
-        self.assertEqual(calls, [["target-1", "target-2"]])
+        self.assertEqual(calls, [["target-1"], ["target-2"]])
         self.assertEqual(result["matched"], 2)
         self.assertEqual(result["canceled"], 2)
 

@@ -16,8 +16,10 @@ API_PAGE_INTERVAL_SEC = 0.8  # API 直连翻页间隔（防风控节流）
 
 # 批量取消收藏（POST，body 为 aweme_ids / aweme_type_map）
 CANCEL_COLLECT_URL = "https://www.douyin.com/aweme/v1/web/aweme/cancel/collect/multi/"
-CANCEL_COLLECT_BATCH = 100   # 抖音取消收藏接口单次最多处理 100 条
+CANCEL_COLLECT_SINGLE_URL = "https://www.douyin.com/aweme/v1/web/aweme/collect/"
+CANCEL_COLLECT_BATCH = 20    # 降低单批参数异常概率；接口允许更大批次
 CANCEL_COLLECT_INTERVAL_SEC = 0.5
+CANCEL_COLLECT_RETRIES = 3   # status_code=5（限流/风控）时的重试次数
 
 # 当前登录用户资料接口（个人主页加载时页面自身会调用，拦截复用；签名由页面 JS 完成）
 PROFILE_SELF_API = "/aweme/v1/web/user/profile/self"
