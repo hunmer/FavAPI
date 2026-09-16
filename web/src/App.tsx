@@ -232,8 +232,8 @@ export function App() {
 
   const handleCreateAccount = async (name: string, platform: PlatformId) => {
     try {
-      await api.createAccount(platform, name);
-      showToast(`成功创建账号「${name}」，Profile 隔离目录已就绪！`);
+      const row = await api.createAccount(platform, name);
+      showToast(`成功创建账号「${row.name}」，Profile 隔离目录已就绪！`);
       reloadAccounts();
     } catch (e: any) {
       showToast(e.message, 'error');

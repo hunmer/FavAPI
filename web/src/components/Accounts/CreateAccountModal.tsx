@@ -30,10 +30,6 @@ export const CreateAccountModal: React.FC<CreateAccountModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!accountName.trim()) {
-      setError('请输入账号备注名称');
-      return;
-    }
     if (!selectedPlatform) {
       setError('暂无可用平台');
       return;
@@ -119,7 +115,7 @@ export const CreateAccountModal: React.FC<CreateAccountModalProps> = ({
           {/* Account name */}
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
-              账号备注名称 <span className="text-red-500">*</span>
+              账号备注名称 <span className="text-slate-400 font-medium normal-case">（可选）</span>
             </label>
             <input
               type="text"
@@ -128,7 +124,7 @@ export const CreateAccountModal: React.FC<CreateAccountModalProps> = ({
                 setAccountName(e.target.value);
                 setError('');
               }}
-              placeholder="例如：我的抖音主号、B站主力收藏号"
+              placeholder="例如：我的抖音主号，留空则自动命名"
               className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
             />
             {error && (

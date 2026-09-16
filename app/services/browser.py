@@ -53,6 +53,9 @@ async def session(profile_path: str, headless: bool | None = None, proxy: dict |
         launch_options = {
             "user_data_dir": str(path),
             "headless": headless,
+            # Playwright 1.49+ headless 默认用独立 headless_shell（未随手动安装提供），
+            # channel="chromium" 让 headless 走完整 Chromium 的新 headless 模式。
+            "channel": "chromium",
             "viewport": {"width": 1280, "height": 860},
             "args": ["--disable-blink-features=AutomationControlled"],
         }
