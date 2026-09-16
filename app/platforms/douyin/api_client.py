@@ -191,11 +191,17 @@ def cancel_collect_page(cookie_header: str, aweme_ids: list[str]) -> dict:
     return data
 
 
-async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progress=None) -> dict:
+async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progress=None,
+                                    time_mode: str = "collected") -> dict:
     """按收藏日期区间边拉边取消：每页拉取 → 过滤 [from, to] → 命中当页立即取消 → 上报进度。
 
-    列表按真实收藏时间倒序，游标即本页最后一条的收藏时间；收藏时间 ≥ 发布时间，
-    故游标早于 dt_from 时提前终止与发布时间兜底过滤零冲突（后续条目必然不命中）。
+    time_mode 两种判定语义（接口不返回条目级收藏时间，只有页级游标）：
+    - "collected"（默认，按收藏时间）：页收藏区间 (本页cursor, 上页cursor] 完全落在
+      目标区间内 → 整页取消；与目标无交集 → 跳过；边界页 → 条目发布时间兜底近似。
+    - "published"（按发布时间）：条目 collected_at（发布时间兜底）逐条判定。
+
+    列表按真实收藏时间倒序，游标早于 dt_from 时提前终止（后续条目收藏/发布时间
+    必然更早，两种语义下都不再命中）。
     on_progress(info) 每页回调：{"page", "oldest_collected_at"（已翻到的收藏时间），
     "matched_this_page", "canceled", "total_fetched"}。
     """
@@ -206,6 +212,8 @@ async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progre
     total_fetched = 0
     page = 0
     stop_early = False
+    page_hi = None  # 上一页游标时间 = 本页条目收藏时间上界（首页视为 +∞）
+    skip_advance = False
     while True:
         batch = await asyncio.to_thread(
             fetch_listcollection_page, cookie_header, server_cursor, constants.API_PAGE_COUNT
@@ -213,9 +221,69 @@ async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progre
         page += 1
         items = batch["items"]
         total_fetched += len(items)
-        scanned_until = _cursor_time(batch["cursor"])
+        page_lo = _cursor_time(batch["cursor"])  # 本页条目收藏时间下界（末页无游标视为 -∞）
 
-        matched = filter_by_date_window(items, dt_from, dt_to)
+        if time_mode == "collected":
+            # 页区间 (page_lo, page_hi] 与目标 [dt_from, dt_to] 的关系
+            no_overlap = (
+                (dt_from is not None and page_hi is not None and page_hi < dt_from)
+                or (dt_to is not None and page_lo is not None and page_lo > dt_to)
+            )
+            fully_inside = (
+                (page_lo is None or dt_from is None or page_lo >= dt_from)
+                and (page_hi is None or dt_to is None or page_hi <= dt_to)
+            )
+            if no_overlap:
+                matched = []
+            elif fully_inside:
+                matched = items  # 整页收藏时间都在目标内
+            else:
+                # 跨边界页：收藏稀疏时段一页可能跨越数月，页级判定失效。
+                # 从本页起点游标开始逐条精翻（count=1 时游标即该条收藏时间），判定精确。
+                sub_cursor = server_cursor
+                page_lo = None  # 精翻后更新为本段实际到达的时间
+                pending: list[str] = []
+
+                async def _flush():
+                    nonlocal canceled_total, pending
+                    if pending:
+                        await asyncio.to_thread(cancel_collect_page, cookie_header, pending)
+                        canceled_total += len(pending)
+                        logger.info("cancel_collect 精翻段取消 %d 条（累计 %d）", len(pending), canceled_total)
+                        pending = []
+
+                while True:
+                    b1 = await asyncio.to_thread(
+                        fetch_listcollection_page, cookie_header, sub_cursor, 1
+                    )
+                    if not b1["items"]:
+                        break
+                    t1 = _cursor_time(b1["cursor"])
+                    if t1 is None:
+                        break  # 游标异常，放弃精翻
+                    if dt_from is not None and t1 < dt_from:
+                        page_lo = t1
+                        break  # 越过下界
+                    if (dt_from is None or t1 >= dt_from) and (dt_to is None or t1 <= dt_to):
+                        cid = b1["items"][0].get("content_id")
+                        if cid:
+                            pending.append(cid)
+                            if len(pending) >= constants.CANCEL_COLLECT_BATCH:
+                                await _flush()
+                    page_lo = t1
+                    if not b1["has_more"] or not b1["cursor"]:
+                        break
+                    sub_cursor = b1["cursor"]
+                    await asyncio.sleep(constants.CANCEL_COLLECT_INTERVAL_SEC)
+                await _flush()
+                matched = []  # 已在精翻中处理
+                items = []    # 精翻已覆盖本页区间，避免主循环重复取消
+                if sub_cursor != server_cursor:
+                    server_cursor = sub_cursor  # 主循环从精翻到达的位置继续
+                    skip_advance = True
+        else:
+            matched = filter_by_date_window(items, dt_from, dt_to)
+
         ids = [it["content_id"] for it in matched if it.get("content_id")]
         if ids:
             await asyncio.to_thread(cancel_collect_page, cookie_header, ids)
@@ -227,7 +295,7 @@ async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progre
             await on_progress({
                 "type": "progress",
                 "page": page,
-                "oldest_collected_at": scanned_until.isoformat(timespec="seconds") if scanned_until else None,
+                "oldest_collected_at": page_lo.isoformat(timespec="seconds") if page_lo else None,
                 "matched_this_page": len(ids),
                 "canceled": canceled_total,
                 "total_fetched": total_fetched,
@@ -235,11 +303,14 @@ async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progre
 
         if not batch["has_more"] or not batch["cursor"]:
             break
-        if dt_from is not None and scanned_until and scanned_until < dt_from:
+        if dt_from is not None and page_lo and page_lo < dt_from:
             stop_early = True
-            logger.info("cancel_collect 第 %d 页游标(%s)早于下界，提前终止", page, scanned_until)
+            logger.info("cancel_collect 第 %d 页游标(%s)早于下界，提前终止", page, page_lo)
             break
-        server_cursor = batch["cursor"]
+        page_hi = page_lo
+        if not skip_advance:
+            server_cursor = batch["cursor"]
+        skip_advance = False
         await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
 
     return {
@@ -248,6 +319,7 @@ async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progre
         "pages": page,
         "stopped_early": stop_early,
         "total_fetched": total_fetched,
+        "time_mode": time_mode,
     }
 
 

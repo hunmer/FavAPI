@@ -57,6 +57,7 @@ def _info(adapter: BasePlatformAdapter) -> dict:
                     {
                         "key": p.key, "label": p.label, "type": p.type,
                         "required": p.required, "placeholder": p.placeholder, "help": p.help,
+                        "options": [{"value": v, "label": n} for v, n in p.options],
                     }
                     for p in op.params
                 ],

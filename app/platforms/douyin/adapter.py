@@ -79,7 +79,7 @@ class DouyinAdapter(BasePlatformAdapter):
         ApiOperation(
             op_id="cancel_collect_multi",
             name="批量取消收藏",
-            description="按视频 ID 或收藏日期区间批量取消抖音收藏（每 20 个一批，操作不可恢复）",
+            description="按视频 ID 或收藏日期区间批量取消抖音收藏（边拉边取消，操作不可恢复）",
             danger=True,
             params=(
                 ApiOperationParam(
@@ -93,7 +93,15 @@ class DouyinAdapter(BasePlatformAdapter):
                 ),
                 ApiOperationParam(
                     key="date_to", label="按日期区间：至", type="date",
-                    help="闭区间（含当天）；无收藏时间的条目按发布时间判定",
+                    help="闭区间（含当天）",
+                ),
+                ApiOperationParam(
+                    key="time_mode", label="日期判定方式", type="select",
+                    options=(
+                        ("collected", "按收藏时间（推荐，页级近似）"),
+                        ("published", "按发布时间（无收藏时间时兜底）"),
+                    ),
+                    help="接口不返回单条收藏时间：按收藏时间以整页游标判定，边界页用发布时间近似",
                 ),
             ),
         ),
@@ -165,9 +173,13 @@ class DouyinAdapter(BasePlatformAdapter):
 
         cookie_header = await api_client.profile_cookie_header(account.profile_path)
         if dt_from or dt_to:
-            logger.info("[%s] 按日期区间取消收藏（边拉边取消）：%s ~ %s", account.account_id, dt_from, dt_to)
+            time_mode = str((params or {}).get("time_mode") or "collected").lower()
+            if time_mode not in ("collected", "published"):
+                raise ValueError("time_mode 仅支持 collected / published")
+            logger.info("[%s] 按日期区间取消收藏（%s，边拉边取消）：%s ~ %s",
+                        account.account_id, time_mode, dt_from, dt_to)
             result = await api_client.cancel_collect_by_window(
-                cookie_header, dt_from, dt_to, on_progress=_progress
+                cookie_header, dt_from, dt_to, on_progress=_progress, time_mode=time_mode
             )
             if result["canceled"] == 0:
                 result["note"] = "该日期区间内没有匹配的收藏，未执行取消"

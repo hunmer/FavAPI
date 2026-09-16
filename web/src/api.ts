@@ -91,10 +91,11 @@ export interface ScheduleRow {
 export interface OperationParamSpec {
   key: string;
   label: string;
-  type: string; // text | textarea | number | date
+  type: string; // text | textarea | number | date | select
   required: boolean;
   placeholder: string;
   help: string;
+  options?: Array<{ value: string; label: string }>;
 }
 
 export interface OperationSpec {

@@ -31,10 +31,11 @@ class ApiOperationParam:
     """API 操作表单的一个输入项（前端据此渲染弹窗表单）。"""
     key: str
     label: str
-    type: str = "text"        # text | textarea | number | date
+    type: str = "text"        # text | textarea | number | date | select
     required: bool = False
     placeholder: str = ""
     help: str = ""
+    options: tuple[tuple[str, str], ...] = ()  # select 的选项：(value, 显示名)
 
 
 @dataclass

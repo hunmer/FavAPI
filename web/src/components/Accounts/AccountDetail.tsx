@@ -100,7 +100,7 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
 
   const openOperationModal = (op: OperationSpec) => {
     setActiveOp(op);
-    setOpForm(Object.fromEntries(op.params.map((p) => [p.key, ''])));
+    setOpForm(Object.fromEntries(op.params.map((p) => [p.key, p.options?.[0]?.value ?? ''])));
     setOpResult(null);
     setOpEvents([]);
     setShowOpDangerConfirm(false);
@@ -972,7 +972,17 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
                       {p.label}
                       {p.required && <span className="text-rose-500 ml-0.5">*</span>}
                     </label>
-                    {p.type === 'textarea' ? (
+                    {p.type === 'select' && p.options && p.options.length > 0 ? (
+                      <select
+                        value={opForm[p.key] || p.options[0].value}
+                        onChange={(e) => setOpForm((f) => ({ ...f, [p.key]: e.target.value }))}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900"
+                      >
+                        {p.options.map((o) => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                    ) : p.type === 'textarea' ? (
                       <textarea
                         value={opForm[p.key] || ''}
                         onChange={(e) => setOpForm((f) => ({ ...f, [p.key]: e.target.value }))}
