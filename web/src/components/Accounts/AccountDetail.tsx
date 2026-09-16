@@ -65,6 +65,8 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
   const [startCursor, setStartCursor] = useState<string>('');
   const [isAsync, setIsAsync] = useState<boolean>(false);
   const [fetchMethod, setFetchMethod] = useState<'browser' | 'api'>('browser');
+  const [dateFrom, setDateFrom] = useState<string>('');
+  const [dateTo, setDateTo] = useState<string>('');
   const [selectedFolderMediaId, setSelectedFolderMediaId] = useState<string>(
     account.folders && account.folders[0] ? account.folders[0].mediaId : ''
   );
@@ -110,6 +112,8 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
       startCursor,
       isAsync,
       method: fetchMethod,
+      dateFrom,
+      dateTo,
       mediaId: selectedFolderMediaId,
       folderUrlOrUid: customFolderUrlOrUid,
       pageIntervalSec,
@@ -508,6 +512,33 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
                     {fetchMethod === 'api'
                       ? '接口直连抓取，速度快、无需打开浏览器窗口。'
                       : '通过 Chromium 会话滚动页面并拦截响应抓取。'}
+                  </p>
+                </div>
+
+                {/* Collected-at date range filter */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
+                    收藏日期区间 (可选)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      value={dateFrom}
+                      onChange={(e) => setDateFrom(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900"
+                    />
+                    <span className="text-slate-400 text-xs shrink-0">至</span>
+                    <input
+                      type="date"
+                      value={dateTo}
+                      onChange={(e) => setDateTo(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900"
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    {(dateFrom || dateTo)
+                      ? `仅入库 ${dateFrom || '最早'} ~ ${dateTo || '最新'} 的收藏；平台无收藏时间时按发布时间判定。`
+                      : '留空抓取全部；按收藏时间过滤，缺失时以发布时间兜底。'}
                   </p>
                 </div>
               </div>

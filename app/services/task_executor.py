@@ -1,6 +1,7 @@
 """抓取任务执行器：任务生命周期（pending → running → success / failed）+ 结果入库。"""
 import asyncio
 import logging
+from datetime import datetime, time as dtime
 
 from app import config
 from app.platforms import registry
@@ -16,6 +17,58 @@ _MAX_ITEMS_IN_RESPONSE = 100  # 响应内嵌 items 上限，防超大 payload
 
 class FetchValidationError(ValueError):
     """请求参数 / 账号状态问题，API 层转为 400。"""
+
+
+def _parse_date(value: str, name: str) -> datetime:
+    try:
+        return datetime.strptime(str(value).strip()[:10], "%Y-%m-%d")
+    except ValueError:
+        raise FetchValidationError(f"{name} 格式无效：{value}（应为 YYYY-MM-DD）")
+
+
+def _date_window(params: dict) -> tuple[datetime | None, datetime | None]:
+    """解析 params.date_from / date_to（YYYY-MM-DD）为本地时区边界（闭区间，含起止当天）。"""
+    raw_from = str(params.get("date_from") or "").strip()
+    raw_to = str(params.get("date_to") or "").strip()
+    if not raw_from and not raw_to:
+        return None, None
+    dt_from = _parse_date(raw_from, "date_from") if raw_from else None
+    dt_to = _parse_date(raw_to, "date_to") if raw_to else None
+    if dt_from and dt_to and dt_from > dt_to:
+        raise FetchValidationError("date_from 不能晚于 date_to")
+    # 闭区间：from 取当天 00:00、to 取当天 23:59:59.999999，均转本地 aware 与 collected_at 对齐
+    if dt_from:
+        dt_from = datetime.combine(dt_from, dtime.min).astimezone()
+    if dt_to:
+        dt_to = datetime.combine(dt_to, dtime.max).astimezone()
+    return dt_from, dt_to
+
+
+def _item_time(item: dict) -> datetime | None:
+    """collected_at（ISO）→ aware datetime；naive 视为本地时间。"""
+    raw = str(item.get("collected_at") or "").strip()
+    if not raw:
+        return None
+    try:
+        dt = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    return dt.astimezone() if dt.tzinfo is None else dt
+
+
+def _filter_by_date_window(items: list[dict], dt_from: datetime | None, dt_to: datetime | None) -> list[dict]:
+    """按收藏时间过滤（collected_at 由各平台 parser 兜底为发布时间）；无法判定时间的条目丢弃。"""
+    kept = []
+    for it in items:
+        ts = _item_time(it)
+        if ts is None:
+            continue
+        if dt_from and ts < dt_from:
+            continue
+        if dt_to and ts > dt_to:
+            continue
+        kept.append(it)
+    return kept
 
 
 def friendly_error(exc: Exception) -> str:
@@ -67,6 +120,7 @@ async def validate_fetch(
         adapter.validate_params(params or {})
     except ValueError as exc:
         raise FetchValidationError(str(exc))
+    _date_window(params or {})  # 日期区间格式 / 顺序校验，不合法直接 400
     if account["status"] == "disabled":
         raise FetchValidationError(f"账号 {account_id} 已禁用，请先启用")
     return account, adapter
@@ -128,6 +182,9 @@ async def _run_task(task_id: str, account: dict, action: str, params: dict) -> d
     adapter = registry.get_adapter(account["platform"])
     try:
         result = await adapter.fetch_favorites(account_manager.to_context(account), params or {})
+        dt_from, dt_to = _date_window(params or {})
+        if dt_from or dt_to:
+            result.items = _filter_by_date_window(result.items, dt_from, dt_to)
         summary = await data_store.save_fetch_result(account, result.items)
         payload = {
             "task_id": task_id,
@@ -196,10 +253,13 @@ async def stream_fetch_events(task_id: str, account: dict, adapter, action: str,
     seen: set[str] = set()
     saved_count = 0
     new_count = 0
+    dt_from, dt_to = _date_window(params or {})
 
     async def on_batch(batch: dict):
         nonlocal saved_count, new_count
         fresh = [it for it in batch.get("items") or [] if it.get("content_id") not in seen]
+        if dt_from or dt_to:
+            fresh = _filter_by_date_window(fresh, dt_from, dt_to)
         if not fresh:
             return
         seen.update(it["content_id"] for it in fresh)

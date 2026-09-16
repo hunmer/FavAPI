@@ -386,6 +386,8 @@ export function formToParams(platform: string, form: ScrapingFormData): Record<s
     cursor: Number(form.startCursor) > 0 ? Number(form.startCursor) : undefined,
   };
   if (form.method) params.method = form.method;
+  if (form.dateFrom) params.date_from = form.dateFrom;
+  if (form.dateTo) params.date_to = form.dateTo;
   if (platform === 'bilibili') {
     if (form.folderUrlOrUid) params.url = form.folderUrlOrUid;
     if (form.mediaId) params.media_id = form.mediaId;

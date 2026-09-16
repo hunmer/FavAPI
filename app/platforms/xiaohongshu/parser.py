@@ -1,6 +1,7 @@
 """小红书 collect/page 响应 → 通用 content 行的解析。"""
 import json
 import re
+from datetime import datetime
 
 # 个人主页 URL：xiaohongshu.com/user/profile/{24 位十六进制用户 id}
 _PROFILE_USER_RE = re.compile(r"xiaohongshu\.com/user/profile/([0-9a-fA-F]{16,32})")
@@ -38,6 +39,17 @@ def _cover_url(cover: dict) -> str | None:
     return infos[0].get("url") if infos else None
 
 
+def _ts_iso(value) -> str | None:
+    """毫秒时间戳 → 本地 ISO；无效返回 None。"""
+    try:
+        ts = int(value)
+        if ts > 10**12:  # 毫秒
+            ts //= 1000
+        return datetime.fromtimestamp(ts).astimezone().isoformat(timespec="seconds")
+    except (TypeError, ValueError, OSError, OverflowError):
+        return None
+
+
 def parse_note(note: dict) -> dict:
     """单个 note → contents 表字段（不含 platform / account_id，由写入方补）。"""
     user = note.get("user") or {}
@@ -54,7 +66,8 @@ def parse_note(note: dict) -> dict:
             {"liked_count": _as_int(interact.get("liked_count"))}, ensure_ascii=False
         ),
         "raw_data": json.dumps(note, ensure_ascii=False),
-        "collected_at": None,  # 收藏列表接口不含收藏时间
+        # 收藏列表接口不含收藏时间，兜底用笔记发布时间（note.time 毫秒时间戳）
+        "collected_at": _ts_iso(note.get("time") or note.get("last_update_time")),
     }
 
 

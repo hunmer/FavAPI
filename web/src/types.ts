@@ -100,6 +100,9 @@ export interface ScrapingFormData {
   startCursor: string;
   isAsync: boolean;
   method?: 'browser' | 'api'; // 抓取执行方式：浏览器模拟 / API 直连（平台需支持）
+  // 收藏日期区间过滤（YYYY-MM-DD，闭区间）；平台无收藏时间字段时以发布时间兜底
+  dateFrom?: string;
+  dateTo?: string;
   // Bilibili specific
   folderUrlOrUid?: string;
   mediaId?: string;
