@@ -10,7 +10,6 @@
 import asyncio
 import json
 import logging
-import pathlib
 from urllib.parse import urlencode
 
 from curl_cffi import requests
@@ -72,29 +71,15 @@ async def profile_cookie_header(profile_path: str) -> str:
     """从持久化浏览器 profile 读取 douyin.com cookies 拼 cookie 头。
 
     无登录 cookie 时抛 LoginExpiredError（与浏览器模式同一判定）。
-    用同步 playwright 在工作线程读：uvicorn 在 Windows 上的事件循环不支持子进程，
-    async_playwright 起不来；sync API 在线程内自建 Proactor 循环不受影响。
+    统一走 browser.session()：channel/并发上限/同 profile 串行锁一处维护，
+    避免与抓取会话同时打开同一 profile。
     """
-    cookies = await asyncio.to_thread(_read_cookies_sync, profile_path)
+    async with browser.session(profile_path, headless=True) as ctx:
+        cookies = await ctx.cookies()
     header = "; ".join(f"{c['name']}={c['value']}" for c in cookies if c.get("name"))
     if not browser.has_login_cookies(cookies, constants.LOGIN_COOKIE_KEYS):
         raise LoginExpiredError("抖音登录态缺失（profile 无 sessionid），请重新扫码登录")
     return header
-
-
-def _read_cookies_sync(profile_path: str) -> list[dict]:
-    from playwright.sync_api import sync_playwright
-
-    with sync_playwright() as pw:
-        ctx = pw.chromium.launch_persistent_context(
-            user_data_dir=str(pathlib.Path(profile_path)),
-            headless=True,
-            args=["--disable-blink-features=AutomationControlled"],
-        )
-        try:
-            return ctx.cookies()
-        finally:
-            ctx.close()
 
 
 def fetch_listcollection_page(cookie_header: str, cursor: int = 0, count: int = 20) -> dict:

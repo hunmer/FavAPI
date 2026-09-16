@@ -294,6 +294,18 @@ async def close_login(account_id: str):
     task = _login_tasks.get(account_id)
     if task and not task.done():
         task.cancel()
+        try:
+            # task.cancel() 只发出取消信号；Playwright 仍需关闭 context/process。
+            # 等清理完成再响应，避免前端立即操作时 profile 锁仍显示占用。
+            await asyncio.wait_for(asyncio.shield(task), timeout=15)
+        except asyncio.CancelledError:
+            pass
+        except asyncio.TimeoutError:
+            logger.warning("登录浏览器关闭超时（%s）", account_id)
+            raise HTTPException(status_code=503, detail="登录浏览器仍在关闭，请稍后重试")
+        finally:
+            if task.done() and _login_tasks.get(account_id) is task:
+                _login_tasks.pop(account_id, None)
         return {"account_id": account_id, "closed": True}
     return {"account_id": account_id, "closed": False}
 

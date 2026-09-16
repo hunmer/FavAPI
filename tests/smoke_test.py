@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import httpx  # noqa: E402
 
+from app.api import accounts as accounts_api  # noqa: E402
 from app.server import app as fastapp  # noqa: E402
 from app.services import data_store  # noqa: E402
 from app.utils import new_id, now_iso  # noqa: E402
@@ -95,6 +96,27 @@ async def _checks(client: httpx.AsyncClient) -> int:
     check("accounts.detail", r.status_code == 200 and r.json()["platform"] == "douyin")
     r = await client.get("/api/v1/accounts/acc_notexist")
     check("accounts.detail_404", r.status_code == 404)
+
+    # 取消登录必须等浏览器任务的 finally 清理完再响应，否则 profile 锁仍处于占用状态。
+    cleanup_done = asyncio.Event()
+
+    async def fake_login_task():
+        try:
+            await asyncio.Event().wait()
+        finally:
+            await asyncio.sleep(0.05)
+            cleanup_done.set()
+
+    login_task = asyncio.create_task(fake_login_task())
+    accounts_api._login_tasks[acc["account_id"]] = login_task
+    await asyncio.sleep(0)
+    r = await client.post(f"/api/v1/accounts/{acc['account_id']}/login/close")
+    check(
+        "accounts.close_login_waits_for_cleanup",
+        r.status_code == 200 and r.json()["closed"] is True
+        and cleanup_done.is_set() and login_task.done(),
+        r.text,
+    )
 
     r = await client.patch(f"/api/v1/accounts/{acc['account_id']}", json={"status": "disabled"})
     check("accounts.disable", r.json()["status"] == "disabled")
