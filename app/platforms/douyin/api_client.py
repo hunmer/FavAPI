@@ -178,27 +178,20 @@ def cancel_collect_page(cookie_header: str, aweme_ids: list[str]) -> dict:
 
 async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progress=None,
                                     time_mode: str = "collected") -> dict:
-    """按收藏日期区间边拉边取消：每页拉取 → 过滤 [from, to] → 命中当页立即取消 → 上报进度。
+    """完整扫描收藏列表，按视频上传时间（parser 的 collected_at）过滤并取消。
 
-    time_mode 两种判定语义（接口不返回条目级收藏时间，只有页级游标）：
-    - "collected"（默认，按收藏时间）：页收藏区间 (本页cursor, 上页cursor] 完全落在
-      目标区间内 → 整页取消；与目标无交集 → 跳过；边界页 → 条目发布时间兜底近似。
-    - "published"（按发布时间）：条目 collected_at（发布时间兜底）逐条判定。
-
-    列表按真实收藏时间倒序，游标早于 dt_from 时提前终止（后续条目收藏/发布时间
-    必然更早，两种语义下都不再命中）。
-    on_progress(info) 每页回调：{"page", "oldest_collected_at"（已翻到的收藏时间），
-    "matched_this_page", "canceled", "total_fetched"}。
+    抖音收藏列表接口不提供真实的加入收藏时间，不能使用分页 cursor 提前停止；
+    必须遍历到接口结束，再用条目中的 collected_at（当前由视频 create_time 填充）
+    匹配日期区间。time_mode 保留用于兼容旧请求，两种模式都使用该条目时间。
     """
     from app.utils import filter_by_date_window
 
     server_cursor = 0
     canceled_total = 0
+    matched_ids: list[str] = []
+    matched_seen: set[str] = set()
     total_fetched = 0
     page = 0
-    stop_early = False
-    page_hi = None  # 上一页游标时间 = 本页条目收藏时间上界（首页视为 +∞）
-    skip_advance = False
     while True:
         batch = await asyncio.to_thread(
             fetch_listcollection_page, cookie_header, server_cursor, constants.API_PAGE_COUNT
@@ -206,123 +199,56 @@ async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progre
         page += 1
         items = batch["items"]
         total_fetched += len(items)
-        page_cursor = batch["cursor"]
-        page_lo = _cursor_time(page_cursor)  # 本页条目收藏时间下界（末页无游标视为 -∞）
-        matched_this_page = 0
-        refined_reached_end = False
-
-        if time_mode == "collected":
-            # 页区间 (page_lo, page_hi] 与目标 [dt_from, dt_to] 的关系
-            no_overlap = (
-                (dt_from is not None and page_hi is not None and page_hi < dt_from)
-                or (dt_to is not None and page_lo is not None and page_lo > dt_to)
-            )
-            fully_inside = (
-                (page_lo is None or dt_from is None or page_lo >= dt_from)
-                and (page_hi is None or dt_to is None or page_hi <= dt_to)
-            )
-            if no_overlap:
-                matched = []
-            elif fully_inside:
-                matched = items  # 整页收藏时间都在目标内
-            else:
-                # 跨边界页：收藏稀疏时段一页可能跨越数月，页级判定失效。
-                # 从本页起点游标开始逐条精翻（count=1 时游标即该条收藏时间），只覆盖当前页。
-                sub_cursor = server_cursor
-                scan_lo = None
-                pending: list[str] = []
-                refined_to_page_boundary = False
-
-                while True:
-                    b1 = await asyncio.to_thread(
-                        fetch_listcollection_page, cookie_header, sub_cursor, 1
-                    )
-                    next_cursor = b1["cursor"]
-                    t1 = _cursor_time(next_cursor)
-                    if t1 is None:
-                        logger.warning("cancel_collect 精翻游标无效：cursor=%s", next_cursor)
-                        break
-                    scan_lo = t1
-                    if dt_from is not None and t1 < dt_from:
-                        break  # 越过下界
-                    if (dt_from is None or t1 >= dt_from) and (dt_to is None or t1 <= dt_to):
-                        pending.extend(
-                            it["content_id"] for it in b1["items"] if it.get("content_id")
-                        )
-                    # 已经覆盖到原始 count=20 页的末尾，交回主分页，避免继续逐条扫空游标。
-                    if page_cursor and next_cursor <= page_cursor:
-                        refined_to_page_boundary = True
-                        break
-                    if not b1["has_more"] or not next_cursor:
-                        refined_reached_end = True
-                        break
-                    if next_cursor == sub_cursor:
-                        logger.warning("cancel_collect 精翻游标未推进：cursor=%s", next_cursor)
-                        break
-                    # count=1 在收藏稀疏区可能返回空 items，但有效游标仍会继续向前推进。
-                    sub_cursor = next_cursor
-                    await asyncio.sleep(constants.CANCEL_COLLECT_INTERVAL_SEC)
-
-                pending = list(dict.fromkeys(pending))
-                for i in range(0, len(pending), constants.CANCEL_COLLECT_BATCH):
-                    chunk = pending[i:i + constants.CANCEL_COLLECT_BATCH]
-                    await asyncio.to_thread(cancel_collect_page, cookie_header, chunk)
-                    if i + constants.CANCEL_COLLECT_BATCH < len(pending):
-                        await asyncio.sleep(constants.CANCEL_COLLECT_INTERVAL_SEC)
-                canceled_total += len(pending)
-                matched_this_page = len(pending)
-                if pending:
-                    logger.info(
-                        "cancel_collect 精翻段取消 %d 条（累计 %d）",
-                        len(pending), canceled_total,
-                    )
-                matched = []  # 已在精翻中处理
-                items = []    # 精翻已覆盖本页区间，避免主循环重复取消
-                if refined_to_page_boundary:
-                    page_lo = _cursor_time(page_cursor)
-                else:
-                    page_lo = scan_lo
-                if not refined_to_page_boundary and sub_cursor != server_cursor:
-                    server_cursor = sub_cursor  # 主循环从精翻到达的位置继续
-                    skip_advance = True
-        else:
-            matched = filter_by_date_window(items, dt_from, dt_to)
-
+        page_lo = _cursor_time(batch["cursor"])
+        matched = filter_by_date_window(items, dt_from, dt_to)
         ids = [it["content_id"] for it in matched if it.get("content_id")]
-        if ids:
-            await asyncio.to_thread(cancel_collect_page, cookie_header, ids)
-            canceled_total += len(ids)
-            matched_this_page += len(ids)
-            logger.info("cancel_collect 第 %d 页命中 %d 条已取消（累计 %d）",
-                        page, len(ids), canceled_total)
+        for content_id in ids:
+            if content_id not in matched_seen:
+                matched_seen.add(content_id)
+                matched_ids.append(content_id)
 
         if on_progress:
             await on_progress({
                 "type": "progress",
                 "page": page,
                 "oldest_collected_at": page_lo.isoformat(timespec="seconds") if page_lo else None,
-                "matched_this_page": matched_this_page,
+                "matched_this_page": len(ids),
                 "canceled": canceled_total,
                 "total_fetched": total_fetched,
             })
 
-        if refined_reached_end or not batch["has_more"] or not batch["cursor"]:
+        if not batch["has_more"]:
             break
-        if dt_from is not None and page_lo and page_lo < dt_from:
-            stop_early = True
-            logger.info("cancel_collect 第 %d 页游标(%s)早于下界，提前终止", page, page_lo)
-            break
-        page_hi = page_lo
-        if not skip_advance:
-            server_cursor = batch["cursor"]
-        skip_advance = False
+        if not batch["cursor"]:
+            raise RuntimeError("收藏分页中断：接口仍有更多数据但未返回 cursor")
+        server_cursor = batch["cursor"]
         await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
 
+    # 必须等收藏列表完整扫描结束后再删除，避免删除当前页改变 cursor 导致漏扫。
+    # 扫描完成后按接口上限分批取消；当前接口单次最多 100 条。
+    for i in range(0, len(matched_ids), constants.CANCEL_COLLECT_BATCH):
+        chunk = matched_ids[i:i + constants.CANCEL_COLLECT_BATCH]
+        await asyncio.to_thread(cancel_collect_page, cookie_header, chunk)
+        canceled_total += len(chunk)
+        logger.info("cancel_collect 扫描完成后取消第 %d 批：%d 条（累计 %d）",
+                    i // constants.CANCEL_COLLECT_BATCH + 1, len(chunk), canceled_total)
+        if on_progress:
+            await on_progress({
+                "type": "progress",
+                "page": page,
+                "oldest_collected_at": page_lo.isoformat(timespec="seconds") if page_lo else None,
+                "matched_this_page": 0,
+                "canceled": canceled_total,
+                "total_fetched": total_fetched,
+            })
+        if i + constants.CANCEL_COLLECT_BATCH < len(matched_ids):
+            await asyncio.sleep(constants.CANCEL_COLLECT_INTERVAL_SEC)
+
     return {
-        "matched": canceled_total,
+        "matched": len(matched_ids),
         "canceled": canceled_total,
         "pages": page,
-        "stopped_early": stop_early,
+        "stopped_early": False,
         "total_fetched": total_fetched,
         "time_mode": time_mode,
     }

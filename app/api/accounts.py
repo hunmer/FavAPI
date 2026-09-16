@@ -79,6 +79,10 @@ async def _validate_operation(account_id: str, op_id: str) -> tuple[dict, object
 async def execute_operation(account_id: str, op_id: str, body: OperationExecute):
     """执行平台 API 操作（写操作/管理类，与抓取 task 体系分离，同步返回结果）。"""
     account, adapter = await _validate_operation(account_id, op_id)
+    from app.services import browser
+
+    # API 操作需要读取同一 profile 的 cookie；手动浏览器会持有 profile 锁，先让位避免永久等待。
+    await browser.close_manual(account_id)
     try:
         result = await adapter.execute_api_operation(
             op_id, account_manager.to_context(account), body.params or {}
@@ -102,6 +106,10 @@ async def execute_operation_stream(account_id: str, op_id: str, body: OperationE
     客户端断开时后台执行自动取消。
     """
     account, adapter = await _validate_operation(account_id, op_id)
+    from app.services import browser
+
+    # 与普通抓取入口保持一致，避免手动浏览器占用 profile 导致 SSE 一直无首个事件。
+    await browser.close_manual(account_id)
 
     queue: asyncio.Queue = asyncio.Queue()
 

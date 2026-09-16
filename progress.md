@@ -60,7 +60,47 @@
 | What have I done? | 见上方记录 |
 
 ### Phase 4: 真实快照复现
-- **Status:** in_progress
+- **Status:** complete
 - Actions taken:
   - 用户反馈修复后仍出现第 49 页跨到 2024-12-31，仅命中 1 条。
   - 准备抓取不含 cookie 的只读响应快照。
+  - 保存 `/tmp/favapi-collect-WVCEUA`，确认边界页 12 条与精翻集合完全一致。
+  - 修复边界页精翻到页尾后回主分页，并明确 UI 的时间语义。
+
+### Phase 5: 手动浏览器锁修复
+- **Status:** complete
+- Actions taken:
+  - 根据第二次 SSE 无输出日志定位到手动浏览器持有 profile 锁。
+  - 在同步和 SSE API 操作入口增加 `browser.close_manual(account_id)`。
+- 验证：回归测试、42 项冒烟测试、前端 lint、Python 编译和 diff 检查全部通过。
+
+### Phase 6: 日期范围完整性
+- **Status:** complete
+- Actions taken:
+  - 修复 `has_more=true + cursor=null` 被当作正常结束。
+  - 修复 API 在未到达 `date_from` 时提前结束仍发送 done。
+  - 新增两类异常游标回归测试。
+- 验证：3 个日期取消回归测试通过，冒烟测试和静态检查通过。
+
+### Phase 7: 统一按视频上传时间完整扫描
+- **Status:** complete
+- Actions taken:
+  - 检查用户提供的 160KB 原始 aweme JSON，确认没有加入收藏时间字段。
+  - 删除 cursor 日期区间、精翻和提前停止逻辑。
+  - 保留空页有效 cursor 的继续分页，直到 `has_more=false`。
+  - 日期过滤统一使用 `create_time` 解析得到的条目时间。
+- 验证：2 个完整扫描回归测试、42 项冒烟测试、前端 lint 和 Python 编译均通过。
+
+### Phase 8: 防止边扫边删导致漏页
+- **Status:** complete
+- Actions taken:
+  - 定位 733 条问题的根因：每页删除会改变后续分页 cursor。
+  - 改为先完整扫描、去重命中 ID，再统一分批取消。
+  - 新增“多页命中后统一取消”回归测试。
+- 验证：3 个回归测试、42 项冒烟测试、前端 lint、Python 编译和 diff 检查通过。
+
+### Phase 9: 调整取消接口批次上限
+- **Status:** complete
+- Actions taken:
+  - 将 `CANCEL_COLLECT_BATCH` 从 20 调整为 100。
+  - 保持收藏列表抓取分页 20 条不变。
