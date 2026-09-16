@@ -7,6 +7,26 @@ interface PlatformOperationsProps {
   account: Account;
 }
 
+// 操作表单持久化：按「账号 + 操作」隔离存 localStorage，提交时写入、打开时回填
+const opFormStorageKey = (accountId: string, opId: string) => `favapi:op-form:${accountId}:${opId}`;
+
+const loadStoredOpForm = (accountId: string, op: OperationSpec): Record<string, string> => {
+  const defaults = Object.fromEntries(op.params.map((p) => [p.key, p.options?.[0]?.value ?? '']));
+  try {
+    const raw = localStorage.getItem(opFormStorageKey(accountId, op.op_id));
+    if (!raw) return defaults;
+    const saved = JSON.parse(raw) as Record<string, unknown>;
+    // 仅回填该操作当前仍定义的参数 key，操作定义变更后旧值自动失效回落默认
+    const restored = { ...defaults };
+    for (const p of op.params) {
+      if (typeof saved?.[p.key] === 'string') restored[p.key] = saved[p.key] as string;
+    }
+    return restored;
+  } catch {
+    return defaults;
+  }
+};
+
 /** 平台 API 操作：功能卡片 + 弹窗表单执行（SSE 流式），操作列表来自 GET /platforms */
 export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account }) => {
   const [operations, setOperations] = useState<OperationSpec[]>([]);
@@ -35,7 +55,7 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
       params: op.params.map((p) => p.key),
     });
     setActiveOp(op);
-    setOpForm(Object.fromEntries(op.params.map((p) => [p.key, p.options?.[0]?.value ?? ''])));
+    setOpForm(loadStoredOpForm(account.id, op));
     setOpResult(null);
     setOpEvents([]);
     setShowOpDangerConfirm(false);
@@ -47,8 +67,8 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
         return `拉取收藏列表：第 ${ev.page} 页（本页 ${ev.total_fetched} 条）`;
       case 'progress': {
         // 日期区间管道式取消：带日期位置与累计取消数；ID 列表模式：分批进度
-        if (ev.oldest_collected_at) {
-          const oldest = ev.oldest_collected_at.slice(0, 10);
+        if (ev.matched_this_page !== undefined) {
+          const oldest = ev.oldest_collected_at?.slice(0, 10) || '游标未知';
           return `第 ${ev.page} 页 · 已翻至 ${oldest} · 本页命中 ${ev.matched_this_page} 条 · 累计取消 ${ev.canceled} 条`;
         }
         return `取消进度：第 ${ev.batch_no}/${ev.total_batches} 批完成（累计 ${ev.done} 条）`;
@@ -87,6 +107,11 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
     setOpRunning(true);
     setOpResult(null);
     setOpEvents([]);
+    try {
+      localStorage.setItem(opFormStorageKey(account.id, activeOp.op_id), JSON.stringify(opForm));
+    } catch {
+      /* 存储失败（隐私模式/配额）不影响执行 */
+    }
     try {
       const done = await executeOperationStream(account.id, activeOp.op_id, opForm, (ev) => {
         console.debug('[AccountDetail][operation] stream event', ev);

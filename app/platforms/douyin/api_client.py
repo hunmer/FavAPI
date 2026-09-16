@@ -207,6 +207,8 @@ async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progre
         items = batch["items"]
         total_fetched += len(items)
         page_lo = _cursor_time(batch["cursor"])  # 本页条目收藏时间下界（末页无游标视为 -∞）
+        matched_this_page = 0
+        refined_reached_end = False
 
         if time_mode == "collected":
             # 页区间 (page_lo, page_hi] 与目标 [dt_from, dt_to] 的关系
@@ -229,38 +231,45 @@ async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progre
                 page_lo = None  # 精翻后更新为本段实际到达的时间
                 pending: list[str] = []
 
-                async def _flush():
-                    nonlocal canceled_total, pending
-                    if pending:
-                        await asyncio.to_thread(cancel_collect_page, cookie_header, pending)
-                        canceled_total += len(pending)
-                        logger.info("cancel_collect 精翻段取消 %d 条（累计 %d）", len(pending), canceled_total)
-                        pending = []
-
                 while True:
                     b1 = await asyncio.to_thread(
                         fetch_listcollection_page, cookie_header, sub_cursor, 1
                     )
-                    if not b1["items"]:
-                        break
-                    t1 = _cursor_time(b1["cursor"])
+                    next_cursor = b1["cursor"]
+                    t1 = _cursor_time(next_cursor)
                     if t1 is None:
-                        break  # 游标异常，放弃精翻
+                        logger.warning("cancel_collect 精翻游标无效：cursor=%s", next_cursor)
+                        break
+                    page_lo = t1
                     if dt_from is not None and t1 < dt_from:
-                        page_lo = t1
                         break  # 越过下界
                     if (dt_from is None or t1 >= dt_from) and (dt_to is None or t1 <= dt_to):
-                        cid = b1["items"][0].get("content_id")
-                        if cid:
-                            pending.append(cid)
-                            if len(pending) >= constants.CANCEL_COLLECT_BATCH:
-                                await _flush()
-                    page_lo = t1
-                    if not b1["has_more"] or not b1["cursor"]:
+                        pending.extend(
+                            it["content_id"] for it in b1["items"] if it.get("content_id")
+                        )
+                    if not b1["has_more"] or not next_cursor:
+                        refined_reached_end = True
                         break
-                    sub_cursor = b1["cursor"]
+                    if next_cursor == sub_cursor:
+                        logger.warning("cancel_collect 精翻游标未推进：cursor=%s", next_cursor)
+                        break
+                    # count=1 在收藏稀疏区可能返回空 items，但有效游标仍会继续向前推进。
+                    sub_cursor = next_cursor
                     await asyncio.sleep(constants.CANCEL_COLLECT_INTERVAL_SEC)
-                await _flush()
+
+                pending = list(dict.fromkeys(pending))
+                for i in range(0, len(pending), constants.CANCEL_COLLECT_BATCH):
+                    chunk = pending[i:i + constants.CANCEL_COLLECT_BATCH]
+                    await asyncio.to_thread(cancel_collect_page, cookie_header, chunk)
+                    if i + constants.CANCEL_COLLECT_BATCH < len(pending):
+                        await asyncio.sleep(constants.CANCEL_COLLECT_INTERVAL_SEC)
+                canceled_total += len(pending)
+                matched_this_page = len(pending)
+                if pending:
+                    logger.info(
+                        "cancel_collect 精翻段取消 %d 条（累计 %d）",
+                        len(pending), canceled_total,
+                    )
                 matched = []  # 已在精翻中处理
                 items = []    # 精翻已覆盖本页区间，避免主循环重复取消
                 if sub_cursor != server_cursor:
@@ -273,6 +282,7 @@ async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progre
         if ids:
             await asyncio.to_thread(cancel_collect_page, cookie_header, ids)
             canceled_total += len(ids)
+            matched_this_page += len(ids)
             logger.info("cancel_collect 第 %d 页命中 %d 条已取消（累计 %d）",
                         page, len(ids), canceled_total)
 
@@ -281,12 +291,12 @@ async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progre
                 "type": "progress",
                 "page": page,
                 "oldest_collected_at": page_lo.isoformat(timespec="seconds") if page_lo else None,
-                "matched_this_page": len(ids),
+                "matched_this_page": matched_this_page,
                 "canceled": canceled_total,
                 "total_fetched": total_fetched,
             })
 
-        if not batch["has_more"] or not batch["cursor"]:
+        if refined_reached_end or not batch["has_more"] or not batch["cursor"]:
             break
         if dt_from is not None and page_lo and page_lo < dt_from:
             stop_early = True
