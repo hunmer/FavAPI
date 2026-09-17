@@ -55,7 +55,7 @@ export const Header: React.FC<HeaderProps> = ({
   ];
 
   return (
-    <header className="h-20 px-6 lg:px-8 border-b border-slate-100 dark:border-slate-800/80 bg-white/85 dark:bg-[#12151E]/85 backdrop-blur-md flex items-center justify-between gap-4 shrink-0 z-20 transition-colors duration-200">
+    <header className="h-20 px-6 lg:px-8 border-b border-slate-100 dark:border-slate-800/80 bg-white/85 dark:bg-[#12151E]/85 backdrop-blur-md grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[16rem_minmax(0,1fr)_24rem] items-center gap-4 shrink-0 z-20 transition-colors duration-200">
       {/* Left: View Title & Subtitle */}
       <div className="flex flex-col min-w-0">
         <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
@@ -73,7 +73,7 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Center: Global Search Bar */}
-      <div className="flex-1 max-w-md mx-2 relative hidden md:block">
+      <div className="w-full max-w-md mx-auto relative hidden md:block">
         <div className="relative flex items-center">
           <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute left-3.5 pointer-events-none" />
           <input
@@ -104,7 +104,7 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Right Controls: Auto-refresh, Add Account, Notification, Avatar */}
-      <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+      <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 justify-self-end">
         {/* 抓取进度指示：仅有任务运行时展示 */}
         {runningFetch && runningFetch.count > 0 && (
           <div
