@@ -4,43 +4,50 @@
 
 | 包 | 用途 |
 |----|------|
-| fastapi | Web 框架 + Pydantic 模型 |
-| uvicorn[standard] | ASGI 服务器 |
+| fastapi / uvicorn[standard] | Web 框架 / ASGI（含 python-multipart 支持上传） |
 | aiosqlite | 异步 SQLite（单连接 + WAL） |
-| playwright | Chromium 持久化 profile 浏览器自动化（首次需 `playwright install chromium`） |
-| jinja2 | Web 管理界面模板 |
-| httpx | 仅测试使用（ASGITransport 冒烟），未列入 requirements 也可运行服务；当前已随 fastapi 生态存在，requirements 未含它 |
+| playwright | Chromium 持久化 profile 自动化（首次需 install chromium） |
+| httpx | 冒烟测试 ASGITransport、部分 HTTP 请求 |
+| croniter | 定时计划 cron 表达式解析 |
+| curl_cffi | API 直连通道：模拟 Chrome TLS/HTTP2 指纹（httpx 会被部分平台识别返回空响应） |
+| xhshow | 小红书 x-s / x-s-common 请求签名纯算 |
+| yt-dlp | 下载器之一（子进程调用，可注入 Netscape cookie） |
 
-> 注意：requirements.txt 未固定版本；Python 为 3.13（项目 `.venv`）。无 lock 文件、无 pyproject.toml。
+外部运行时依赖：videodl（下载器之二，可选）；Node ≥16（快手 `__NS_hxfalcon` 签名经 `sig_vm.js` + `sig4.cjs` 离线生成）。
+
+无 pyproject.toml / lock 文件。Python 3.13（`.venv`）。
 
 ## 环境变量（app/config.py）
 
 | 变量 | 默认 | 说明 |
 |------|------|------|
 | `FAVAPI_HOST` / `FAVAPI_PORT` | 127.0.0.1 / 8300 | HTTP 监听 |
-| `FAVAPI_DATA_DIR` | `<仓库根>/data` | 数据库 + 浏览器 profile 根目录；测试用它隔离 |
-| `FAVAPI_HEADLESS` | `0` | 抓取是否无头；抖音检测严格，保持 0 |
+| `FAVAPI_DATA_DIR` | `<根>/data` | 数据库/profile/下载/上传根目录；测试隔离用 |
+| `FAVAPI_PLATFORMS_DIR` | `<根>/platforms` | 声明式平台目录 |
+| `FAVAPI_HEADLESS` | 0（有头） | 抓取/登录是否无头；平台检测严格，保持 0 |
 
-派生路径：`DB_PATH = DATA_DIR/favapi.db`，`PROFILES_DIR = DATA_DIR/profiles`。
+前端相关（web/）：`FAVAPI_BACKEND`（dev 代理目标，默认 http://127.0.0.1:8300）、`REACT_EDITOR`（DevInspector 打开源码的编辑器命令，默认 `code`）。
 
-## 代码内常量（config.py）
+## 常量（config.py）
 
-| 常量 | 值 | 说明 |
-|------|-----|------|
-| `LOGIN_TIMEOUT` | 300s | 扫码登录最长等待 |
-| `FETCH_TIMEOUT` | 300s | 单次同步抓取整体超时 |
-| `MAX_CONCURRENT_BROWSERS` | 2 | 全局并发浏览器上限（Semaphore） |
-| `PAGE_TIMEOUT` | 30000ms | Playwright 默认页面超时 |
+`LOGIN_TIMEOUT=300s`、`FETCH_TIMEOUT=300s`、`MAX_CONCURRENT_BROWSERS=2`、`PAGE_TIMEOUT=30000ms`、`DB_PATH=DATA_DIR/favapi.db`、`PROFILES_DIR=DATA_DIR/profiles`。
 
-## 平台常量
+## 运行时配置文件
 
-- 抖音（douyin/constants.py）：`FAVORITES_URL`（个人页收藏 tab）、拦截接口 `/aweme/v1/web/aweme/listcollection`、登录 cookie `sessionid`/`sessionid_ss`、`DEFAULT_COUNT=20`、`MAX_COUNT=500`、`SCROLL_INTERVAL_MS=1800`、`MAX_SCROLL_ROUNDS=300`、`MAX_STALL_ROUNDS=6`。
-- Bilibili（bilibili/constants.py）：仅 PLATFORM / DISPLAY_NAME / NOT_IMPLEMENTED_MSG。
-
-## 配置文件
-
-| 文件 | 用途 |
+| 文件 | 内容 |
 |------|------|
-| `procm-commands.json` | procm 持久化进程命令（server/dev/test-parser/test-smoke/install-browser） |
-| `.gitignore` | 忽略 .venv / data 等 |
-| `AGENTS.md` | 本工作区 Agent 行为规范（输出格式、工具偏好） |
+| `data/settings.json` | profile_path / headless / request_interval / request_timeout / download_dir / download_concurrency（前端设置页可改，app_settings.py 读写） |
+| `platforms/<name>/platform.json` | 声明式平台 spec：home_url / login_cookies(+mode any\|all) / proxy(auto\|url\|env) / capture(url_contains、page_url 支持 {userId}、items_path 支持 a.b[].c、has_more 哨兵) / fields 映射 / scripts 页面与子进程钩子 |
+| `procm-commands.json` | procm 持久化进程命令（Win/mac 双套 + web） |
+
+## 数据目录布局（data/，git 忽略）
+
+`favapi.db`、`profiles/<platform>_<account_id>/`、`downloads/<platform>/`、`uploads/`（头像、账号头像）、`wechat_imports/{id}/messages.json`、`downloads/.cookies/{id}.cookies.txt`（yt-dlp 注入用）。
+
+## 平台常量速查
+
+- douyin：拦截 `/aweme/v1/web/aweme/listcollection`，登录 cookie `sessionid`；MAX_COUNT=500。
+- xiaohongshu：拦截 `/api/sns/web/v2/note/collect/page`，登录判定用 DOM 判据而非 cookie。
+- youtube：登录 cookie SID/SAPISID/__Secure-3PSID/LOGIN_INFO，解析 playlist?list=LL。
+- kuaishou：登录 cookie mode=all；{userId} 预导航拦截取 eid。
+- 各平台 `constants.py` 为调参热点。

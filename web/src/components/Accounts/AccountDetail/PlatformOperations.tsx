@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Account } from '../../../types';
 import { executeOperationStream, listPlatforms, OperationStreamEvent, OperationSpec } from '../../../api';
-import { AlertTriangle, RefreshCw, Terminal, X, Zap } from 'lucide-react';
+import { AlertTriangle, Terminal, X, Zap } from 'lucide-react';
 
 interface PlatformOperationsProps {
   account: Account;
@@ -35,6 +35,7 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
   const [opRunning, setOpRunning] = useState(false);
   const [opEvents, setOpEvents] = useState<OperationStreamEvent[]>([]);
   const [showOpDangerConfirm, setShowOpDangerConfirm] = useState(false);
+  const opAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     setOperations([]);
@@ -86,6 +87,8 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
         const matched = r.matched !== undefined ? `，命中 ${r.matched} 条` : '';
         return `完成：获取 ${r.total ?? '-'} 条${matched}${r.has_more ? '（还有更多未拉取）' : ''}`;
       }
+      case 'canceled':
+        return '⊘ 已手动取消，后台执行已中止';
       default:
         return '';
     }
@@ -119,28 +122,52 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
     } catch {
       /* 存储失败（隐私模式/配额）不影响执行 */
     }
+    const controller = new AbortController();
+    opAbortRef.current = controller;
     try {
-      const done = await executeOperationStream(account.id, activeOp.op_id, opForm, (ev) => {
-        console.debug('[AccountDetail][operation] stream event', ev);
-        setOpEvents((prev) => [...prev, ev]);
-      });
+      const done = await executeOperationStream(
+        account.id,
+        activeOp.op_id,
+        opForm,
+        (ev) => {
+          console.debug('[AccountDetail][operation] stream event', ev);
+          setOpEvents((prev) => [...prev, ev]);
+        },
+        controller.signal
+      );
       console.debug('[AccountDetail][operation] completed', {
         elapsedMs: Math.round(performance.now() - startedAt),
         done,
       });
     } catch (e) {
-      console.error('[AccountDetail][operation] failed', {
-        elapsedMs: Math.round(performance.now() - startedAt),
-        error: e,
-      });
-      setOpEvents((prev) => [...prev, { type: 'error', message: e instanceof Error ? e.message : String(e) }]);
+      if (controller.signal.aborted) {
+        console.debug('[AccountDetail][operation] canceled by user', {
+          elapsedMs: Math.round(performance.now() - startedAt),
+        });
+        setOpEvents((prev) => [...prev, { type: 'canceled' }]);
+      } else {
+        console.error('[AccountDetail][operation] failed', {
+          elapsedMs: Math.round(performance.now() - startedAt),
+          error: e,
+        });
+        setOpEvents((prev) => [...prev, { type: 'error', message: e instanceof Error ? e.message : String(e) }]);
+      }
     } finally {
       console.debug('[AccountDetail][operation] finished', {
         elapsedMs: Math.round(performance.now() - startedAt),
       });
       console.groupEnd();
       setOpRunning(false);
+      if (opAbortRef.current === controller) opAbortRef.current = null;
     }
+  };
+
+  const cancelOperation = () => {
+    console.debug('[AccountDetail][operation] cancel requested', {
+      accountId: account.id,
+      opId: activeOp?.op_id,
+    });
+    opAbortRef.current?.abort();
   };
 
   if (operations.length === 0) return null;
@@ -266,23 +293,29 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
                   >
                     关闭
                   </button>
-                  <button
-                    type="button"
-                    disabled={opRunning || (activeOp.params.some((p) => p.required) && activeOp.params.some((p) => p.required && !(opForm[p.key] || '').trim()))}
-                    onClick={submitOperation}
-                    className={`px-5 py-2 text-xs font-bold text-white rounded-xl shadow-xs disabled:opacity-50 inline-flex items-center gap-1.5 ${
-                      activeOp.danger
-                        ? 'bg-rose-600 hover:bg-rose-700'
-                        : 'bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600'
-                    }`}
-                  >
-                    {opRunning && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
-                    {opRunning
-                      ? '执行中...'
-                      : showOpDangerConfirm
-                        ? '确认执行'
-                        : '执行'}
-                  </button>
+                  {opRunning ? (
+                    <button
+                      type="button"
+                      onClick={cancelOperation}
+                      className="px-5 py-2 text-xs font-bold text-white rounded-xl shadow-xs bg-rose-600 hover:bg-rose-700 inline-flex items-center gap-1.5"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      取消执行
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={activeOp.params.some((p) => p.required) && activeOp.params.some((p) => p.required && !(opForm[p.key] || '').trim())}
+                      onClick={submitOperation}
+                      className={`px-5 py-2 text-xs font-bold text-white rounded-xl shadow-xs disabled:opacity-50 inline-flex items-center gap-1.5 ${
+                        activeOp.danger
+                          ? 'bg-rose-600 hover:bg-rose-700'
+                          : 'bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600'
+                      }`}
+                    >
+                      {showOpDangerConfirm ? '确认执行' : '执行'}
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -303,9 +336,11 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
                         className={`text-[11px] font-mono leading-relaxed ${
                           ev.type === 'error'
                             ? 'text-rose-400'
-                            : ev.type === 'done'
-                              ? 'text-emerald-400'
-                              : 'text-slate-300'
+                            : ev.type === 'canceled'
+                              ? 'text-amber-400'
+                              : ev.type === 'done'
+                                ? 'text-emerald-400'
+                                : 'text-slate-300'
                         }`}
                       >
                         {ev.type === 'error' ? `✗ ${ev.message}` : describeOpEvent(ev)}

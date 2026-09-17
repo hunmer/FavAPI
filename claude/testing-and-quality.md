@@ -1,32 +1,39 @@
 # 测试与质量
 
-## 测试命令
+## 测试命令（Windows 路径；macOS 用 .venv/bin/python）
 
 ```bash
-.venv/Scripts/python.exe tests/test_parser.py   # 解析器单测，4 用例
-.venv/Scripts/python.exe tests/smoke_test.py    # API + 数据层冒烟，29 检查项
+.venv/Scripts/python.exe tests/test_parser.py             # 抖音 parser 单测
+.venv/Scripts/python.exe tests/test_bilibili_parser.py    # B 站 parser + 参数校验
+.venv/Scripts/python.exe tests/test_xiaohongshu_parser.py # 小红书 parser
+.venv/Scripts/python.exe tests/test_douyin_api_client.py  # 抖音 API client（unittest+mock）
+.venv/Scripts/python.exe tests/test_youtube_platform.py   # 声明式 _walk + YouTube 样本解析
+.venv/Scripts/python.exe tests/smoke_test.py              # API+数据层冒烟（临时数据目录，不依赖浏览器）
+.venv/Scripts/python.exe tests/e2e_schedule_test.py       # 定时链路 e2e（需先起服务）
 ```
 
-两者均自带 `__main__` runner（输出 PASS/FAIL 与退出码），也可被 pytest 收集（test_parser 的函数名 test_*）。无 CI 配置、无 lint/format 配置、无类型检查配置。
+均带 `__main__` runner 也可 pytest 收集；无 pytest 配置文件、无 CI、无 lint/类型检查配置。
 
 ## 覆盖情况
 
-| 测试 | 覆盖 | 不覆盖 |
-|------|------|--------|
-| test_parser.py | parse_aweme 字段映射 / 缺字段兜底 / listcollection 元信息 / 空响应 | — |
-| smoke_test.py | 平台元信息、账号 CRUD 与 400/404 分支、抓取请求校验（禁用/平台不一致/未知账号/不支持 action/Bilibili 占位）、任务生命周期、收藏入库与去重、分页、删除账号级联（favorites 清空 contents 保留）、Web 4 页面渲染、OpenAPI | 真实浏览器链路（登录、实际抓取）——依赖人工在页面上验证 |
+| 测试 | 覆盖 |
+|------|------|
+| smoke_test | 平台元信息、账号 CRUD 与错误分支、抓取校验、任务记录、收藏入库回读（含 B 站同视频多收藏夹）、删号级联、Web 页面渲染 |
+| e2e_schedule_test | 禁用账号 + 每分钟计划的触发与 next_run_at 推进 |
+| 各 parser/api_client 单测 | 样本 JSON（samples/）驱动的纯函数测试 |
 
-smoke_test 通过 `FAVAPI_DATA_DIR=临时目录` 隔离数据，用 `app.router.lifespan_context` + `httpx.ASGITransport` 与服务同事件循环驱动（aiosqlite 连接安全）。
+不覆盖：真实浏览器链路（登录、实际抓取）、下载子进程、AI 打标 LLM 调用——需人工验证。
 
-## 真实链路验证方式（人工）
+## 真实链路人工验证
 
-procm 启动 server → 浏览器开 `http://127.0.0.1:8300` → 创建抖音账号 → 登录扫码 → 账号详情页触发抓取 → 看「数据」「任务」页面。
+procm 起 server → `http://127.0.0.1:8300` → 创建账号 → 扫码登录 → 详情页触发抓取/平台操作 → 看「数据/任务/下载」。抖音写操作类改动参考根目录 `verify_bili_*.py` 模式写临时验证脚本（注意含真实 cookie，勿提交）。
 
 ## 已知质量风险 / 技术债
 
-- requirements.txt 未锁版本，无 lock 文件；fastapi/pydantic 升级可能破坏 `TemplateResponse(request, name, context)` 新签名等用法（findings.md 有记录）。
-- 抖音登录态判断是 cookie 存在性启发式（sessionid 非空即有效），失效只能在抓取时被动发现。
-- `update_account` / `update_task` 用 f-string 拼 SQL 列名——列名来自 API 层白名单，新增调用方时必须保证字段名合法。
-- 同步抓取持有 profile 锁最长 300s，期间该账号的 status 轮询会快速返回 busy（预期行为，非 bug）。
-- 无鉴权：仅监听 127.0.0.1 时可接受，改 HOST 对外暴露前必须加认证。
-- 响应内嵌 items 上限 100 条（`_MAX_ITEMS_IN_RESPONSE`），全量数据走 /favorites 分页。
+- 依赖未锁版本（fastapi/curl_cffi/xhshow 等），平台接口签名随时间失效的风险高（抖音写接口已须浏览器页面 fetch hook 加签）。
+- 抖音/快手登录态判断是 cookie 存在性启发式，失效只能在抓取时被动发现。
+- `update_*` 类 SQL 用 f-string 拼列名——列名必须来自白名单，新增调用方注意。
+- 无鉴权：仅 127.0.0.1 监听可接受，对外暴露前必须加认证。
+- 响应内嵌 items 上限 100 条摘要，全量走 /favorites 分页（limit≤5000）。
+- codegraph 索引曾滞后于源码（新增平台未及时入索引），以 git 文件为准。
+- App.tsx 内有 `[DBG-ACC]` console.warn 调试残留（见 web 侧）。

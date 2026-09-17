@@ -1,55 +1,70 @@
 # 对外接口
 
-## REST API（前缀 /api/v1，完整定义见 http://127.0.0.1:8300/docs）
+REST API 前缀统一 `/api/v1`，交互式文档 `http://127.0.0.1:8300/docs`。无鉴权（仅本地监听）。
 
-### 平台
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/v1/platforms` | 平台元信息列表：platform / display_name / implemented / supported_actions |
-
-### 账号
+## 平台
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/v1/accounts` | 列表（含 `logging_in` 内存态标记） |
-| POST | `/api/v1/accounts` | 创建（body: platform, name?, extra?），201；未知/未实现平台 400 |
-| GET | `/api/v1/accounts/{id}` | 详情，404 不存在 |
-| PATCH | `/api/v1/accounts/{id}` | 改名 / 启停（status: active/disabled/expired） |
-| DELETE | `/api/v1/accounts/{id}` | 删除（级联删 favorites + profile 目录；contents 保留） |
-| POST | `/api/v1/accounts/{id}/login` | 202，后台开有头浏览器等扫码；重复发起 409；返回 poll_url |
-| GET | `/api/v1/accounts/{id}/status` | cookie 检查登录态并回写修正账号 status；浏览器忙时快速返回 `busy: true, logged_in: null` |
+| GET | `/platforms` | 平台元信息：implemented / supported_actions / api_fetch_implemented / api_operations / icon_url |
+| POST | `/platforms/reload` | 重扫声明式平台目录（热加载） |
+| GET | `/platforms/{platform}/icon` | 平台图标文件 |
 
-### 抓取
+## 账号（/accounts）
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/v1/fetch` | body: `{platform, account_id, action, params?, async_run?}`。默认同步 200 返回结果；`async_run=true` 返回 202 + task_id。校验失败 400（账号不存在/平台不一致/未实现/action 不支持/已禁用） |
+| GET / POST | `/accounts` | 列表（含 logging_in、avatar）/ 创建(201) |
+| GET / PATCH / DELETE | `/accounts/{id}` | 详情 / 改名启停 / 删除（级联 favorites+profile） |
+| GET | `/accounts/{id}/avatar` | 本地化账号头像 |
+| POST | `/accounts/{id}/login` | 202 后台扫码，返回 poll_url；重复 409 |
+| POST | `/accounts/{id}/login/close` | 关闭登录浏览器 |
+| GET | `/accounts/{id}/status?refresh=` | 登录态检查（可回填身份） |
+| POST / GET | `/accounts/{id}/browse` | 手动浏览窗口 开关(toggle) / 查询 |
+| GET | `/accounts/{id}/cookies` | 读 profile cookie 存快照 |
+| POST | `/accounts/{id}/wechat-import` | 上传微信收藏 JSON（≤100MB） |
+| POST | `/accounts/{id}/refresh-profile`、`/accounts/refresh-profile` | 单个 / 批量身份刷新（未实现平台 501） |
+| POST | `/accounts/{id}/folders/edit`、`/folders/del` | B 站收藏夹编辑 / 删除 |
+| POST | `/accounts/{id}/operations/{op_id}` | 平台写操作（同步） |
+| POST | `/accounts/{id}/operations/{op_id}/stream` | 写操作 SSE 流式 |
 
-同步响应字段：`task_id, account_id, platform, action, status(success/failed), result_count, new_favorites, cursor, has_more, items[≤100 条摘要], error_message?`。
-
-抖音 params：`count`（默认 20，上限 500）、`cursor`（上次返回值，从该偏移继续取）。
-
-### 任务与数据
+## 抓取
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/v1/tasks?limit=&account_id=` | 任务列表，按开始时间倒序（limit 1–500，默认 50） |
-| GET | `/api/v1/tasks/{task_id}` | 任务详情，404 不存在 |
-| GET | `/api/v1/favorites?account_id=&platform=&limit=&offset=` | 收藏查询：favorites JOIN contents，含拼好的 `url`，返回 `{total, items, limit, offset}` |
+| POST | `/fetch` | body `{platform, account_id, action, params?, async_run?}`；默认同步 200，`async_run=true` 202+task_id。响应 `result_count / new_favorites / cursor / has_more / items(≤100)` |
+| POST | `/fetch/stream` | SSE：事件 `task / items / done / error` |
 
-## Web 页面（Jinja2，不进 OpenAPI schema）
+params 通用：`count`、`cursor`（增量翻页）、`date_from/date_to`（收藏时间窗口）、`method`（browser/api）。平台专属：bilibili 指定收藏夹/他人 mid、wechat `json_path`。
 
-| 路径 | 页面 |
+## 查询
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/stats` | 仪表盘统计（账号/收藏/任务/磁盘体积，体积缓存 300s） |
+| GET / DELETE | `/tasks`、`/tasks/{id}` | 任务列表 / 详情 / 清空 |
+| GET | `/favorites` | 多维过滤：account/platform/tag/folder/author/日期区间/发布日期区间/tags(OR)/q/limit≤5000/offset |
+| GET | `/favorites/facets` | 过滤面板候选（账号/收藏夹/作者） |
+| POST / DELETE | `/favorites/batch-delete`、`/favorites?account_id=` | 批量删关系（contents 保留）/ 按账号清空 |
+| GET | `/tags` | 标签聚合 + 分组（「其他」兜底） |
+
+## 定时 / 下载 / 设置 / 标签 / AI
+
+| 分组 | 接口 |
 |------|------|
-| `/` | 账号列表（创建账号、发起登录、轮询状态） |
-| `/accounts/{account_id}` | 账号详情（登录、填 count 触发抓取） |
-| `/tasks` | 任务历史 |
-| `/favorites` | 收藏数据浏览 |
+| `/schedules` | GET / POST / PATCH `/{id}` / DELETE `/{id}` / POST `/{id}/trigger`(202，防重入) |
+| `/downloads` | GET / POST(幂等) / `/{id}/retry` / `/{id}/pause` / `/{id}/reveal`(打开文件管理器) / DELETE `/{id}` |
+| `/settings` | GET / PUT（download_dir 校验）；`/avatar` GET/POST(≤5MB) |
+| 标签 | DELETE `/tags/{tag}?delete_favorites=`、GET `/tags/{tag}/usage`、POST `/tag-groups`、PUT `/tag-groups/{name}`、PUT `/contents/{id}/tags`（≤10 个） |
+| `/ai/agents` | CRUD + POST `/{id}/test`（连通性，返回 ok/latency_ms/reply） |
+| `/ai/tag/stream` | POST SSE 批量打标：事件 `task / batch / done / error` |
 
-页面数据全部由前端 JS 调上述 JSON API 获取，服务端只渲染模板骨架。
+## Web 界面
+
+`GET /` 托管 `web/dist`（React SPA，HashRouter）。未构建时返回提示页。页面与路由详见 [web/CLAUDE.md](../web/CLAUDE.md)。
 
 ## 内部扩展接口（代码级）
 
-- `BasePlatformAdapter`：新增平台的抽象契约（login / check_login_status / fetch_favorites）。
-- `registry.register(adapter)`：注册新平台，`/platforms`、账号创建下拉框、action 校验自动生效。
+- `BasePlatformAdapter`：login / check_login_status / fetch_favorites 必须实现；fetch_favorites_api / execute_api_operation / refresh_profile 可选。
+- `registry.register(adapter)`：注册后 /platforms、账号创建、action 校验、操作表单自动生效。
+- `DeclarativeAdapter(spec, base_dir)`：JSON 声明式平台，spec 字段见 `app/platforms/declarative.py`。

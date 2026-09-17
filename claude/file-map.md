@@ -2,47 +2,44 @@
 
 ```
 FavAPI/
-├── main.py                    # 一键启动入口（uvicorn）
-├── requirements.txt           # fastapi/uvicorn/aiosqlite/playwright/jinja2/httpx
-├── procm-commands.json        # procm 持久化进程命令定义
-├── AGENTS.md                  # 工作区 Agent 行为规范
-├── PRD.md                     # 产品需求（表结构/API/里程碑的事实来源）
-├── README.md                  # 面向使用者的说明
-├── task_plan.md / progress.md / findings.md   # 2026-09-10 构建期规划产物（历史记录，勿当产品文档）
-├── data/                      # 运行时生成（git 忽略）：favapi.db + profiles/
-├── tests/
-│   ├── test_parser.py         # 抖音 parser 单测（4 用例）
-│   └── smoke_test.py          # API + 数据层冒烟（29 检查项）
+├── main.py                     # uvicorn 一键启动（UTF-8 重配置）
+├── requirements.txt            # 10 项依赖，未锁版本
+├── procm-commands.json         # procm 命令（Win/mac 双套 + web）
+├── AGENTS.md / CLAUDE.md       # 工作区规范 / AI 上下文索引
+├── PRD.md / README.md / pages.md  # 需求 / 使用说明 / 前端页面规划
+├── verify_bili_*.py            # 3 个含真实 cookie 的临时验证脚本
+├── data/                       # 运行时（git 忽略）：favapi.db、profiles/、downloads/、uploads/
+├── platforms/                  # 声明式平台配置（FAVAPI_PLATFORMS_DIR）
+│   ├── kuaishou/platform.json  ├── tiktok/platform.json
+│   ├── youtube/platform.json + favicon.ico
+│   └── threads/favicon.ico     # threads 无 platform.json（纯 Python 适配器）
+├── samples/                    # bilibili/douyin/kuaishou/wechat 收藏响应样本
+├── scripts/                    # threads_saved_sample.json
+├── docs/api-fetch-integration-guide.md  # API 直连接入指南
+├── web/                        # React SPA（独立索引 web/CLAUDE.md）
+├── tests/                      # 7 个测试脚本（见 testing-and-quality.md）
 └── app/
-    ├── config.py              # 路径/服务/浏览器常量（环境变量可覆盖）
-    ├── database.py            # SCHEMA + Database 单例 db
-    ├── models.py              # Pydantic 请求/响应模型
-    ├── server.py              # create_app + lifespan + app 实例
-    ├── utils.py               # now_iso / new_id
-    ├── api/
-    │   ├── accounts.py        # 账号 CRUD + login(202) + status + /platforms
-    │   ├── fetch.py           # POST /api/v1/fetch
-    │   └── queries.py         # /tasks /favorites
-    ├── services/
-    │   ├── browser.py         # Playwright 会话：profile Lock + 全局 Semaphore
-    │   ├── account_manager.py # 账号 CRUD + 登录防重入
-    │   ├── data_store.py      # contents/favorites/tasks 持久化
-    │   └── task_executor.py   # 抓取任务生命周期 + 校验
+    ├── config.py               # 环境变量 + 常量
+    ├── database.py             # 8 表 SCHEMA + Database 单例 + 迁移
+    ├── models.py               # Pydantic 模型
+    ├── server.py               # create_app + lifespan（db/scheduler/download_worker）
+    ├── taxonomy.py             # 内置标签分组体系
+    ├── utils.py                # now_iso / new_id / 日期窗口
+    ├── api/                    # 9 路由：accounts agents ai_tag downloads fetch queries schedules settings tags
+    ├── services/               # 13 服务（见 module-responsibilities.md）
     ├── platforms/
-    │   ├── base.py            # BasePlatformAdapter / FetchResult / LoginExpiredError
-    │   ├── registry.py        # 注册表（底部 import 即注册）
-    │   ├── douyin/
-    │   │   ├── adapter.py     # 登录/检查/拦截抓取（核心，最复杂）
-    │   │   ├── parser.py      # 接口 JSON → 通用 content 行
-    │   │   └── constants.py   # URL/cookie/滚动参数
-    │   └── bilibili/
-    │       ├── adapter.py     # 占位（NotImplementedError）
-    │       └── constants.py
-    └── web/
-        ├── router.py          # 4 个页面路由
-        └── templates/         # base + index/account_detail/tasks/favorites.html（原生 JS 调 JSON API）
+    │   ├── base.py             # 适配器抽象 + ApiOperation 声明
+    │   ├── registry.py         # 注册表 + load_declarative
+    │   ├── declarative.py      # JSON 声明式适配器（capture/fields/scripts/proxy）
+    │   ├── douyin/             # adapter + api_client + parser + constants（API 直连 curl_cffi）
+    │   ├── bilibili/           # adapter + parser + constants（浏览器上下文直连）
+    │   ├── xiaohongshu/        # adapter + api_client(xhshow) + parser + constants
+    │   ├── kuaishou/           # adapter + api_client + sig_vm.js + sig4.cjs（Node 签名）
+    │   ├── tiktok/             # adapter + api_client + constants
+    │   ├── threads/            # adapter + api_client（GraphQL）
+    │   ├── youtube/            # adapter（纯 DOM 解析）
+    │   └── wechat/             # adapter + parser（JSON 导入）
+    └── web/router.py           # SPA 静态托管 web/dist（或"请先构建"提示页）
 ```
 
-所有 `__init__.py` 均为空文件。`.codegraph/` 为本地索引（git 忽略）。
-
-修改热点提示：抖音抓取行为调参看 `douyin/constants.py`；并发/超时看 `config.py`；接口行为看 `api/` + `task_executor.py`。
+修改热点：抓取行为调参看各平台 `constants.py` 与根 `platforms/*/platform.json`；并发/超时看 `config.py`；查询过滤看 `data_store.py`；下载行为看 `download_worker.py`；前端页面看 `web/src/components/`。

@@ -268,7 +268,7 @@ export async function executeOperation(
 }
 
 export interface OperationStreamEvent {
-  type: 'stage' | 'matched' | 'progress' | 'done' | 'error';
+  type: 'stage' | 'matched' | 'progress' | 'done' | 'error' | 'canceled';
   stage?: string;
   page?: number;
   total_fetched?: number;
@@ -287,17 +287,19 @@ export interface OperationStreamEvent {
   message?: string;
 }
 
-/** SSE 流式执行平台 API 操作：阶段进度逐条回调，结束返回 done 事件；失败抛错。 */
+/** SSE 流式执行平台 API 操作：阶段进度逐条回调，结束返回 done 事件；失败抛错。传入 signal 可中途取消（后端随连接断开中止执行）。 */
 export async function executeOperationStream(
   accountId: string,
   opId: string,
   params: Record<string, any>,
-  onEvent: (ev: OperationStreamEvent) => void
+  onEvent: (ev: OperationStreamEvent) => void,
+  signal?: AbortSignal
 ): Promise<OperationStreamEvent> {
   const res = await fetch(`${BASE}/accounts/${accountId}/operations/${opId}/stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ params }),
+    signal,
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
