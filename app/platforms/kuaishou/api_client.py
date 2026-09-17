@@ -35,6 +35,10 @@ _HEADERS = {
 }
 
 
+class SignError(RuntimeError):
+    """签名环境问题（缺 Node / 签名脚本失败），调用方须原样上抛，不得当业务失败吞掉。"""
+
+
 def sign(url_path: str, body: dict | None = None) -> str:
     """调用 sig4.cjs（Node）生成 __NS_hxfalcon 签名（同步阻塞）。"""
     payload = json.dumps({"url": url_path, "body": body or {}})
@@ -45,9 +49,12 @@ def sign(url_path: str, body: dict | None = None) -> str:
             cwd=str(_PLATFORM_DIR),
         )
     except FileNotFoundError as exc:
-        raise RuntimeError("生成快手签名需要 Node.js（未找到 node 命令），请安装 Node >= 16") from exc
+        raise SignError(
+            "生成快手签名需要 Node.js，但未找到 node 命令。"
+            "请安装 Node.js >= 16（https://nodejs.org，或 brew install node / winget install OpenJS.NodeJS）后重试"
+        ) from exc
     if out.returncode != 0:
-        raise RuntimeError(f"快手签名生成失败：{out.stderr.strip()[:200]}")
+        raise SignError(f"快手签名生成失败：{out.stderr.strip()[:200]}")
     return out.stdout.strip()
 
 
@@ -248,6 +255,8 @@ def resolve_user_eid(cookie_header: str) -> str:
         profile = fetch_profile(cookie_header)
         if profile.get("eid"):
             return profile["eid"]
+    except SignError:
+        raise  # 缺 Node 等环境问题：后续签名必然失败，直接暴露真实原因
     except (RuntimeError, ValueError):
         logger.warning("profile/get 获取 eid 失败，回退 cookie eid", exc_info=True)
     for kv in cookie_header.split("; "):

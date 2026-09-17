@@ -29,7 +29,9 @@ hiddenimports = [
     "uvicorn.protocols.websockets.wsproto_impl",
     "uvicorn.lifespan.on",
 ] + collect_submodules("xhshow")
-# playwright / yt-dlp / curl_cffi 由包自带的 __pyinstaller__ hook 处理
+# playwright / yt-dlp / curl_cffi / webview 由包自带或 hooks-contrib 的 hook 处理；
+# webview 平台后端（cocoa 等）运行期动态导入，全量收集兜底
+hiddenimports += collect_submodules("webview")
 
 a = Analysis(
     ["main.py"],

@@ -5,8 +5,17 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-PY=".venv/bin/python"
-[ -x "$PY" ] || PY=".venv/Scripts/python.exe"  # Windows 兼容
+# 解释器优先级：FAVAPI_PYTHON 显式指定 > 项目 venv（mac/linux / windows）> 系统 python
+if [ -n "${FAVAPI_PYTHON:-}" ]; then
+  PY="$FAVAPI_PYTHON"
+elif [ -x ".venv/bin/python" ]; then
+  PY=".venv/bin/python"
+elif [ -x ".venv/Scripts/python.exe" ]; then
+  PY=".venv/Scripts/python.exe"
+else
+  PY="python3"
+  command -v "$PY" >/dev/null 2>&1 || PY="python"
+fi
 
 if [ ! -f "web/dist/index.html" ]; then
   echo "错误：web/dist 不存在，先执行 cd web && npm install && npm run build" >&2
@@ -36,6 +45,12 @@ CHROMIUM_REV=$(echo "$BROWSERS_JSON" | cut -d' ' -f1)
 FFMPEG_REV=$(echo "$BROWSERS_JSON" | cut -d' ' -f2)
 CACHE="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/Library/Caches/ms-playwright}"
 [ -d "$CACHE" ] || CACHE="$HOME/.cache/ms-playwright"
+# Windows（Git Bash）：LOCALAPPDATA 为 Windows 风格路径，需转换为 POSIX
+if [ ! -d "$CACHE" ] && [ -n "${LOCALAPPDATA:-}" ]; then
+  _win_cache="$LOCALAPPDATA/ms-playwright"
+  command -v cygpath >/dev/null 2>&1 && _win_cache=$(cygpath -u "$_win_cache")
+  [ -d "$_win_cache" ] && CACHE="$_win_cache"
+fi
 
 rm -rf "$OUT/pw-browsers"
 mkdir -p "$OUT/pw-browsers"

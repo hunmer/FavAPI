@@ -1,0 +1,97 @@
+name: Release Portable Builds
+
+# 打 v* tag（如 v1.0.0）自动构建 Windows / macOS 便携包并上传到 GitHub Release；
+# 也支持 workflow_dispatch 手动触发（仅构建 artifact，不上传 Release）
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # 上传 Release 资产需要
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest        # macOS 14+ = arm64
+            platform: macos-arm64
+          - os: windows-latest
+            platform: windows-x64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install Python deps
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Build web console (vite → web/dist)
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/ms-playwright
+            ~/.cache/ms-playwright
+            ~\AppData\Local\ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+
+      - name: Install Chromium
+        run: python -m playwright install chromium
+
+      - name: Build portable bundle
+        shell: bash
+        run: bash scripts/build_portable.sh
+
+      - name: Pack artifact (versioned)
+        shell: bash
+        run: |
+          VER="${GITHUB_REF_NAME#v}"
+          NAME="FavAPI-${VER}-${{ matrix.platform }}"
+          cd dist
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            # tar 保留可执行权限与符号链接（chromium .app 内部需要），zip 会丢失
+            tar -czf "../$NAME.tar.gz" FavAPI
+          else
+            powershell Compress-Archive -Path FavAPI -DestinationPath "../$NAME.zip"
+          fi
+          cd ..
+          ls -lh FavAPI-* || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FavAPI-${{ matrix.platform }}
+          path: |
+            dist/FavAPI-*.tar.gz
+            dist/FavAPI-*.zip
+          if-no-files-found: error
+
+      - name: Upload to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/FavAPI-*.tar.gz
+            dist/FavAPI-*.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
