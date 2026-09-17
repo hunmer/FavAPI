@@ -207,6 +207,11 @@ export const BrowserContent: React.FC<{
                     <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium">
                       {item.folderName}
                     </span>
+                    {item.sourceName && item.sourceName !== '收藏列表' && (
+                      <span className="ml-1.5 px-2 py-0.5 rounded bg-indigo-600 text-white text-[11px] font-semibold">
+                        {item.sourceName}
+                      </span>
+                    )}
                   </td>
                   <td className="py-2.5 px-4 text-slate-500 dark:text-slate-400 whitespace-nowrap">
                     {item.favTime}

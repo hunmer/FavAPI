@@ -107,6 +107,11 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose,
               <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
                 {item.folderName}
               </span>
+              {item.sourceName && item.sourceName !== '收藏列表' && (
+                <span className="ml-1.5 px-2 py-0.5 rounded text-[11px] font-bold bg-indigo-600 text-white">
+                  {item.sourceName}
+                </span>
+              )}
               <h3 className="text-base font-bold text-slate-900 dark:text-white mt-2">
                 {item.title}
               </h3>

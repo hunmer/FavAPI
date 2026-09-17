@@ -23,7 +23,7 @@ interface ScheduleViewProps {
   onTriggerNow: (schedule: ScheduledSync) => void;
   onToggleSchedule: (scheduleId: string) => void;
   onCreateSchedule: (body: {
-    action: 'list_favorites' | 'ai_tag';
+    action: string; // list_favorites / list_likes / list_watchlater 等抓取目标 action / ai_tag
     account_id: string;
     cron_expr: string;
     title: string;
@@ -59,8 +59,8 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ScheduledSync | null>(null);
 
-  // 创建表单状态
-  const [formAction, setFormAction] = useState<'list_favorites' | 'ai_tag'>('list_favorites');
+  // 创建表单状态（formKind 仅两档：抓取 / AI 打标；formAction 为具体抓取目标 action）
+  const [formAction, setFormAction] = useState<string>('list_favorites');
   const [formAccountId, setFormAccountId] = useState('');
   const [formTitle, setFormTitle] = useState('');
   const [formCron, setFormCron] = useState('0 18 * * *');
@@ -77,6 +77,15 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
   const [creating, setCreating] = useState(false);
 
   const supportedPlatforms = PLATFORMS.filter((p) => p.isSupported);
+  // 当前选中账号的可抓取目标（收藏/喜欢/稍后再看…），后端 /platforms 元数据驱动
+  const formAccount = accounts.find((a) => a.id === formAccountId);
+  const accountTargets =
+    PLATFORMS.find((p) => p.id === formAccount?.platform)?.fetchTargets
+    || [{ action: 'list_favorites', name: '抓取收藏列表', description: '', source: '', params: [] }];
+  // 目标 action 不在当前账号平台支持范围内时回落收藏列表（切换账号后自动校正）
+  const effectiveAction = formAction === 'ai_tag' || accountTargets.some((t) => t.action === formAction)
+    ? formAction
+    : 'list_favorites';
 
   const openCreate = () => {
     setFormAction('list_favorites');
@@ -124,11 +133,11 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
       setFormError('请输入计划名称');
       return;
     }
-    if (formAction === 'list_favorites' && !formAccountId) {
+    if (effectiveAction !== 'ai_tag' && !formAccountId) {
       setFormError('请选择绑定账号');
       return;
     }
-    if (formAction === 'ai_tag' && !formAgentId) {
+    if (effectiveAction === 'ai_tag' && !formAgentId) {
       setFormError('请选择 AI Agent 配置（可新建）');
       return;
     }
@@ -136,12 +145,12 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
     setFormError('');
     try {
       await onCreateSchedule({
-        action: formAction,
-        account_id: formAction === 'list_favorites' ? formAccountId : '',
+        action: effectiveAction,
+        account_id: effectiveAction === 'ai_tag' ? '' : formAccountId,
         cron_expr: formCron.trim(),
         title: formTitle.trim(),
         count: formCount,
-        platform: formAction === 'ai_tag' ? formTagPlatform : '',
+        platform: effectiveAction === 'ai_tag' ? formTagPlatform : '',
         agentId: formAgentId,
         limit: formTagLimit,
       });
@@ -197,6 +206,10 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
             const isAiTag = item.action === 'ai_tag';
             const platform = PLATFORMS.find((p) => p.id === item.platform) || PLATFORMS[0];
             const isActive = item.status === 'active';
+            // 非默认抓取目标（喜欢/稍后再看等）显示目标名 badge
+            const targetName = !isAiTag && item.action && item.action !== 'list_favorites'
+              ? platform.fetchTargets?.find((t) => t.action === item.action)?.name
+              : undefined;
 
             return (
               <div
@@ -232,6 +245,11 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                           className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${platform.badgeBg}`}
                         >
                           {platform.name.split(' ')[0]}
+                        </span>
+                      )}
+                      {targetName && (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
+                          {targetName}
                         </span>
                       )}
                       {isActive ? (
@@ -333,15 +351,15 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
               {/* 任务类型切换 */}
               <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl border border-slate-200 dark:border-slate-700 flex gap-1">
                 {([
-                  { id: 'list_favorites', label: '收藏抓取' },
+                  { id: 'fetch', label: '收藏抓取' },
                   { id: 'ai_tag', label: 'AI 智能打标' },
                 ] as const).map((t) => (
                   <button
                     key={t.id}
                     type="button"
-                    onClick={() => setFormAction(t.id)}
+                    onClick={() => setFormAction(t.id === 'ai_tag' ? 'ai_tag' : 'list_favorites')}
                     className={`flex-1 px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      formAction === t.id
+                      (effectiveAction === 'ai_tag') === (t.id === 'ai_tag')
                         ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
                         : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                     }`}
@@ -392,7 +410,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                 </div>
               </div>
 
-              {formAction === 'list_favorites' ? (
+              {effectiveAction !== 'ai_tag' ? (
                 <>
                   <div>
                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wider">
@@ -409,6 +427,27 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                         </option>
                       ))}
                     </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wider">
+                      抓取目标
+                    </label>
+                    <select
+                      value={effectiveAction}
+                      onChange={(e) => setFormAction(e.target.value)}
+                      className={inputCls}
+                    >
+                      {accountTargets.map((t) => (
+                        <option key={t.action} value={t.action}>
+                          {t.name}
+                          {t.source ? `（入库来源：${t.source}）` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      按平台可用目标选择（收藏 / 喜欢 / 稍后再看等），结果按对应来源入库。
+                    </p>
                   </div>
 
                   <div>

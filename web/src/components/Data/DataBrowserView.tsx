@@ -236,7 +236,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
     if (selectedKeys.size === 0 || itemsDeleting) return;
     setItemsDeleting(true);
     try {
-      const refs = Array.from(selectedKeys).map((key) => {
+      const refs = Array.from(selectedKeys).map((key: string) => {
         const [account_id, platform, ...rest] = key.split('|');
         return { account_id, platform, content_id: rest.join('|') };
       });
@@ -434,7 +434,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
     let cancelled = false;
     setListLoading(true);
     const t = window.setTimeout(() => {
-      const nameMap = new Map(accounts.map((a) => [a.id, a.name]));
+      const nameMap = new Map<string, string>(accounts.map((a): [string, string] => [a.id, a.name]));
       api.listFavorites({
         ...filterOpts,
         limit: pageSize,

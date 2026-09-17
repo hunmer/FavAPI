@@ -82,13 +82,14 @@ class CancelCollectWindowTest(unittest.TestCase):
         def fake_fetch(cookie_header, cursor=0, count=20):
             return next(responses)
 
-        def fake_cancel(cookie_header, ids):
-            calls.append(list(ids))
-            return {"status_code": 0}
+        def fake_cancel_single(cookie_header, aweme_id):
+            # 小于整批（CANCEL_COLLECT_BATCH）时逐条取消，防止抖音小批请求不生效
+            calls.append([aweme_id])
+            return {"status_code": 0, "collects_flag": False}
 
         with (
             patch.object(api_client, "fetch_listcollection_page", fake_fetch),
-            patch.object(api_client, "cancel_collect_page", fake_cancel),
+            patch.object(api_client, "cancel_collect_single", fake_cancel_single),
             patch.object(api_client.constants, "API_PAGE_INTERVAL_SEC", 0),
         ):
             result = asyncio.run(api_client.cancel_collect_by_window(
@@ -116,7 +117,10 @@ class CancelCollectWindowTest(unittest.TestCase):
         canceled = []
         with (
             patch.object(api_client, "fetch_listcollection_page", fake_fetch),
-            patch.object(api_client, "cancel_collect_page", lambda _cookie, ids: canceled.extend(ids)),
+            patch.object(
+                api_client, "cancel_collect_single",
+                lambda _cookie, aweme_id: canceled.append(aweme_id) or {"status_code": 0, "collects_flag": False},
+            ),
             patch.object(api_client.constants, "API_PAGE_INTERVAL_SEC", 0),
         ):
             result = asyncio.run(api_client.cancel_collect_by_window(

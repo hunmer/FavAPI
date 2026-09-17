@@ -535,7 +535,7 @@ export function App() {
   };
 
   const handleCreateSchedule = async (body: {
-    action: 'list_favorites' | 'ai_tag';
+    action: string; // list_favorites / list_likes 等抓取目标 action / ai_tag
     account_id: string;
     cron_expr: string;
     title: string;
@@ -557,6 +557,7 @@ export function App() {
         account_id: body.account_id,
         cron_expr: body.cron_expr,
         title: body.title,
+        action: body.action,
         params: body.count > 0 ? { count: body.count } : {},
       });
     }
