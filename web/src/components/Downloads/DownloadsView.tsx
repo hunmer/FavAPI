@@ -14,6 +14,7 @@ import {
   HardDriveDownload,
   PauseCircle,
   PlayCircle,
+  FolderOpen,
 } from 'lucide-react';
 
 const STATUS_META: Record<DownloadRow['status'], { label: string; cls: string }> = {
@@ -73,6 +74,15 @@ export const DownloadsView: React.FC = () => {
     try {
       await api.deleteDownload(row.download_id);
       reload();
+    } catch (e: any) {
+      setError(e.message);
+    }
+  };
+
+  /** 打开输出位置：系统文件管理器定位（成功任务有 output_path 时可用） */
+  const handleReveal = async (row: DownloadRow) => {
+    try {
+      await api.revealDownload(row.download_id);
     } catch (e: any) {
       setError(e.message);
     }
@@ -229,6 +239,16 @@ export const DownloadsView: React.FC = () => {
                             title="重新入队"
                           >
                             {r.status === 'paused' ? <PlayCircle className="w-3.5 h-3.5" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                          </button>
+                        )}
+                        {r.output_path && (
+                          <button
+                            type="button"
+                            onClick={() => handleReveal(r)}
+                            className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors cursor-pointer"
+                            title={`打开输出位置：${r.output_path}`}
+                          >
+                            <FolderOpen className="w-3.5 h-3.5" />
                           </button>
                         )}
                         <a

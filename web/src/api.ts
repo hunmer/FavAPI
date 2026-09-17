@@ -860,6 +860,11 @@ export async function pauseDownload(id: string) {
   return request(`/downloads/${id}/pause`, { method: 'POST' });
 }
 
+/** 在系统文件管理器中打开该任务的输出位置 */
+export async function revealDownload(id: string) {
+  return request(`/downloads/${id}/reveal`, { method: 'POST' });
+}
+
 export async function deleteDownload(id: string) {
   return request(`/downloads/${id}`, { method: 'DELETE' });
 }

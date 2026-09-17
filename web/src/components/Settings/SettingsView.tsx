@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Settings,
   Sliders,
@@ -69,6 +69,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   // loaded 之前的 state 变化来自初始加载，不触发自动保存
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  // 加载完成时的基线快照：当前值与基线一致视为无修改，跳过自动保存
+  const baselineRef = useRef({
+    profile_path: '~/.favapi/profiles',
+    headless: false,
+    request_interval: 2.0,
+    request_timeout: 30,
+    download_dir: '',
+    download_concurrency: 1,
+  });
 
   useEffect(() => {
     fetchAppSettings()
@@ -79,6 +88,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         setRequestTimeout(s.request_timeout);
         setDownloadDir(s.download_dir ?? '');
         setDownloadConcurrency(s.download_concurrency ?? 1);
+        baselineRef.current = {
+          profile_path: s.profile_path,
+          headless: s.headless,
+          request_interval: s.request_interval,
+          request_timeout: s.request_timeout,
+          download_dir: (s.download_dir ?? '').trim(),
+          download_concurrency: s.download_concurrency ?? 1,
+        };
       })
       .catch(() => {})
       .finally(() => setSettingsLoaded(true));
@@ -87,6 +104,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // 修改实时生效：任一设置变化后防抖持久化
   useEffect(() => {
     if (!settingsLoaded) return;
+    const base = baselineRef.current;
+    if (
+      profilePath === base.profile_path &&
+      headlessMode === base.headless &&
+      requestInterval === base.request_interval &&
+      requestTimeout === base.request_timeout &&
+      downloadDir.trim() === base.download_dir &&
+      downloadConcurrency === base.download_concurrency
+    ) {
+      return; // 值与加载时一致（未做任何修改），不保存
+    }
     const timer = window.setTimeout(() => {
       updateAppSettings({
         profile_path: profilePath,

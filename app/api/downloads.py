@@ -1,4 +1,8 @@
 """下载队列 API：列表 / 入队 / 重试 / 删除（取消）。"""
+import subprocess
+import sys
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException
 
 from app.models import DownloadCreate, DownloadOut
@@ -46,6 +50,31 @@ async def pause_download(download_id: str):
     if row and row["status"] != "paused":
         raise HTTPException(status_code=400, detail=f"当前状态（{row['status']}）不支持暂停")
     return {"download_id": download_id, "status": "paused"}
+
+
+@router.post("/{download_id}/reveal", status_code=200)
+async def reveal_download(download_id: str):
+    """在系统文件管理器中打开输出位置（Windows 资源管理器 / Finder / xdg-open）。
+
+    output_path 为下载输出目录；目录被移动/删除时返回 404。
+    """
+    row = await _get_or_404(download_id)
+    raw = str(row.get("output_path") or "").strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail="该任务还没有输出位置（未开始或未完成）")
+    target = Path(raw)
+    if not target.exists():
+        raise HTTPException(status_code=404, detail=f"输出位置不存在（可能已被移动或删除）：{raw}")
+    folder = target if target.is_dir() else target.parent
+    if sys.platform == "win32":
+        # 文件用 /select 定位选中，目录直接打开
+        args = ["explorer", "/select,", str(target)] if target.is_file() else ["explorer", str(folder)]
+    elif sys.platform == "darwin":
+        args = ["open", "-R", str(target)] if target.is_file() else ["open", str(folder)]
+    else:
+        args = ["xdg-open", str(folder)]
+    subprocess.Popen(args)
+    return {"revealed": True, "path": str(folder)}
 
 
 @router.delete("/{download_id}")
