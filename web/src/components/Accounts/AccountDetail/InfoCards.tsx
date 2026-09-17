@@ -33,11 +33,7 @@ export const AccountInfoCards: React.FC<AccountInfoCardsProps> = ({ account, loc
               </span>
             )}
           </div>
-          <span className="text-[11px] text-slate-400">ID: {account.id}</span>
         </div>
-        <p className="text-[11px] text-slate-400 mt-2">
-          最后登录：{account.lastLoginTime}
-        </p>
       </div>
 
       {/* Identity & Owner card */}
@@ -79,9 +75,6 @@ export const AccountInfoCards: React.FC<AccountInfoCardsProps> = ({ account, loc
                 : 0}
           </span>
         </div>
-        <p className="text-[11px] text-slate-400 mt-2">
-          最近抓取使用：{account.lastUsedTime}
-        </p>
       </div>
     </div>
   </div>

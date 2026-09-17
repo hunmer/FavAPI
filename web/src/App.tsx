@@ -647,11 +647,8 @@ export function App() {
         <div className="flex-1 flex flex-col min-w-0 bg-[#F8FAFC] dark:bg-[#0D1117]">
           <Header
             activeTab={activeTab}
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
             onOpenCreateAccount={() => setIsCreateModalOpen(true)}
             runningFetch={runningFetch}
-            onTabChange={setActiveTab}
           />
 
           <main className="flex-1 overflow-y-auto">

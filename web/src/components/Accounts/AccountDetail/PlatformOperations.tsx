@@ -181,7 +181,6 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
             <Zap className="w-4 h-4 text-amber-500" />
             平台 API 操作
           </h4>
-          <span className="text-[11px] text-slate-400">点击卡片填写参数后执行</span>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           {operations.map((op) => (

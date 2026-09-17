@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Bell, Plus, X, Loader2 } from 'lucide-react';
+import { Bell, Plus, Loader2 } from 'lucide-react';
 import { NavTab } from '../types';
 
 export interface RunningFetchInfo {
@@ -10,20 +10,14 @@ export interface RunningFetchInfo {
 
 interface HeaderProps {
   activeTab: NavTab;
-  searchQuery: string;
-  onSearchChange: (query: string) => void;
   onOpenCreateAccount: () => void;
   runningFetch?: RunningFetchInfo | null;
-  onTabChange: (tab: NavTab) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   activeTab,
-  searchQuery,
-  onSearchChange,
   onOpenCreateAccount,
   runningFetch,
-  onTabChange,
 }) => {
   const [showNotifications, setShowNotifications] = useState(false);
 
@@ -55,7 +49,7 @@ export const Header: React.FC<HeaderProps> = ({
   ];
 
   return (
-    <header className="h-20 px-6 lg:px-8 border-b border-slate-100 dark:border-slate-800/80 bg-white/85 dark:bg-[#12151E]/85 backdrop-blur-md grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[16rem_minmax(0,1fr)_24rem] items-center gap-4 shrink-0 z-20 transition-colors duration-200">
+    <header className="h-20 px-6 lg:px-8 border-b border-slate-100 dark:border-slate-800/80 bg-white/85 dark:bg-[#12151E]/85 backdrop-blur-md grid grid-cols-[minmax(0,1fr)_auto] md:grid-cols-[16rem_minmax(0,1fr)] items-center gap-4 shrink-0 z-20 transition-colors duration-200">
       {/* Left: View Title & Subtitle */}
       <div className="flex flex-col min-w-0">
         <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
@@ -70,37 +64,6 @@ export const Header: React.FC<HeaderProps> = ({
         <p className="text-xs text-slate-500 dark:text-slate-400 truncate hidden sm:block">
           {currentMeta.subtitle}
         </p>
-      </div>
-
-      {/* Center: Global Search Bar */}
-      <div className="w-full max-w-md mx-auto relative hidden md:block">
-        <div className="relative flex items-center">
-          <Search className="w-4 h-4 text-slate-400 dark:text-slate-500 absolute left-3.5 pointer-events-none" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => {
-              onSearchChange(e.target.value);
-              if (activeTab !== 'data' && e.target.value) {
-                onTabChange('data');
-              }
-            }}
-            placeholder="搜索全网收藏标题、作者、标签、账号..."
-            className="w-full pl-10 pr-12 py-2 text-xs bg-slate-100/80 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800 focus:bg-white dark:focus:bg-slate-900 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 rounded-full border border-transparent focus:border-sky-300 dark:focus:border-sky-500 focus:ring-4 focus:ring-sky-100 dark:focus:ring-sky-950/40 transition-all outline-none"
-          />
-          {searchQuery ? (
-            <button
-              onClick={() => onSearchChange('')}
-              className="absolute right-3 p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-full"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          ) : (
-            <span className="absolute right-3 text-[10px] text-slate-400 dark:text-slate-500 font-mono bg-slate-200/70 dark:bg-slate-700/70 px-1.5 py-0.5 rounded">
-              ⌘K
-            </span>
-          )}
-        </div>
       </div>
 
       {/* Right Controls: Auto-refresh, Add Account, Notification, Avatar */}

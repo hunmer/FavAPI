@@ -58,8 +58,8 @@ export const AccountDetailHeader: React.FC<AccountDetailHeaderProps> = ({
               {platform.name}
             </span>
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5">
-            Profile: {account.browserProfilePath}
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            最后登录：{account.lastLoginTime} · 最近抓取：{account.lastUsedTime}
           </p>
         </div>
       </div>
