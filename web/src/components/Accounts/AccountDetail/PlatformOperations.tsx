@@ -64,19 +64,24 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
   const describeOpEvent = (ev: OperationStreamEvent): string => {
     switch (ev.type) {
       case 'stage':
-        return `拉取收藏列表：第 ${ev.page} 页（本页 ${ev.total_fetched} 条）`;
+        return `拉取列表：第 ${ev.page} 页（本页 ${ev.total_fetched} 条）`;
       case 'progress': {
         // 日期区间管道式取消：带日期位置与累计取消数；ID 列表模式：分批进度
         if (ev.matched_this_page !== undefined) {
           const oldest = ev.oldest_collected_at?.slice(0, 10) || '游标未知';
           return `第 ${ev.page} 页 · 已翻至 ${oldest} · 本页命中 ${ev.matched_this_page} 条 · 累计取消 ${ev.canceled} 条`;
         }
-        return `取消进度：第 ${ev.batch_no}/${ev.total_batches} 批完成（累计 ${ev.done} 条）`;
+        return `分批进度：第 ${ev.batch_no}/${ev.total_batches} 批完成（累计 ${ev.done} 条）`;
       }
       case 'done': {
         const r = ev.result || {};
-        const pages = r.pages ? `，翻 ${r.pages} 页` : r.batches ? `，共 ${r.batches} 批` : '';
-        return `完成：匹配 ${r.matched ?? '-'} 条，已取消 ${r.canceled ?? '-'} 条${pages}`;
+        // 取消类操作带 canceled；纯拉取类按 total/matched 汇报
+        if (r.canceled !== undefined) {
+          const pages = r.pages ? `，翻 ${r.pages} 页` : r.batches ? `，共 ${r.batches} 批` : '';
+          return `完成：匹配 ${r.matched ?? '-'} 条，已取消 ${r.canceled ?? '-'} 条${pages}`;
+        }
+        const matched = r.matched !== undefined ? `，命中 ${r.matched} 条` : '';
+        return `完成：获取 ${r.total ?? '-'} 条${matched}${r.has_more ? '（还有更多未拉取）' : ''}`;
       }
       default:
         return '';
@@ -151,7 +156,7 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
           </h4>
           <span className="text-[11px] text-slate-400">点击卡片填写参数后执行</span>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           {operations.map((op) => (
             <button
               key={op.op_id}

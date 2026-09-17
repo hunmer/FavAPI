@@ -68,3 +68,45 @@ def parse_listcollection(data: dict) -> dict:
         "has_more": bool(data.get("has_more")),
         "total": _as_int(data.get("total")) or 0,
     }
+
+
+def _parse_aweme_page(data: dict, cursor_key: str = "max_cursor") -> dict:
+    """aweme_list + 游标型列表响应的通用解析（favorite / history 同构）。"""
+    aweme_list = data.get("aweme_list") or []
+    items = [parse_aweme(a) for a in aweme_list if a.get("aweme_id")]
+    return {
+        "items": items,
+        "cursor": _as_int(data.get(cursor_key)),
+        "has_more": bool(data.get("has_more")),
+        "total": _as_int(data.get("total")) or 0,
+    }
+
+
+def parse_like_list(data: dict) -> dict:
+    """喜欢(点赞)列表 /aweme/v1/web/aweme/favorite/ 响应 → {items, cursor, has_more, total}。"""
+    return _parse_aweme_page(data)
+
+
+def parse_history(data: dict) -> dict:
+    """观看历史 /aweme/v1/web/history/read/ 响应 → {items, cursor, has_more, total}。
+
+    与 favorite 同构（aweme_list + max_cursor 游标）；接口属强校验，需活跃登录态。
+    """
+    return _parse_aweme_page(data)
+
+
+def parse_watchlater(data: dict) -> dict:
+    """稍后再看 /aweme/v1/web/watchlater/list/ 响应 → {items, cursor, has_more, total}。
+
+    顶层条目字段为 items（2026-09 实测：status_code/items/offset/has_more/list_num/
+    invalid_item_ids）；分页用 offset 偏移量而非游标，cursor 输出下一页 offset。
+    """
+    raw_items = data.get("items") or []
+    items = [parse_aweme(it) for it in raw_items if it.get("aweme_id")]
+    offset = _as_int(data.get("offset")) or 0
+    return {
+        "items": items,
+        "cursor": offset + len(raw_items),
+        "has_more": bool(data.get("has_more")),
+        "total": _as_int(data.get("list_num")) or 0,
+    }

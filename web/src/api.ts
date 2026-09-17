@@ -149,6 +149,8 @@ export function toAccount(row: AccountRow, browserOpen: Set<string> = new Set())
         count: f.media_count ?? 0,
         mediaId: String(f.media_id ?? ''),
         isDefault: f.title === '默认收藏夹',
+        intro: f.intro || '',
+        cover: f.cover || '',
       }))
     : undefined;
   return {
@@ -354,6 +356,28 @@ export async function loginStatus(accountId: string): Promise<LoginStatus> {
 
 export async function closeLogin(accountId: string) {
   return request<{ closed: boolean }>(`/accounts/${accountId}/login/close`, { method: 'POST' });
+}
+
+/** 编辑 Bilibili 收藏夹（FolderPicker dots 菜单），返回同步后的收藏夹列表。 */
+export async function editBilibiliFolder(
+  accountId: string,
+  payload: { media_id: string; title: string; intro?: string; privacy?: number }
+): Promise<{ account_id: string; folders: BilibiliFolder[] }> {
+  return request(`/accounts/${accountId}/folders/edit`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+/** 删除 Bilibili 收藏夹（不可恢复），返回同步后的收藏夹列表。 */
+export async function deleteBilibiliFolder(
+  accountId: string,
+  mediaId: string
+): Promise<{ account_id: string; folders: BilibiliFolder[] }> {
+  return request(`/accounts/${accountId}/folders/del`, {
+    method: 'POST',
+    body: JSON.stringify({ media_id: mediaId }),
+  });
 }
 
 export async function toggleBrowse(accountId: string) {

@@ -105,6 +105,79 @@ class DouyinAdapter(BasePlatformAdapter):
                 ),
             ),
         ),
+        ApiOperation(
+            op_id="list_likes",
+            name="获取喜欢(点赞)列表",
+            description="API 直连拉取当前账号喜欢列表（只读，不入库），可选按日期过滤",
+            params=(
+                ApiOperationParam(
+                    key="count", label="数量 (0 为全部)", type="number",
+                    placeholder="默认 20",
+                    help="返回条数上限；日期区间过滤在抓取后应用",
+                ),
+                ApiOperationParam(
+                    key="date_from", label="发布日期从", type="date",
+                    help="可选；无点赞时间时按视频发布时间判定",
+                ),
+                ApiOperationParam(
+                    key="date_to", label="发布日期至", type="date",
+                    help="可选，闭区间（含当天）",
+                ),
+                ApiOperationParam(
+                    key="sec_user_id", label="sec_user_id（可选）", type="text",
+                    help="默认从登录态自动提取；提取失败时手动填写（喜欢页 URL 中可见）",
+                ),
+            ),
+        ),
+        ApiOperation(
+            op_id="list_history",
+            name="获取观看历史",
+            description="API 直连拉取观看历史（只读，不入库）；需活跃登录态，失效时请先重新扫码",
+            params=(
+                ApiOperationParam(
+                    key="count", label="数量 (0 为全部)", type="number",
+                    placeholder="默认 20",
+                    help="返回条数上限",
+                ),
+            ),
+        ),
+        ApiOperation(
+            op_id="list_watchlater",
+            name="获取稍后再看列表",
+            description="API 直连拉取稍后再看列表（只读，不入库）",
+            params=(
+                ApiOperationParam(
+                    key="count", label="数量 (0 为全部)", type="number",
+                    placeholder="默认 20",
+                    help="返回条数上限",
+                ),
+            ),
+        ),
+        ApiOperation(
+            op_id="digg_item",
+            name="点赞视频",
+            description="给指定视频点赞（浏览器页面通道执行，需活跃登录态）",
+            params=(
+                ApiOperationParam(
+                    key="aweme_id", label="视频 ID", type="text", required=True,
+                    placeholder="例如：7685995248116503153",
+                    help="纯数字 aweme_id，可在视频分享链接中获取",
+                ),
+            ),
+        ),
+        ApiOperation(
+            op_id="cancel_digg_multi",
+            name="批量取消点赞",
+            description="按 ID 列表批量取消点赞（操作不可恢复，浏览器页面通道执行）",
+            danger=True,
+            params=(
+                ApiOperationParam(
+                    key="aweme_ids", label="视频 ID 列表", type="textarea", required=True,
+                    placeholder="ID 之间用逗号或换行分隔，例如：\n7686197461799665984\n7686125901436145833",
+                    help="要取消点赞的视频 aweme_id 列表",
+                ),
+            ),
+        ),
     )
 
     async def execute_api_operation(
@@ -114,7 +187,121 @@ class DouyinAdapter(BasePlatformAdapter):
             return await self._op_list_favorites(account, params, on_event)
         if op_id == "cancel_collect_multi":
             return await self._op_cancel_collect(account, params, on_event)
+        if op_id == "list_likes":
+            return await self._op_list_likes(account, params, on_event)
+        if op_id == "list_history":
+            return await self._op_list_summary(
+                account, params, on_event, api_client.fetch_history, "观看历史")
+        if op_id == "list_watchlater":
+            return await self._op_list_summary(
+                account, params, on_event, api_client.fetch_watchlater, "稍后再看")
+        if op_id == "digg_item":
+            return await self._op_digg_item(account, params)
+        if op_id == "cancel_digg_multi":
+            return await self._op_cancel_digg(account, params, on_event)
         raise ValueError(f"未知操作：{op_id}")
+
+    async def _op_list_summary(self, account: AccountContext, params: dict, on_event,
+                               fetcher, label: str) -> dict:
+        """只读列表操作共用实现（观看历史 / 稍后再看）：count 限制 + 摘要输出。"""
+        raw_count = str((params or {}).get("count") or "").strip()
+        count = min(max(int(raw_count), 0), constants.MAX_COUNT) if raw_count.isdigit() else constants.DEFAULT_COUNT
+        logger.info("[%s] API 操作拉取%s：count=%s", account.account_id, label, count or "全部")
+
+        async def _collect_progress(batch: dict):
+            if on_event:
+                await on_event({
+                    "type": "stage", "stage": "collecting",
+                    "page": batch.get("page"), "total_fetched": len(batch.get("items") or []),
+                })
+
+        cookie_header = await api_client.profile_cookie_header(account.profile_path)
+        collected, has_more = await fetcher(cookie_header, count, on_batch=_collect_progress)
+        summaries = [
+            {
+                "content_id": it.get("content_id"),
+                "title": it.get("title"),
+                "author_name": it.get("author_name"),
+                "collected_at": it.get("collected_at"),
+            }
+            for it in collected[:100]
+        ]
+        return {
+            "total": len(collected),
+            "has_more": has_more,
+            "items": summaries,
+            "note": "仅展示前 100 条摘要" if len(collected) > 100 else "",
+        }
+
+    async def _op_list_likes(self, account: AccountContext, params: dict, on_event=None) -> dict:
+        """只读拉取喜欢(点赞)列表（可选日期过滤），返回摘要，不入库。"""
+        raw_count = str((params or {}).get("count") or "").strip()
+        count = min(max(int(raw_count), 0), constants.MAX_COUNT) if raw_count.isdigit() else constants.DEFAULT_COUNT
+        dt_from, dt_to = parse_date_window(params or {})
+        cookie_header = await api_client.profile_cookie_header(account.profile_path)
+        sec_uid = str((params or {}).get("sec_user_id") or "").strip() or api_client.self_sec_uid(cookie_header)
+        if not sec_uid:
+            raise ValueError("无法从登录态提取 sec_user_id，请在参数中手动填写（喜欢页 URL 中可见）")
+        logger.info("[%s] API 操作 list_likes：count=%s 区间=%s~%s",
+                    account.account_id, count or "全部", dt_from, dt_to)
+
+        async def _collect_progress(batch: dict):
+            if on_event:
+                await on_event({
+                    "type": "stage", "stage": "collecting",
+                    "page": batch.get("page"), "total_fetched": len(batch.get("items") or []),
+                })
+
+        collected, has_more = await api_client.fetch_like(
+            cookie_header, sec_uid, count, on_batch=_collect_progress
+        )
+        matched = filter_by_date_window(collected, dt_from, dt_to)
+        summaries = [
+            {
+                "content_id": it.get("content_id"),
+                "title": it.get("title"),
+                "author_name": it.get("author_name"),
+                "collected_at": it.get("collected_at"),
+            }
+            for it in matched[:100]
+        ]
+        return {
+            "total": len(collected),
+            "matched": len(matched),
+            "has_more": has_more,
+            "items": summaries,
+            "note": "仅展示前 100 条摘要" if len(matched) > 100 else "",
+        }
+
+    async def _op_digg_item(self, account: AccountContext, params: dict) -> dict:
+        """给指定视频点赞（浏览器页面 fetch 通道，写接口有 JS 签名强校验）。"""
+        aweme_id = str((params or {}).get("aweme_id") or "").strip()
+        if not aweme_id.isdigit():
+            raise ValueError("请填写要点赞的视频 ID（纯数字 aweme_id）")
+        logger.info("[%s] API 操作 digg_item：%s", account.account_id, aweme_id)
+        data = await api_client.digg_item_via_browser(account.profile_path, aweme_id)
+        logger.info("[%s] 点赞完成：is_digg=%s", account.account_id, data.get("is_digg"))
+        return {"aweme_id": aweme_id, "is_digg": data.get("is_digg")}
+
+    async def _op_cancel_digg(self, account: AccountContext, params: dict, on_event=None) -> dict:
+        """按 ID 列表批量取消点赞（浏览器页面 fetch 通道）。"""
+        raw = str((params or {}).get("aweme_ids") or "")
+        aweme_ids = [t.strip() for t in re.split(r"[\s,，;；]+", raw) if t.strip()]
+        if not aweme_ids:
+            raise ValueError("请填写要取消点赞的视频 ID 列表")
+        if any(not t.isdigit() for t in aweme_ids):
+            raise ValueError("aweme_ids 含非数字 ID，请检查输入")
+
+        async def _batch_progress(info: dict):
+            if on_event:
+                await on_event({"type": "progress", **info})
+
+        logger.info("[%s] 批量取消点赞：%d 条", account.account_id, len(aweme_ids))
+        result = await api_client.cancel_digg_multi_via_browser(
+            account.profile_path, aweme_ids, on_progress=_batch_progress)
+        result["matched"] = len(aweme_ids)
+        logger.info("[%s] 批量取消点赞完成：%s", account.account_id, result)
+        return result
 
     async def _op_list_favorites(self, account: AccountContext, params: dict, on_event=None) -> dict:
         """只读拉取收藏列表（可选日期过滤），返回摘要，不入库。"""

@@ -274,8 +274,11 @@ export function App() {
       const s = await api.loginStatus(account.id);
       if (s.logged_in === null) {
         showToast(`「${account.name}」浏览器正被占用，稍后再试`, 'error');
+      } else if (s.logged_in) {
+        showToast(`「${account.name}」登录态有效（${s.status}）`, 'success');
       } else {
-        showToast(`「${account.name}」登录态${s.logged_in ? '有效' : '已过期'}（${s.status}）`, s.logged_in ? 'success' : 'error');
+        showToast(`「${account.name}」登录态已过期（${s.status}），请重新扫码`, 'error');
+        setLoginModalAccount(account);
       }
       reloadAccounts();
     } catch (e: any) {
@@ -628,7 +631,6 @@ export function App() {
                   <AccountDetail
                     account={selectedAccount}
                     onBack={closeAccountDetail}
-                    onOpenLoginModal={(acc) => setLoginModalAccount(acc)}
                     onOpenCookiesModal={(acc) => setCookiesModalAccount(acc)}
                     onCheckHealth={handleQuickCheckHealth}
                     onToggleStatus={handleToggleStatus}
@@ -637,6 +639,9 @@ export function App() {
                     onFavoritesCleared={(acc) => {
                       reloadAccounts();
                       showToast(`已清空「${acc.name}」的本地收藏`);
+                    }}
+                    onFoldersChanged={() => {
+                      void reloadAccounts();
                     }}
                     recentTasks={tasks.filter((t) => t.accountId === selectedAccount.id)}
                     allScrapedItems={scrapedItems.filter((i) => i.accountId === selectedAccount.id)}

@@ -94,6 +94,8 @@ def parse_folder_list(data: dict) -> dict:
             "media_id": str(f.get("id") or ""),
             "title": f.get("title"),
             "media_count": _as_int(f.get("media_count")),
+            "cover": f.get("cover"),
+            "intro": f.get("intro"),
         }
         for f in (data.get("list") or [])
         if f.get("id")

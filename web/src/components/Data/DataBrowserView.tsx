@@ -1086,9 +1086,6 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
             数据浏览
             {listLoading && <Loader2 className="w-4 h-4 text-violet-500 animate-spin" />}
           </h2>
-          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-            检索并翻阅已存库的收藏内容，已记住您的视图偏好，支持跨账号与分类筛选。
-          </p>
         </div>
 
         {/* View mode toggle: List vs Grid + 一键打标 + 多选 */}

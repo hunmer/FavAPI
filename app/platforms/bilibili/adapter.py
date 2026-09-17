@@ -12,11 +12,15 @@ import time
 from app import config
 from app.platforms.base import (
     AccountContext,
+    ApiOperation,
+    ApiOperationParam,
     BasePlatformAdapter,
     FetchResult,
     LoginExpiredError,
 )
 from app.services import browser
+from app.utils import parse_date_window
+from . import api_client
 from . import constants
 from .parser import extract_mid, parse_folder_list, parse_resource_list
 
@@ -29,6 +33,136 @@ class BilibiliAdapter(BasePlatformAdapter):
     home_url = constants.HOME_URL
     implemented = True
     supported_actions = ("list_favorites",)
+    api_operations = (
+        ApiOperation(
+            op_id="cancel_favorites",
+            name="批量取消收藏",
+            description="完整扫描收藏夹，按【收藏于】时间批量删除（操作不可恢复）",
+            danger=True,
+            params=(
+                ApiOperationParam(
+                    key="media_id", label="收藏夹 ID", type="text",
+                    placeholder="例如：290999545（默认收藏夹）",
+                    help="可选；留空遍历全部收藏夹。收藏夹 URL 中 fid= 的数字",
+                ),
+                ApiOperationParam(
+                    key="date_from", label="按收藏日期：从", type="date",
+                    help="与「至」至少填一个；删除该日期（含）之后收藏的",
+                ),
+                ApiOperationParam(
+                    key="date_to", label="按收藏日期：至", type="date",
+                    help="闭区间（含当天）；例如删 2026 年之前填 2025-12-31",
+                ),
+                ApiOperationParam(
+                    key="max_delete", label="最多删除条数", type="number",
+                    placeholder="默认 0（全部命中）",
+                    help="小批量验证用；如先删 2 条确认效果",
+                ),
+            ),
+        ),
+    )
+
+    async def execute_api_operation(
+        self, op_id: str, account: AccountContext, params: dict, on_event=None
+    ) -> dict:
+        if op_id == "cancel_favorites":
+            return await self._op_cancel_favorites(account, params, on_event)
+        raise ValueError(f"未知操作：{op_id}")
+
+    async def _op_cancel_favorites(self, account: AccountContext, params: dict, on_event=None) -> dict:
+        """批量取消收藏：按【收藏于】日期窗口过滤后 batch-del，必须至少给一个日期边界。"""
+        dt_from, dt_to = parse_date_window(params)
+        if not (dt_from or dt_to):
+            raise ValueError("请至少填写一个日期边界（防止误删全部收藏）：例如删 2026 年之前填 date_to=2025-12-31")
+        media_id = str((params or {}).get("media_id") or "").strip()
+        if media_id and not media_id.isdigit():
+            raise ValueError("media_id 需为收藏夹数字 ID（收藏夹 URL 中 fid= 的数字）")
+        raw_max = str((params or {}).get("max_delete") or "").strip()
+        max_delete = min(max(int(raw_max), 0), 10000) if raw_max.isdigit() else 0
+
+        async def _progress(info: dict):
+            if on_event:
+                await on_event(info)
+
+        logger.info("[%s] API 操作 cancel_favorites：media_id=%s 区间=%s~%s max_delete=%d",
+                    account.account_id, media_id or "全部收藏夹", dt_from, dt_to, max_delete)
+        cookie_header = await api_client.profile_cookie_header(account.profile_path)
+        result = await api_client.cancel_fav_by_window(
+            cookie_header, dt_from, dt_to, media_id=media_id,
+            on_progress=_progress, max_delete=max_delete,
+        )
+        result["canceled"] = result["deleted"]
+        if result["canceled"] == 0:
+            result["note"] = "该日期区间内没有匹配的收藏，未执行删除"
+        logger.info("[%s] 批量取消收藏完成：%s", account.account_id, result)
+        return result
+
+    async def edit_folder(self, account: AccountContext, params: dict) -> list[dict]:
+        """编辑收藏夹（标题/简介/隐私）；cover 回填当前值避免被清空。
+
+        成功后同步 extra.bilibili.folders 并返回新列表（FolderPicker dots 菜单调）。
+        """
+        media_id = str((params or {}).get("media_id") or "").strip()
+        title = str((params or {}).get("title") or "").strip()
+        intro = str((params or {}).get("intro") or "").strip()
+        privacy = int((params or {}).get("privacy") or 0)
+        if not (media_id and media_id.isdigit()):
+            raise ValueError("media_id 需为收藏夹数字 ID")
+        if not title:
+            raise ValueError("收藏夹标题不能为空")
+        if privacy not in (0, 1):
+            raise ValueError("privacy 仅支持 0（公开）/ 1（私密）")
+
+        cookie_header = await api_client.profile_cookie_header(account.profile_path)
+        current = await self._current_folder(cookie_header, media_id)
+        if current is None:
+            raise ValueError(f"收藏夹不存在（可能已删除）：{media_id}")
+        await asyncio.to_thread(
+            api_client.folder_edit, cookie_header, media_id, title,
+            intro or str(current.get("intro") or ""), privacy, str(current.get("cover") or ""),
+        )
+        logger.info("[%s] 编辑收藏夹 %s：%s", account.account_id, media_id, title)
+        return await self._sync_folders_meta(account.account_id, cookie_header)
+
+    async def delete_folder(self, account: AccountContext, media_id: str) -> list[dict]:
+        """删除收藏夹（默认收藏夹不可删）；成功后同步 extra.bilibili.folders 并返回新列表。"""
+        media_id = str(media_id or "").strip()
+        if not (media_id and media_id.isdigit()):
+            raise ValueError("media_id 需为收藏夹数字 ID")
+        cookie_header = await api_client.profile_cookie_header(account.profile_path)
+        current = await self._current_folder(cookie_header, media_id)
+        if current is None:
+            raise ValueError(f"收藏夹不存在（可能已删除）：{media_id}")
+        if str(current.get("title") or "") == "默认收藏夹":
+            raise ValueError("默认收藏夹不可删除")
+        await asyncio.to_thread(api_client.folder_del, cookie_header, [media_id])
+        logger.info("[%s] 删除收藏夹 %s：%s", account.account_id, media_id, current.get("title"))
+        return await self._sync_folders_meta(account.account_id, cookie_header)
+
+    async def _current_folder(self, cookie_header: str, media_id: str) -> dict | None:
+        """从 list-all 找指定收藏夹的当前元数据（不存在返回 None）。"""
+        up_mid = api_client._cookie_value(cookie_header, "DedeUserID")
+        if not up_mid:
+            raise LoginExpiredError("cookie 中无 DedeUserID，无法确定收藏夹归属")
+        folders = await asyncio.to_thread(api_client.fetch_folder_list, cookie_header, up_mid)
+        return next((f for f in folders if f["media_id"] == media_id), None)
+
+    async def _sync_folders_meta(self, account_id: str, cookie_header: str) -> list[dict]:
+        """收藏夹增删改后刷新 extra.bilibili.folders，保持前端列表与服务端一致。"""
+        up_mid = api_client._cookie_value(cookie_header, "DedeUserID")
+        folders = await asyncio.to_thread(api_client.fetch_folder_list, cookie_header, up_mid)
+        from app.services import account_manager
+
+        row = await account_manager.get_account(account_id)
+        if row is not None:
+            extra = row.get("extra") or {}
+            bili = extra.get("bilibili") or {}
+            bili["folders"] = folders
+            extra["bilibili"] = bili
+            await account_manager.update_account(
+                account_id, extra=json.dumps(extra, ensure_ascii=False)
+            )
+        return folders
 
     def validate_params(self, params: dict) -> None:
         raw_url = str(params.get("url") or "").strip()

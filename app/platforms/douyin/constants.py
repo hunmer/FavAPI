@@ -21,6 +21,20 @@ CANCEL_COLLECT_BATCH = 20    # 降低单批参数异常概率；接口允许更�
 CANCEL_COLLECT_INTERVAL_SEC = 0.5
 CANCEL_COLLECT_RETRIES = 3   # status_code=5（限流/风控）时的重试次数
 
+# 点赞（喜欢）相关接口（完整 URL 供直连用；*_PATH 供浏览器页面 fetch 用）
+DIGG_URL = "https://www.douyin.com/aweme/v1/web/commit/item/digg/"
+CANCEL_DIGG_MULTI_URL = "https://www.douyin.com/aweme/v1/web/cancel/item/digg/multi/"
+DIGG_URL_PATH = "/aweme/v1/web/commit/item/digg/"
+CANCEL_DIGG_MULTI_URL_PATH = "/aweme/v1/web/cancel/item/digg/multi/"
+# 喜欢(点赞) tab 列表，注意与收藏(listcollection)区分
+LIKE_LIST_URL = "https://www.douyin.com/aweme/v1/web/aweme/favorite/"
+# 观看历史（强校验接口，需活跃登录态）/ 稍后再看（offset 偏移分页）
+HISTORY_URL = "https://www.douyin.com/aweme/v1/web/history/read/"
+WATCHLATER_URL = "https://www.douyin.com/aweme/v1/web/watchlater/list/"
+CANCEL_DIGG_BATCH = 20          # 批量取消点赞单批条数（与取消收藏同量级考量）
+CANCEL_DIGG_INTERVAL_SEC = 0.5
+CANCEL_DIGG_RETRIES = 3         # status_code=5（限流/风控）时的重试次数
+
 # 当前登录用户资料接口（个人主页加载时页面自身会调用，拦截复用；签名由页面 JS 完成）
 PROFILE_SELF_API = "/aweme/v1/web/user/profile/self"
 

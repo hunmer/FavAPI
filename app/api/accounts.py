@@ -64,6 +64,71 @@ class OperationExecute(BaseModel):
     params: dict = {}
 
 
+class FolderEditBody(BaseModel):
+    media_id: str
+    title: str = ""
+    intro: str = ""
+    privacy: int = 0
+
+
+class FolderDeleteBody(BaseModel):
+    media_id: str
+
+
+async def _validate_folder_op(account_id: str) -> tuple[dict, object]:
+    """收藏夹编辑/删除前置校验：账号存在且为 bilibili，返回 (account, adapter)。"""
+    account = await _get_account_or_404(account_id)
+    if account["platform"] != "bilibili":
+        raise HTTPException(400, "仅 Bilibili 账号支持收藏夹管理")
+    if account["status"] == "disabled":
+        raise HTTPException(400, f"账号 {account_id} 已禁用，请先启用")
+    return account, _require_adapter(account["platform"])
+
+
+@router.post("/{account_id}/folders/edit")
+async def edit_bilibili_folder(account_id: str, body: FolderEditBody):
+    """编辑 Bilibili 收藏夹（标题/简介/隐私），返回同步后的收藏夹列表。"""
+    account, adapter = await _validate_folder_op(account_id)
+    from app.services import browser
+
+    await browser.close_manual(account_id)
+    try:
+        folders = await adapter.edit_folder(
+            account_manager.to_context(account), body.model_dump()
+        )
+    except LoginExpiredError as exc:
+        await account_manager.update_account(account_id, status="expired")
+        raise HTTPException(409, str(exc))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:
+        logger.exception("收藏夹编辑失败：%s/%s", account_id, body.media_id)
+        raise HTTPException(502, friendly_error(exc))
+    return {"account_id": account_id, "folders": folders}
+
+
+@router.post("/{account_id}/folders/del")
+async def delete_bilibili_folder(account_id: str, body: FolderDeleteBody):
+    """删除 Bilibili 收藏夹（不可恢复），返回同步后的收藏夹列表。"""
+    account, adapter = await _validate_folder_op(account_id)
+    from app.services import browser
+
+    await browser.close_manual(account_id)
+    try:
+        folders = await adapter.delete_folder(
+            account_manager.to_context(account), body.media_id
+        )
+    except LoginExpiredError as exc:
+        await account_manager.update_account(account_id, status="expired")
+        raise HTTPException(409, str(exc))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:
+        logger.exception("收藏夹删除失败：%s/%s", account_id, body.media_id)
+        raise HTTPException(502, friendly_error(exc))
+    return {"account_id": account_id, "folders": folders}
+
+
 async def _validate_operation(account_id: str, op_id: str) -> tuple[dict, object]:
     """操作执行前置校验，返回 (account, adapter)。"""
     account = await _get_account_or_404(account_id)

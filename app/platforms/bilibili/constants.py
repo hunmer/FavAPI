@@ -12,6 +12,17 @@ FAV_FOLDER_LIST_API = "https://api.bilibili.com/x/v3/fav/folder/created/list-all
 FAV_RESOURCE_LIST_API = "https://api.bilibili.com/x/v3/fav/resource/list"
 # nav：当前登录用户信息（uname / face / mid）
 NAV_API = "https://api.bilibili.com/x/web-interface/nav"
+# batch-del：批量删除收藏夹内资源（POST 表单，resources=id:type 逗号拼接，
+# csrf 参数需 cookie 中 bili_jct）
+FAV_BATCH_DEL_API = "https://api.bilibili.com/x/v3/fav/resource/batch-del"
+# folder/edit：编辑收藏夹（POST 表单；cover 必传，缺省会清空封面）
+FAV_FOLDER_EDIT_API = "https://api.bilibili.com/x/v3/fav/folder/edit"
+# folder/del：删除收藏夹（POST multipart 表单；默认收藏夹不可删）
+FAV_FOLDER_DEL_API = "https://api.bilibili.com/x/v3/fav/folder/del"
+
+BATCH_DEL_SIZE = 20            # 批量删除单批条数（与抖音取消收藏同量级考量）
+BATCH_DEL_INTERVAL_SEC = 0.5   # 批次间隔，防风控
+API_PAGE_INTERVAL_SEC = 0.8    # API 直连翻页间隔（防风控，同抖音量级）
 
 # 判定已登录的 cookie（任一存在且非空即视为登录）
 LOGIN_COOKIE_KEYS = ("SESSDATA",)

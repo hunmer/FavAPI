@@ -7,8 +7,8 @@
     },
     "dev": {
       "script": ".venv/Scripts/python.exe",
-      "args": ["-m", "uvicorn", "app.server:app", "--host", "127.0.0.1", "--port", "8300", "--reload"],
-      "desc": "（Windows）开发模式（热重载）启动 FavAPI 服务"
+      "args": ["-m", "uvicorn", "app.server:app", "--host", "127.0.0.1", "--port", "8300", "--reload", "--loop", "asyncio:ProactorEventLoop"],
+      "desc": "（Windows）开发模式（热重载）启动 FavAPI 服务。--loop 必须显式指定 ProactorEventLoop：uvicorn 0.52 在 --reload 下默认 SelectorEventLoop，Windows 上不支持子进程，Playwright 会报 NotImplementedError"
     },
     "test-parser": {
       "script": ".venv/Scripts/python.exe",

@@ -1,8 +1,12 @@
-"""抖音收藏列表 API 直连客户端。
+"""抖音收藏/喜欢列表 API 客户端。
 
 抖音按客户端 TLS/HTTP2 指纹拦截非浏览器请求（node/Go/原生 httpx 均返回空响应），
-这里用 curl-impersonate（curl_cffi impersonate="chrome"）完整模拟 Chrome 指纹直连
-`POST /aweme/v1/web/aweme/listcollection/`，比浏览器滚动 + 响应拦截快一个量级。
+读接口（listcollection / favorite）用 curl-impersonate（curl_cffi impersonate="chrome"）
+完整模拟 Chrome 指纹直连即可。
+
+写接口（digg / cancel digg 等）2026-09 起启用 JS 签名强校验（a_bogus / bd-ticket-guard），
+curl_cffi 直连无论何种 cookie/指纹组合一律被拒；必须在真实浏览器页面上下文发请求，
+由页面 fetch hook 自动加签（*_via_browser 系列函数）。
 
 登录态复用账号的浏览器 profile：起一次无头 Chromium 读出 cookies 后关闭，
 后续翻页全部走纯 HTTP。
@@ -16,7 +20,7 @@ from curl_cffi import requests
 
 from app.services import browser
 from . import constants
-from .parser import parse_listcollection
+from .parser import parse_history, parse_like_list, parse_listcollection, parse_watchlater
 from ..base import LoginExpiredError
 
 logger = logging.getLogger("favapi.douyin.api")
@@ -80,6 +84,23 @@ async def profile_cookie_header(profile_path: str) -> str:
     if not browser.has_login_cookies(cookies, constants.LOGIN_COOKIE_KEYS):
         raise LoginExpiredError("抖音登录态缺失（profile 无 sessionid），请重新扫码登录")
     return header
+
+
+def self_sec_uid(cookie_header: str) -> str | None:
+    """从 cookie 的关注黄点信息提取当前账号 sec_user_id（FOLLOW_*_POINT_INFO 首段）。
+
+    cookie 形如 "MS4wLjAB...ZFw/1789660800000/0/.../0"（URL 编码 + 引号包裹）；
+    favorite 接口需要 sec_user_id 入参，优先从这里自动提取，失败由调用方兜底。
+    """
+    from urllib.parse import unquote
+
+    for kv in cookie_header.split("; "):
+        name, _, value = kv.partition("=")
+        if name in ("FOLLOW_NUMBER_YELLOW_POINT_INFO", "FOLLOW_LIVE_POINT_INFO"):
+            sec_uid = unquote(value).strip('"').split("/")[0]
+            if sec_uid.startswith("MS4"):
+                return sec_uid
+    return None
 
 
 def fetch_listcollection_page(cookie_header: str, cursor: int = 0, count: int = 20) -> dict:
@@ -199,6 +220,326 @@ def cancel_collect_single(cookie_header: str, aweme_id: str) -> dict:
             f"message={data.get('status_msg') or data.get('message') or ''}"
         )
     return data
+
+
+def digg_item(cookie_header: str, aweme_id: str) -> dict:
+    """点赞单个视频（POST /aweme/v1/web/commit/item/digg/，type=0 即点赞）。
+
+    ⚠️ 2026-09 实测：抖音写接口（digg/cancel digg/cancel collect）已启用 JS 签名强校验
+    （a_bogus / bd-ticket-guard），curl_cffi 直连无论何种 cookie/指纹组合一律返回
+    status_code=8"用户未登录"（读接口不受影响）。直连版仅作保留，生产请用
+    digg_item_via_browser / cancel_digg_multi_via_browser。
+    """
+    url = constants.DIGG_URL + "?" + urlencode(_QUERY_PARAMS)
+    params = {"aweme_id": aweme_id, "item_type": 0, "type": 0}
+    logger.info("digg_item 请求：url=%s params=%s", url, params)
+    response = requests.post(
+        url,
+        data=urlencode(params),
+        headers={**_HEADERS, "cookie": cookie_header},
+        impersonate="chrome", timeout=20,
+    )
+    response.raise_for_status()
+    data = response.json()
+    if data.get("status_code") != 0:
+        raise RuntimeError(
+            f"点赞失败：status_code={data.get('status_code')} "
+            f"message={data.get('status_msg') or data.get('message') or ''}"
+        )
+    return data
+
+
+def cancel_digg_page(cookie_header: str, aweme_ids: list[str]) -> dict:
+    """批量取消点赞单批（POST /aweme/v1/web/cancel/item/digg/multi/）。
+
+    ⚠️ 同 digg_item：直连被 JS 签名校验拦截，仅作保留，生产用
+    cancel_digg_multi_via_browser。
+    """
+    type_map = {aid: 0 for aid in aweme_ids}
+    body = urlencode({"aweme_ids": ",".join(aweme_ids)}) + "&" + urlencode(
+        {"item_type_map": json.dumps(type_map, separators=(",", ":"))}
+    )
+    url = constants.CANCEL_DIGG_MULTI_URL + "?" + urlencode(_QUERY_PARAMS)
+    logger.info("cancel_digg_page 请求：url=%s params=%s", url, body)
+    response = requests.post(
+        url, data=body, headers={**_HEADERS, "cookie": cookie_header},
+        impersonate="chrome", timeout=20,
+    )
+    response.raise_for_status()
+    data = response.json()
+    fatal_ids = data.get("fatal_item_ids") or data.get("fatal_ids") or []
+    status_code = data.get("status_code")
+    if status_code != 0 or fatal_ids:
+        raise RuntimeError(
+            f"取消点赞失败：status_code={status_code} fatal_ids={fatal_ids} "
+            f"message={data.get('status_msg') or data.get('message') or ''}"
+        )
+    return data
+
+
+def fetch_like_page(cookie_header: str, sec_user_id: str, max_cursor: int = 0,
+                    count: int = 18) -> dict:
+    """拉取一页喜欢(点赞)列表（GET /aweme/v1/web/aweme/favorite/，同步阻塞）。
+
+    max_cursor 为上一页响应返回的游标（首页传 0）；
+    返回 parse_like_list 的结果 {items, cursor, has_more, total}。
+    """
+    params = {
+        **_QUERY_PARAMS,
+        "sec_user_id": sec_user_id,
+        "max_cursor": max_cursor,
+        "min_cursor": 0,
+        "whale_cut_token": "",
+        "cut_version": 1,
+        "count": count,
+    }
+    url = constants.LIKE_LIST_URL + "?" + urlencode(params)
+    logger.info("fetch_like_page 请求：url=%s", url)
+    response = requests.get(
+        url,
+        headers={**_HEADERS, "cookie": cookie_header},
+        impersonate="chrome", timeout=20,
+    )
+    response.raise_for_status()
+    data = response.json()
+    if data.get("status_code") != 0:
+        raise RuntimeError(f"favorite 返回错误 status_code={data.get('status_code')}")
+    return parse_like_list(data)
+
+
+async def fetch_like(cookie_header: str, sec_user_id: str, count: int, on_batch=None):
+    """按 max_cursor 游标翻页拉取喜欢(点赞)列表，直到取满 count（0=全部）或 has_more=false。
+
+    返回 (全部 items, 最后一批的 has_more)。
+    """
+    cursor = 0
+    collected: list[dict] = []
+    page = 0
+    while True:
+        batch = await asyncio.to_thread(
+            fetch_like_page, cookie_header, sec_user_id, cursor, constants.API_PAGE_COUNT
+        )
+        page += 1
+        collected.extend(batch["items"])
+        logger.info(
+            "like 第 %d 页：%d 条，累计 %d，has_more=%s",
+            page, len(batch["items"]), len(collected), batch["has_more"],
+        )
+        if on_batch and batch["items"]:
+            await on_batch({"page": page, "items": batch["items"]})
+        if not batch["has_more"] or not batch["cursor"]:
+            return collected, False
+        if count and len(collected) >= count:
+            return collected, True
+        cursor = batch["cursor"]
+        await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
+
+
+def fetch_history_page(cookie_header: str, max_cursor: int = 0, count: int = 20) -> dict:
+    """拉取一页观看历史（GET /aweme/v1/web/history/read/，同步阻塞）。
+
+    max_cursor 为上一页响应返回的游标（首页传 0）；
+    强校验接口：登录会话被踢时返回 status_code=8（响应结构与 favorite 同构）。
+    """
+    params = {**_QUERY_PARAMS, "max_cursor": max_cursor, "count": count}
+    url = constants.HISTORY_URL + "?" + urlencode(params)
+    logger.info("fetch_history_page 请求：url=%s", url)
+    response = requests.get(
+        url,
+        headers={**_HEADERS, "cookie": cookie_header,
+                 "referer": "https://www.douyin.com/user/self?from_tab_name=main&showTab=record"},
+        impersonate="chrome", timeout=20,
+    )
+    response.raise_for_status()
+    data = response.json()
+    if data.get("status_code") != 0:
+        raise RuntimeError(
+            f"history 返回错误 status_code={data.get('status_code')} "
+            f"message={data.get('status_msg') or ''}"
+        )
+    return parse_history(data)
+
+
+def fetch_watchlater_page(cookie_header: str, offset: int = 0) -> dict:
+    """拉取一页稍后再看（GET /aweme/v1/web/watchlater/list/，同步阻塞）。
+
+    分页用 offset 偏移量（浏览器不带 count 参数，服务端单页 20 条）。
+    """
+    params = {**_QUERY_PARAMS, "offset": offset, "list_type": 0, "operate_type": 0}
+    url = constants.WATCHLATER_URL + "?" + urlencode(params)
+    logger.info("fetch_watchlater_page 请求：url=%s", url)
+    response = requests.get(
+        url,
+        headers={**_HEADERS, "cookie": cookie_header,
+                 "referer": "https://www.douyin.com/user/self?from_tab_name=main&showTab=watch_later"},
+        impersonate="chrome", timeout=20,
+    )
+    response.raise_for_status()
+    data = response.json()
+    if data.get("status_code") != 0:
+        raise RuntimeError(
+            f"watchlater 返回错误 status_code={data.get('status_code')} "
+            f"message={data.get('status_msg') or ''}"
+        )
+    return parse_watchlater(data)
+
+
+async def fetch_history(cookie_header: str, count: int, on_batch=None):
+    """按 max_cursor 游标翻页拉取观看历史，直到取满 count（0=全部）或 has_more=false。"""
+    cursor = 0
+    collected: list[dict] = []
+    page = 0
+    while True:
+        batch = await asyncio.to_thread(
+            fetch_history_page, cookie_header, cursor, constants.API_PAGE_COUNT
+        )
+        page += 1
+        collected.extend(batch["items"])
+        logger.info(
+            "history 第 %d 页：%d 条，累计 %d，has_more=%s",
+            page, len(batch["items"]), len(collected), batch["has_more"],
+        )
+        if on_batch and batch["items"]:
+            await on_batch({"page": page, "items": batch["items"]})
+        if not batch["has_more"]:
+            return collected, False
+        if count and len(collected) >= count:
+            return collected, True
+        cursor = batch["cursor"]
+        await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
+
+
+async def fetch_watchlater(cookie_header: str, count: int, on_batch=None):
+    """按 offset 偏移翻页拉取稍后再看，直到取满 count（0=全部）或 has_more=false。"""
+    offset = 0
+    collected: list[dict] = []
+    page = 0
+    while True:
+        batch = await asyncio.to_thread(fetch_watchlater_page, cookie_header, offset)
+        page += 1
+        collected.extend(batch["items"])
+        logger.info(
+            "watchlater 第 %d 页：%d 条，累计 %d，has_more=%s",
+            page, len(batch["items"]), len(collected), batch["has_more"],
+        )
+        if on_batch and batch["items"]:
+            await on_batch({"page": page, "items": batch["items"]})
+        if not batch["has_more"]:
+            return collected, False
+        if count and len(collected) >= count:
+            return collected, True
+        offset = batch["cursor"]
+        await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
+
+
+# 浏览器页面 fetch：抖音写接口有 JS 签名强校验（a_bogus / bd-ticket-guard），
+# 页面上下文的 fetch 会被站点 SDK hook 自动加签，是写操作唯一可行通道。
+_PAGE_FETCH_JS = """async (payload) => {
+    const r = await fetch(payload.path, {
+        method: payload.method,
+        headers: {'content-type': 'application/x-www-form-urlencoded;charset=UTF-8'},
+        body: payload.body,
+        credentials: 'include',
+    });
+    return await r.json();
+}"""
+
+
+async def _open_api_page(ctx):
+    """打开喜欢页并等待签名 SDK hook 初始化，返回可发签名请求的 page。
+
+    先调 profile/self 校验页面登录态：会话被其他端登录踢掉时所有写接口都会
+    报"用户未登录"，这里提前转为明确的 LoginExpiredError。
+    """
+    page = await ctx.new_page()
+    await page.goto(
+        "https://www.douyin.com/user/self?showTab=like",
+        wait_until="domcontentloaded", timeout=60000,
+    )
+    await page.wait_for_timeout(6000)
+    data = await page.evaluate(_PAGE_FETCH_JS, {
+        "path": "/aweme/v1/web/user/profile/self/?" + urlencode(_QUERY_PARAMS),
+        "method": "GET", "body": None,
+    })
+    if data.get("status_code") != 0:
+        await page.close()
+        raise LoginExpiredError("抖音登录态失效（页面会话未登录），请重新扫码登录")
+    return page
+
+
+async def _page_fetch(page, path: str, method: str, body: str | None) -> dict:
+    """页面上下文发一条 API 请求，status_code != 0 抛 RuntimeError。"""
+    data = await page.evaluate(_PAGE_FETCH_JS, {"path": path, "method": method, "body": body})
+    status_code = data.get("status_code")
+    if status_code != 0:
+        raise RuntimeError(
+            f"页面请求失败：status_code={status_code} "
+            f"message={data.get('status_msg') or data.get('message') or ''}"
+        )
+    return data
+
+
+async def digg_item_via_browser(profile_path: str, aweme_id: str) -> dict:
+    """点赞单个视频（浏览器页面 fetch，成功响应含 is_digg=1）。"""
+    async with browser.session(profile_path, headless=True) as ctx:
+        page = await _open_api_page(ctx)
+        try:
+            body = urlencode({"aweme_id": aweme_id, "item_type": 0, "type": 0})
+            return await _page_fetch(
+                page, constants.DIGG_URL_PATH + "?" + urlencode(_QUERY_PARAMS), "POST", body)
+        finally:
+            await page.close()
+
+
+async def cancel_digg_multi_via_browser(profile_path: str, aweme_ids: list[str],
+                                        on_progress=None) -> dict:
+    """批量取消点赞：单浏览器会话内按 CANCEL_DIGG_BATCH 分批页面 fetch。
+
+    status_code=5（参数不合法）时对半拆分重试（与取消收藏同策略）。
+    返回 {total, batches, canceled}；on_progress 逐批回调
+    {"batch_no", "total_batches", "done", "ids"}。
+    """
+    async def _cancel_chunk(page, ids) -> int:
+        try:
+            body = urlencode({"aweme_ids": ",".join(ids)}) + "&" + urlencode(
+                {"item_type_map": json.dumps({aid: 0 for aid in ids}, separators=(",", ":"))}
+            )
+            await _page_fetch(
+                page, constants.CANCEL_DIGG_MULTI_URL_PATH + "?" + urlencode(_QUERY_PARAMS),
+                "POST", body)
+            return len(ids)
+        except RuntimeError as exc:
+            if "status_code=5" not in str(exc):
+                raise
+            if len(ids) <= 1:
+                logger.warning("跳过参数不合法的点赞 ID：%s", ids[0])
+                return 0
+            midpoint = len(ids) // 2
+            logger.warning("取消点赞批次参数不合法，拆分为 %d/%d 条继续处理",
+                           midpoint, len(ids) - midpoint)
+            left = await _cancel_chunk(page, ids[:midpoint])
+            right = await _cancel_chunk(page, ids[midpoint:])
+            return left + right
+
+    batches = [aweme_ids[i: i + constants.CANCEL_DIGG_BATCH]
+               for i in range(0, len(aweme_ids), constants.CANCEL_DIGG_BATCH)]
+    canceled_total = 0
+    async with browser.session(profile_path, headless=True) as ctx:
+        page = await _open_api_page(ctx)
+        try:
+            for i, chunk in enumerate(batches, start=1):
+                canceled_total += await _cancel_chunk(page, chunk)
+                logger.info("cancel_digg 第 %d/%d 批：%d 条", i, len(batches), len(chunk))
+                if on_progress:
+                    await on_progress({
+                        "batch_no": i, "total_batches": len(batches),
+                        "done": canceled_total, "ids": chunk,
+                    })
+                if i < len(batches):
+                    await asyncio.sleep(constants.CANCEL_DIGG_INTERVAL_SEC)
+        finally:
+            await page.close()
+    return {"total": len(aweme_ids), "batches": len(batches), "canceled": canceled_total}
 
 
 async def _cancel_collect_batch_with_retry(cookie_header: str, aweme_ids: list[str]) -> int:

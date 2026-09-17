@@ -27,6 +27,8 @@ export interface BilibiliFolder {
   count: number;
   mediaId: string;
   isDefault?: boolean;
+  intro?: string;
+  cover?: string;
 }
 
 export interface Account {

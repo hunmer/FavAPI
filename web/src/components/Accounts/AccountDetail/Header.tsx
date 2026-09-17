@@ -8,7 +8,6 @@ import {
   Eraser,
   Monitor,
   MoreVertical,
-  QrCode,
   ShieldCheck,
   Trash2,
 } from 'lucide-react';
@@ -17,7 +16,6 @@ interface AccountDetailHeaderProps {
   account: Account;
   platform: PlatformMeta;
   onBack: () => void;
-  onOpenLoginModal: (account: Account) => void;
   onOpenCookiesModal: (account: Account) => void;
   onCheckHealth: (account: Account) => void;
   onToggleStatus: (account: Account) => void;
@@ -26,12 +24,11 @@ interface AccountDetailHeaderProps {
   onRequestDeleteAccount: () => void;
 }
 
-/** 账号详情顶栏：返回按钮、标题与账号操作工具栏（登录态/扫码/Cookies/浏览器/启停/更多菜单） */
+/** 账号详情顶栏：返回按钮、标题与账号操作工具栏（登录态/浏览器/启停/更多菜单） */
 export const AccountDetailHeader: React.FC<AccountDetailHeaderProps> = ({
   account,
   platform,
   onBack,
-  onOpenLoginModal,
   onOpenCookiesModal,
   onCheckHealth,
   onToggleStatus,
@@ -80,26 +77,6 @@ export const AccountDetailHeader: React.FC<AccountDetailHeaderProps> = ({
           登录态检查
         </button>}
 
-        {/* Re-login */}
-        {account.platform !== 'wechat' && <button
-          type="button"
-          onClick={() => onOpenLoginModal(account)}
-          className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold shadow-2xs inline-flex items-center gap-1.5 transition-colors"
-        >
-          <QrCode className="w-3.5 h-3.5 text-slate-700" />
-          重新扫码
-        </button>}
-
-        {/* Cookies */}
-        <button
-          type="button"
-          onClick={() => onOpenCookiesModal(account)}
-          className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold shadow-2xs inline-flex items-center gap-1.5 transition-colors"
-        >
-          <Cookie className="w-3.5 h-3.5 text-amber-600" />
-          查看 Cookies
-        </button>
-
         {/* Open/Close Browser */}
         <button
           type="button"
@@ -111,16 +88,6 @@ export const AccountDetailHeader: React.FC<AccountDetailHeaderProps> = ({
         >
           <Monitor className="w-3.5 h-3.5" />
           打开浏览器
-        </button>
-
-        {/* Enable / Disable */}
-        <button
-          type="button"
-          onClick={() => onToggleStatus(account)}
-          className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold shadow-2xs inline-flex items-center gap-1.5 transition-colors"
-        >
-          <Ban className="w-3.5 h-3.5 text-slate-500" />
-          {account.status === 'disabled' ? '启用账号' : '禁用账号'}
         </button>
 
         {/* More actions menu (dots) */}
@@ -138,6 +105,28 @@ export const AccountDetailHeader: React.FC<AccountDetailHeaderProps> = ({
             <>
               <div className="fixed inset-0 z-40" onClick={() => setShowActionMenu(false)} />
               <div className="absolute right-0 mt-2 w-44 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 z-50 anim-modal-enter">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowActionMenu(false);
+                    onOpenCookiesModal(account);
+                  }}
+                  className="w-full px-4 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50 inline-flex items-center gap-2 transition-colors"
+                >
+                  <Cookie className="w-3.5 h-3.5 text-amber-600" />
+                  查看 Cookies
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowActionMenu(false);
+                    onToggleStatus(account);
+                  }}
+                  className="w-full px-4 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50 inline-flex items-center gap-2 transition-colors"
+                >
+                  <Ban className="w-3.5 h-3.5 text-slate-500" />
+                  {account.status === 'disabled' ? '启用账号' : '禁用账号'}
+                </button>
                 <button
                   type="button"
                   onClick={() => {

@@ -16,13 +16,14 @@ import { DeleteAccountModal } from './DeleteAccountModal';
 interface AccountDetailProps {
   account: Account;
   onBack: () => void;
-  onOpenLoginModal: (account: Account) => void;
   onOpenCookiesModal: (account: Account) => void;
   onCheckHealth: (account: Account) => void;
   onToggleStatus: (account: Account) => void;
   onToggleBrowser: (account: Account) => void;
   onDeleteAccount: (account: Account) => void;
   onFavoritesCleared?: (account: Account) => void;
+  /** 收藏夹增删改成功后刷新账号（folders 来自 extra，需重拉账号列表） */
+  onFoldersChanged?: () => void;
   recentTasks: TaskRecord[];
   allScrapedItems: ScrapedItem[];
   onTriggerScrape: (formData: ScrapingFormData) => void;
@@ -38,13 +39,13 @@ interface AccountDetailProps {
 export const AccountDetail: React.FC<AccountDetailProps> = ({
   account,
   onBack,
-  onOpenLoginModal,
   onOpenCookiesModal,
   onCheckHealth,
   onToggleStatus,
   onToggleBrowser,
   onDeleteAccount,
   onFavoritesCleared,
+  onFoldersChanged,
   recentTasks,
   allScrapedItems,
   onTriggerScrape,
@@ -53,7 +54,7 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
 }) => {
   const platform = PLATFORMS.find((p) => p.id === account.platform) || PLATFORMS[0];
 
-  // 抓取目标收藏夹：预览网格点击与 Bilibili 专属参数输入双向联动
+  // 抓取目标收藏夹：收藏夹 Tab 点击与 Bilibili 专属参数输入双向联动
   const [selectedFolderMediaId, setSelectedFolderMediaId] = useState<string>(
     account.folders && account.folders[0] ? account.folders[0].mediaId : ''
   );
@@ -89,7 +90,6 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
         account={account}
         platform={platform}
         onBack={onBack}
-        onOpenLoginModal={onOpenLoginModal}
         onOpenCookiesModal={onOpenCookiesModal}
         onCheckHealth={onCheckHealth}
         onToggleStatus={onToggleStatus}
@@ -98,75 +98,82 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
         onRequestDeleteAccount={() => setShowDeleteConfirm(true)}
       />
 
-      <AccountInfoCards account={account} localStats={localStats} />
+      {/* 双栏网格：左栏=账号信息+主工作区，右栏=平台 API 操作+名下收藏夹 */}
+      <div className="grid grid-cols-1 xl:grid-cols-5 gap-6 items-start">
+        {/* 左栏（3/5）：信息合并卡 + Main Workspace */}
+        <div className="space-y-6 xl:col-span-3 min-w-0">
+          <AccountInfoCards account={account} localStats={localStats} />
 
-      <PlatformOperations account={account} />
+          {/* Main Workspace: Manual Scraping & Recent Tasks Tabs */}
+          <div className="bg-white rounded-[28px] border border-slate-200/80 shadow-2xs overflow-hidden">
+            {/* Subtab Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 pt-4 pb-1">
+              <div className="flex items-center gap-4">
+                <button
+                  type="button"
+                  onClick={() => setActiveSubTab('scrape')}
+                  className={`pb-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 ${
+                    activeSubTab === 'scrape'
+                      ? 'border-slate-900 text-slate-900'
+                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <Play className="w-4 h-4" />
+                  手动触发抓取
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveSubTab('tasks')}
+                  className={`pb-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 ${
+                    activeSubTab === 'tasks'
+                      ? 'border-slate-900 text-slate-900'
+                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <Clock className="w-4 h-4" />
+                  最近任务记录 ({recentTasks.length})
+                </button>
+              </div>
+            </div>
 
-      <FolderPicker
-        account={account}
-        selectedMediaId={selectedFolderMediaId}
-        onSelect={setSelectedFolderMediaId}
-      />
+            {/* Tab 1: Manual Scraping Panel */}
+            {activeSubTab === 'scrape' && (
+              <div className="p-6">
+                <ScrapeForm
+                  account={account}
+                  platform={platform}
+                  selectedFolderMediaId={selectedFolderMediaId}
+                  onChangeFolderMediaId={setSelectedFolderMediaId}
+                  isScrapingInProgress={isScrapingInProgress}
+                  onTriggerScrape={onTriggerScrape}
+                />
+                <ScrapeStream
+                  streamingItems={streamingItems}
+                  isScrapingInProgress={isScrapingInProgress}
+                />
+              </div>
+            )}
 
-      {/* Main Workspace: Manual Scraping & Recent Tasks Tabs */}
-      <div className="bg-white rounded-[28px] border border-slate-200/80 shadow-2xs overflow-hidden">
-        {/* Subtab Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 pt-4 pb-1">
-          <div className="flex items-center gap-4">
-            <button
-              type="button"
-              onClick={() => setActiveSubTab('scrape')}
-              className={`pb-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 ${
-                activeSubTab === 'scrape'
-                  ? 'border-slate-900 text-slate-900'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <Play className="w-4 h-4" />
-              手动触发抓取
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveSubTab('tasks')}
-              className={`pb-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 ${
-                activeSubTab === 'tasks'
-                  ? 'border-slate-900 text-slate-900'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <Clock className="w-4 h-4" />
-              最近任务记录 ({recentTasks.length})
-            </button>
+            {/* Tab 2: Recent Tasks List for this Account */}
+            {activeSubTab === 'tasks' && (
+              <div className="p-6">
+                <TasksTab recentTasks={recentTasks} />
+              </div>
+            )}
           </div>
-          <span className="text-xs text-slate-400 hidden sm:inline-block">
-            支持 0 抓取全部、游标续抓与反风控间隔调节
-          </span>
         </div>
 
-        {/* Tab 1: Manual Scraping Panel */}
-        {activeSubTab === 'scrape' && (
-          <div className="p-6">
-            <ScrapeForm
-              account={account}
-              platform={platform}
-              selectedFolderMediaId={selectedFolderMediaId}
-              onChangeFolderMediaId={setSelectedFolderMediaId}
-              isScrapingInProgress={isScrapingInProgress}
-              onTriggerScrape={onTriggerScrape}
-            />
-            <ScrapeStream
-              streamingItems={streamingItems}
-              isScrapingInProgress={isScrapingInProgress}
-            />
-          </div>
-        )}
+        {/* 右栏（2/5）：平台 API 操作 + 名下收藏夹 */}
+        <div className="space-y-6 xl:col-span-2 min-w-0">
+          <PlatformOperations account={account} />
 
-        {/* Tab 2: Recent Tasks List for this Account */}
-        {activeSubTab === 'tasks' && (
-          <div className="p-6">
-            <TasksTab recentTasks={recentTasks} />
-          </div>
-        )}
+          <FolderPicker
+            account={account}
+            selectedMediaId={selectedFolderMediaId}
+            onSelect={setSelectedFolderMediaId}
+            onFoldersChanged={onFoldersChanged}
+          />
+        </div>
       </div>
 
       {showClearConfirm && (
