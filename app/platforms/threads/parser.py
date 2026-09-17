@@ -77,6 +77,37 @@ def _balanced_json(text: str, start: int) -> str | None:
     return None
 
 
+def parse_viewer_profile(html: str) -> dict | None:
+    """从已登录页面 HTML 的 BarcelonaSharedData 提取当前用户身份。
+
+    任意 threads.com 登录页面的共享数据块（与 lsd 同一份 HTML）：
+    ["BarcelonaSharedData",[],{...,"viewer":{"id","username","profile_picture_url",...}}]。
+    未登录时无该块或 viewer 为空 → 返回 None（由调用方判定登录态失效）。
+    """
+    idx = html.find("BarcelonaSharedData")
+    if idx < 0:
+        return None
+    start = html.find("{", idx)
+    if start < 0:
+        return None
+    chunk = _balanced_json(html, start)
+    if not chunk:
+        return None
+    try:
+        shared = json.loads(chunk)
+    except ValueError:
+        logger.debug("BarcelonaSharedData JSON 解析失败")
+        return None
+    viewer = shared.get("viewer") or {}
+    if not viewer.get("id"):
+        return None
+    return {
+        "id": str(viewer.get("id") or ""),
+        "username": viewer.get("username"),
+        "avatar": viewer.get("profile_picture_url"),
+    }
+
+
 def parse_embedded_saved(html: str) -> dict | None:
     """从 /saved 页面 HTML 提取首屏收藏数据（Relay preloader 内嵌 JSON）。
 

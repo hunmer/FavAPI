@@ -73,14 +73,51 @@ class ThreadsAdapter(BasePlatformAdapter):
             return False
 
     async def check_login_status(self, account: AccountContext) -> bool:
-        """登录态检查：仅读取 profile cookie，不导航页面 → 固定无头。"""
+        """登录态检查：cookie 快速判定 + API 真实校验。
+
+        cookie 缺失直接 False；cookie 存在但服务端会话已被踢（sessionid 失效）
+        由 fetch_viewer_profile 判定。网络异常向上抛（路由层 503），不误标 expired。
+        """
         async with browser.session(
             account.profile_path, headless=True, proxy=api_client.resolve_proxy()
         ) as ctx:
-            cookies = await ctx.cookies()
-            ok = browser.has_login_cookies(cookies, constants.LOGIN_COOKIE_KEYS)
-            logger.info("[%s] 登录态检查：%s", account.account_id, "有效" if ok else "无效")
-            return ok
+            cookies = await ctx.cookies(urls=[constants.FAVORITES_URL])
+        if not browser.has_login_cookies(cookies, constants.LOGIN_COOKIE_KEYS):
+            logger.info("[%s] 登录态检查：无效（profile 无登录 cookie）", account.account_id)
+            return False
+        cookie_header = "; ".join(
+            f"{c['name']}={c['value']}" for c in cookies if c.get("name"))
+        try:
+            profile = await asyncio.to_thread(
+                api_client.fetch_viewer_profile, cookie_header)
+        except LoginExpiredError:
+            logger.warning("[%s] 登录态检查：cookie 存在但服务端会话已失效", account.account_id)
+            return False
+        logger.info("[%s] 登录态检查：有效（@%s）", account.account_id, profile.get("username"))
+        return True
+
+    async def refresh_profile(self, account: AccountContext) -> None:
+        """登录成功后回填主人信息：extra.threads.owner = {id, username, avatar}。"""
+        import json
+
+        cookie_header = await api_client.profile_cookie_header(account.profile_path)
+        profile = await asyncio.to_thread(api_client.fetch_viewer_profile, cookie_header)
+        from app.services import account_manager  # 延迟导入避免循环依赖
+
+        row = await account_manager.get_account(account.account_id)
+        if row is None:
+            return
+        extra = row.get("extra") or {}
+        extra["threads"] = {"owner": {
+            "id": profile["id"],
+            "username": profile.get("username"),
+            "avatar": profile.get("avatar"),  # 带签名 CDN 链接，过期后重新刷新即可
+        }}
+        await account_manager.update_account(
+            account.account_id, extra=json.dumps(extra, ensure_ascii=False)
+        )
+        logger.info("[%s] 身份信息已回填：@%s(%s)",
+                    account.account_id, profile.get("username"), profile["id"])
 
     async def fetch_favorites(
         self, account: AccountContext, params: dict, on_batch=None

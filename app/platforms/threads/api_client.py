@@ -21,7 +21,7 @@ from curl_cffi import requests
 
 from app.services import browser
 from . import constants
-from .parser import parse_saved_media
+from .parser import parse_saved_media, parse_viewer_profile
 from ..base import LoginExpiredError
 
 logger = logging.getLogger("favapi.threads.api")
@@ -79,18 +79,35 @@ async def profile_cookie_header(profile_path: str) -> str:
     return header
 
 
-def fetch_lsd(cookie_header: str) -> str:
-    """GET /saved 页面提取 lsd 令牌（同步阻塞，异步侧用 asyncio.to_thread 调用）。"""
+def _fetch_saved_html(cookie_header: str) -> str:
+    """GET /saved 页面 HTML（同步阻塞）：lsd 令牌与当前用户身份都从这里提取。"""
     response = requests.get(
         constants.FAVORITES_URL,
         headers={"cookie": cookie_header},
         impersonate="chrome", timeout=30, proxy=resolve_proxy(),
     )
     response.raise_for_status()
-    match = _LSD_PATTERN.search(response.text)
+    return response.text
+
+
+def fetch_lsd(cookie_header: str) -> str:
+    """GET /saved 页面提取 lsd 令牌（同步阻塞，异步侧用 asyncio.to_thread 调用）。"""
+    match = _LSD_PATTERN.search(_fetch_saved_html(cookie_header))
     if not match:
         raise RuntimeError("未能从 Threads 收藏页提取 lsd 令牌（页面结构变化或登录态失效）")
     return match.group(1)
+
+
+def fetch_viewer_profile(cookie_header: str) -> dict:
+    """获取当前登录用户身份（同步阻塞，异步侧用 asyncio.to_thread 调用）。
+
+    从 /saved 页面 HTML 的 BarcelonaSharedData 提取 {id, username, avatar}；
+    未登录（会话失效被重定向）时该块无 viewer → 抛 LoginExpiredError。
+    """
+    profile = parse_viewer_profile(_fetch_saved_html(cookie_header))
+    if profile is None:
+        raise LoginExpiredError("Threads 登录态已失效（会话无 viewer 信息），请重新登录")
+    return profile
 
 
 def fetch_saved_page(cookie_header: str, lsd: str, after: str = "") -> dict:
