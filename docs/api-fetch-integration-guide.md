@@ -191,6 +191,9 @@ constants.py / api_client.py / adapter.py 三件套 + mockFavData.ts 加 apiFetc
 | `list_favorites` | 只读拉取收藏列表（可选日期过滤，不入库） | count / date_from / date_to |
 | `cancel_collect_multi` | 批量取消收藏，**ID 列表与日期区间二选一**（日期优先） | aweme_ids / date_from / date_to |
 
+Threads 已实现：`save_post`（收藏帖子，media_id）/ `cancel_saved_multi`（批量取消，post_ids）。
+写 mutation 与读接口同套最小字段集直连（无需 fb_dtsg），文档见 `threads/constants.py`。
+
 日期区间过滤复用 `app/utils.py::parse_date_window / filter_by_date_window`
 （collected_at 缺失由 parser 兜底发布时间）；task_executor 的抓取过滤也走同一份实现。
 

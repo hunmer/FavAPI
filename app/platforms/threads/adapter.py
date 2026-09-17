@@ -16,6 +16,8 @@ import time
 from app import config
 from app.platforms.base import (
     AccountContext,
+    ApiOperation,
+    ApiOperationParam,
     BasePlatformAdapter,
     FetchResult,
     LoginExpiredError,
@@ -26,6 +28,13 @@ from . import constants
 from .parser import parse_embedded_saved, parse_saved_media
 
 logger = logging.getLogger("favapi.threads")
+
+
+def _split_ids(raw: str) -> list[str]:
+    """把换行/逗号分隔的 ID 文本拆成去空列表。"""
+    import re
+
+    return [t.strip() for t in re.split(r"[\s,，;；]+", raw or "") if t.strip()]
 
 
 def _merge_items(batches: list[dict]) -> list[dict]:
@@ -45,9 +54,79 @@ class ThreadsAdapter(BasePlatformAdapter):
     implemented = True
     supported_actions = ("list_favorites",)
     api_fetch_implemented = True  # 收藏列表支持 API 直连（params.method="api"）
+    api_operations = (
+        ApiOperation(
+            op_id="save_post",
+            name="收藏帖子",
+            description="API 直连收藏指定帖子（帖子详情页「收藏」同款接口）",
+            params=(
+                ApiOperationParam(
+                    key="media_id", label="帖子 ID", type="text", required=True,
+                    placeholder="例如：3987468812979200688",
+                    help="纯数字帖子 pk，可从收藏列表条目的 content_id 获取",
+                ),
+            ),
+        ),
+        ApiOperation(
+            op_id="cancel_saved_multi",
+            name="批量取消收藏",
+            description="按帖子 ID 列表批量取消收藏（操作不可恢复）",
+            danger=True,
+            params=(
+                ApiOperationParam(
+                    key="post_ids", label="帖子 ID 列表", type="textarea", required=True,
+                    placeholder="ID 之间用逗号或换行分隔，例如：\n3987260322440819856\n3987010911676295522",
+                    help="纯数字帖子 pk（收藏列表条目的 content_id）",
+                ),
+            ),
+        ),
+    )
 
     def __init__(self, base_dir=None):
         self.base_dir = base_dir  # 图标目录（/platforms/{id}/icon 下发用）
+
+    async def execute_api_operation(
+        self, op_id: str, account: AccountContext, params: dict, on_event=None
+    ) -> dict:
+        if op_id == "save_post":
+            return await self._op_save_post(account, params)
+        if op_id == "cancel_saved_multi":
+            return await self._op_cancel_saved(account, params, on_event)
+        raise ValueError(f"未知操作：{op_id}")
+
+    async def _op_save_post(self, account: AccountContext, params: dict) -> dict:
+        """收藏指定帖子（save mutation）。"""
+        media_id = str((params or {}).get("media_id") or "").strip()
+        if not media_id.isdigit():
+            raise ValueError("请填写要收藏的帖子 ID（纯数字 pk）")
+        logger.info("[%s] API 操作 save_post：%s", account.account_id, media_id)
+        cookie_header = await api_client.profile_cookie_header(account.profile_path)
+        lsd = await asyncio.to_thread(api_client.fetch_lsd, cookie_header)
+        media = await asyncio.to_thread(
+            api_client.save_media, cookie_header, lsd, media_id)
+        logger.info("[%s] 收藏完成：has_viewer_saved=%s", account.account_id,
+                    media.get("has_viewer_saved"))
+        return {"media_id": media_id, "has_viewer_saved": media.get("has_viewer_saved")}
+
+    async def _op_cancel_saved(self, account: AccountContext, params: dict, on_event=None) -> dict:
+        """批量取消收藏（unsave mutation 逐条执行）。"""
+        media_ids = _split_ids(str((params or {}).get("post_ids") or ""))
+        if not media_ids:
+            raise ValueError("请填写要取消收藏的帖子 ID 列表")
+        if any(not t.isdigit() for t in media_ids):
+            raise ValueError("post_ids 含非数字 ID，请检查输入")
+
+        async def _progress(info: dict):
+            if on_event:
+                await on_event({"type": "progress", **info})
+
+        logger.info("[%s] API 操作 cancel_saved_multi：%d 条", account.account_id, len(media_ids))
+        cookie_header = await api_client.profile_cookie_header(account.profile_path)
+        result = await api_client.unsave_multi(
+            cookie_header, media_ids, on_progress=_progress)
+        result["matched"] = len(media_ids)
+        logger.info("[%s] 批量取消收藏完成：%s", account.account_id, result)
+        return result
 
     async def login(self, account: AccountContext, timeout: float | None = None) -> bool:
         """打开有头浏览器等待用户登录；检测到 sessionid 即成功。"""

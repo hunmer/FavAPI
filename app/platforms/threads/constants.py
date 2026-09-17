@@ -59,6 +59,16 @@ SAVED_PV_FLAGS = {
 # 判定已登录的 cookie（任一存在且非空即视为登录）
 LOGIN_COOKIE_KEYS = ("sessionid", "ds_user_id")
 
+# 收藏 / 取消收藏 mutation（2026-09 抓包；与读接口同套最小字段集直连，无需 fb_dtsg）。
+# variables: {"media_id": "<帖子 pk>", "module": "ig_text_post_permalink"}；
+# 成功响应 data.data.media.has_viewer_saved：save=True / unsave=null
+SAVE_DOC_ID = "29005633985708481"
+SAVE_QUERY_NAME = "useBarcelonaSaveMutationSaveMutation"
+UNSAVE_DOC_ID = "27999013096419149"
+UNSAVE_QUERY_NAME = "useBarcelonaSaveMutationUnsaveMutation"
+SAVE_MODULE = "ig_text_post_permalink"  # 埋点字段，实测取值不影响结果
+UNSAVE_INTERVAL_SEC = 0.5     # 批量取消收藏间隔（防风控节流）
+
 DEFAULT_COUNT = 20
 MAX_COUNT = 500
 WAIT_AFTER_GOTO_MS = 5000   # 打开收藏页后等待首批数据渲染
