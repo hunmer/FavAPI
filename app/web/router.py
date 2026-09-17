@@ -1,5 +1,6 @@
 """Web 控制台静态托管：服务 web/ 前端构建产物（vite build → web/dist）。"""
 import logging
+import sys
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -8,7 +9,11 @@ from fastapi.staticfiles import StaticFiles
 
 logger = logging.getLogger("favapi.web")
 
-DIST_DIR = Path(__file__).resolve().parent.parent.parent / "web" / "dist"
+if getattr(sys, "frozen", False):
+    # PyInstaller 便携包：web/dist 由 spec 打进 _internal/
+    DIST_DIR = Path(sys.executable).resolve().parent / "_internal" / "web" / "dist"
+else:
+    DIST_DIR = Path(__file__).resolve().parent.parent.parent / "web" / "dist"
 
 _NO_BUILD_PAGE = """<!doctype html><html lang="zh-CN"><meta charset="utf-8">
 <title>FavAPI Web Console</title><body style="font-family:system-ui;padding:40px;line-height:1.8">

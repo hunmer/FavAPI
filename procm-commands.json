@@ -50,6 +50,11 @@
       "args": ["-m", "playwright", "install", "chromium"],
       "desc": "（macOS）安装 Playwright Chromium 浏览器内核（首次使用前必须执行一次）"
     },
+    "build-portable-mac": {
+      "script": "bash",
+      "args": ["scripts/build_portable.sh"],
+      "desc": "（macOS）PyInstaller 打包便携包到 dist/FavAPI/（含 chromium 内核与平台资源，需先构建 web/dist）"
+    },
     "web": {
       "script": "node",
       "args": ["node_modules/vite/bin/vite.js"],

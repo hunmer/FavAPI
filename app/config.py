@@ -1,8 +1,15 @@
 """全局配置：路径、服务参数、浏览器行为。"""
 import os
+import sys
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+if getattr(sys, "frozen", False):
+    # PyInstaller 便携包：以可执行文件所在目录为根，data/、platforms/ 放在包目录内
+    BASE_DIR = Path(sys.executable).resolve().parent
+    # chromium 内核随后便携包分发（pw-browsers/），须在 playwright 导入前设置
+    os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(BASE_DIR / "pw-browsers"))
+else:
+    BASE_DIR = Path(__file__).resolve().parent.parent
 
 # 数据目录（数据库 + 浏览器 profile），可用环境变量覆盖（测试用）
 DATA_DIR = Path(os.environ.get("FAVAPI_DATA_DIR", str(BASE_DIR / "data")))
