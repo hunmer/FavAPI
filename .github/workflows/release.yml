@@ -70,12 +70,11 @@ jobs:
           cd dist
           if [ "${{ runner.os }}" = "macOS" ]; then
             # tar 保留可执行权限与符号链接（chromium .app 内部需要），zip 会丢失
-            tar -czf "../$NAME.tar.gz" FavAPI
+            tar -czf "$NAME.tar.gz" FavAPI
           else
-            powershell Compress-Archive -Path FavAPI -DestinationPath "../$NAME.zip"
+            powershell Compress-Archive -Path FavAPI -DestinationPath "$NAME.zip"
           fi
-          cd ..
-          ls -lh FavAPI-* || true
+          ls -lh FavAPI-*
 
       - uses: actions/upload-artifact@v4
         with:
