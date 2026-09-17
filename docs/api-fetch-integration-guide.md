@@ -143,7 +143,8 @@ curl ... -d '{"platform":"bilibili",...,"params":{"method":"api"}}'   # → 400 
 | bilibili | ✅ | ❌ | 接口带 WBI 签名，按本指南流程接入 |
 | xiaohongshu | ✅ | ❌ | 风控较严（x-s 签名），原型阶段多花时间 |
 | wechat | JSON 导入 | — | 无浏览器抓取概念，不适用 |
-| youtube / kuaishou / threads | 视实现 | ❌ | 按需接入 |
+| youtube / kuaishou | 视实现 | ❌ | 按需接入 |
+| threads | ✅ | ✅ | 2026-09 接入：GraphQL（`/graphql/query`），直连需 `x-csrftoken` + lsd + 完整 relay pv 标志（`constants.SAVED_PV_FLAGS`）；代理沿用声明式 auto 解析 |
 
 ## 6. 快速回顧：一次成功接入的样子
 

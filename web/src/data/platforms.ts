@@ -41,6 +41,16 @@ export const PLATFORMS: PlatformMeta[] = [
     apiFetch: true,
   },
   {
+    id: 'threads',
+    name: 'Threads',
+    icon: 'threads',
+    color: '#000000',
+    badgeBg: 'bg-slate-100 text-slate-600 border-slate-200',
+    isSupported: true,
+    tagline: '已保存帖子收藏抓取，支持 API 直连与浏览器模拟',
+    apiFetch: true,
+  },
+  {
     id: 'zhihu',
     name: '知乎 Zhihu',
     icon: 'zhihu',
