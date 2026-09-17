@@ -150,7 +150,7 @@ curl ... -d '{"platform":"bilibili",...,"params":{"method":"api"}}'   # → 400 
 |---|---|---|---|
 | douyin | ✅ | ✅ | 首个落地，代码即模板 |
 | bilibili | ✅ | ❌ | 接口带 WBI 签名，按本指南流程接入 |
-| xiaohongshu | ✅ | ❌ | 风控较严（x-s 签名），原型阶段多花时间 |
+| xiaohongshu | ✅ | ✅ | 2026-09 接入：x-s/x-s-common/x-t 签名用 [xhshow](https://github.com/Cloxl/xhshow) 纯算生成（XYS_ 格式）+ curl_cffi 直连；坑见 `xiaohongshu/api_client.py` 模块 docstring（query 编码必须与签名逐字节一致、cookies 传 dict） |
 | wechat | JSON 导入 | — | 无浏览器抓取概念，不适用 |
 | youtube / kuaishou | 视实现 | ❌ | 按需接入 |
 | threads | ✅ | ✅ | 2026-09 接入：GraphQL（`/graphql/query`），直连需 `x-csrftoken` + lsd + 完整 relay pv 标志（`constants.SAVED_PV_FLAGS`）；代理沿用声明式 auto 解析 |

@@ -6,4 +6,5 @@ playwright
 httpx
 croniter
 curl_cffi
+xhshow
 yt-dlp

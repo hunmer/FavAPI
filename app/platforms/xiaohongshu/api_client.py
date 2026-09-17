@@ -1,0 +1,130 @@
+"""小红书收藏/点赞列表 API 客户端（xhshow 纯算签名 + curl_cffi 直连）。
+
+edith.xiaohongshu.com 的 note 列表接口有 x-s / x-s-common / x-t 签名强校验
+（无签名 406；签名与 cookie 环境不一致 300011「账号异常」）。签名由
+xhshow 纯算法生成（XYS_ 格式，无需浏览器页面 JS），请求走 curl_cffi 复刻
+Chrome TLS/HTTP2 指纹；全程纯 HTTP（读 profile cookies 需起一次无头浏览器）。
+
+实测坑（2026-09）：
+- 实际请求 URL 必须与签名内容逐字节一致：query 用 xhshow.build_url 构造
+  （逗号不转义）；curl_cffi 的 params= 会把逗号编码成 %2C，签名不匹配直接 406
+- cookies 必须以 dict 传给签名：cookie 字符串里带引号的 unread JSON 会让
+  SimpleCookie 解析错位，生成的 x-s-common 无效（300011）
+- like/page 与 collect/page 均接受 XYS_ 格式；xyw 格式反而被这两个接口拒绝
+"""
+import asyncio
+import logging
+
+from curl_cffi import requests
+from xhshow import Xhshow
+
+from app.services import browser
+from . import constants
+from .parser import parse_collect_page
+from ..base import LoginExpiredError
+
+logger = logging.getLogger("favapi.xiaohongshu.api")
+
+_signer = Xhshow()
+
+_HEADERS = {
+    "accept": "application/json, text/plain, */*",
+    "accept-language": "zh-CN,zh;q=0.9",
+    "origin": "https://www.xiaohongshu.com",
+    "referer": "https://www.xiaohongshu.com/",
+    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+}
+
+
+async def profile_cookies(profile_path: str) -> dict[str, str]:
+    """从持久化浏览器 profile 读取 xiaohongshu cookies（dict，签名与请求共用）。
+
+    无登录 cookie 时抛 LoginExpiredError（与浏览器模式同一判定）。
+    """
+    async with browser.session(profile_path, headless=True) as ctx:
+        cookies = await ctx.cookies()
+    if not browser.has_login_cookies(cookies, constants.LOGIN_COOKIE_KEYS):
+        raise LoginExpiredError("小红书登录态缺失（profile 无 id_token），请重新扫码登录")
+    return {c["name"]: c["value"] for c in cookies if c.get("name")}
+
+
+def _signed_get(cookies: dict[str, str], url: str, params: dict[str, str],
+                user_id: str | None = None) -> dict:
+    """签名 + 直连 GET，返回响应 JSON；code != 0 抛 RuntimeError。
+
+    URL 用 xhshow.build_url 构造以保证与签名内容逐字节一致（见模块 docstring）。
+    """
+    sign = _signer.sign_headers_get(url, cookies=cookies, params=params, user_id=user_id)
+    response = requests.get(
+        _signer.build_url(url, params),
+        headers={
+            **_HEADERS, **sign,
+            "cookie": "; ".join(f"{k}={v}" for k, v in cookies.items()),
+        },
+        impersonate="chrome", timeout=20,
+    )
+    response.raise_for_status()
+    data = response.json()
+    code = data.get("code")
+    if code == 300011:
+        raise RuntimeError(
+            "接口返回 300011 账号异常：多为签名与 cookie 环境不一致或触发风控，"
+            "请稍后重试；反复出现请重新扫码登录刷新登录态"
+        )
+    if code != 0:
+        raise RuntimeError(f"小红书接口返回错误 code={code} msg={data.get('msg')}")
+    return data
+
+
+def fetch_me(cookies: dict[str, str]) -> dict:
+    """签名调用 /user/me 返回 data（当前登录用户信息）；游客/未登录返回 {}（同步阻塞）。"""
+    data = (_signed_get(cookies, constants.USER_ME_URL, {}) or {}).get("data") or {}
+    if data.get("guest") or not data.get("user_id"):
+        return {}
+    return data
+
+
+def fetch_note_page(cookies: dict[str, str], url: str, user_id: str,
+                    cursor: str = "", num: int = 30) -> dict:
+    """签名拉取一页 note 列表（like/collect 通用，同步阻塞，异步侧用 asyncio.to_thread）。
+
+    cursor 为上一页响应返回的不透明游标（首页传空串）；
+    返回 parse_collect_page 的结果 {items, cursor, has_more, total}。
+    """
+    params = {
+        "num": str(num), "cursor": cursor, "user_id": user_id,
+        "image_formats": "jpg,webp,avif", "xsec_token": "", "xsec_source": "",
+    }
+    data = _signed_get(cookies, url, params, user_id=user_id)
+    return parse_collect_page(data)
+
+
+async def fetch_note_pages(cookies: dict[str, str], url: str, user_id: str,
+                           count: int, on_batch=None):
+    """按服务端游标翻页拉取 note 列表，直到取满 count（0=全部）或 has_more=false。
+
+    返回 (全部 items, 最后一批的 has_more)。游标为不透明笔记 id，无时间语义，
+    不做日期提前终止。
+    """
+    cursor = ""
+    collected: list[dict] = []
+    page = 0
+    while True:
+        batch = await asyncio.to_thread(
+            fetch_note_page, cookies, url, user_id, cursor, constants.API_PAGE_COUNT
+        )
+        page += 1
+        collected.extend(batch["items"])
+        logger.info(
+            "note 列表第 %d 页：%d 条，累计 %d，has_more=%s",
+            page, len(batch["items"]), len(collected), batch["has_more"],
+        )
+        if on_batch and batch["items"]:
+            await on_batch({"page": page, "items": batch["items"]})
+        if not batch["has_more"] or not batch["cursor"]:
+            return collected, False
+        if count and len(collected) >= count:
+            return collected, True
+        cursor = batch["cursor"]
+        await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)

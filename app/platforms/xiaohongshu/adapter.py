@@ -1,8 +1,9 @@
 """小红书适配器：扫码登录 / 登录态检查 / 收藏列表抓取（响应拦截 + 滚动加载）。
 
-edith.xiaohongshu.com 的 collect/page 接口有 x-s/x-t 签名校验，无法像 Bilibili
-那样直接构造请求：沿用抖音方案，打开个人主页收藏 tab 滚动触发懒加载，拦截页面
-自身的 collect/page 响应（签名由页面 JS 完成）。
+edith.xiaohongshu.com 的 collect/page 接口有 x-s/x-t 签名校验，浏览器模式沿用
+抖音方案：打开个人主页收藏 tab 滚动触发懒加载，拦截页面自身的 collect/page 响应
+（签名由页面 JS 完成）。API 直连模式（method="api"）用 xhshow 纯算签名 +
+curl_cffi 直连（见 api_client.py），无需页面参与。
 """
 import asyncio
 import logging
@@ -11,12 +12,14 @@ import time
 from app import config
 from app.platforms.base import (
     AccountContext,
+    ApiOperation,
+    ApiOperationParam,
     BasePlatformAdapter,
     FetchResult,
     LoginExpiredError,
 )
 from app.services import browser
-from . import constants
+from . import api_client, constants
 from .parser import extract_user_id, is_user_id, parse_collect_page
 
 logger = logging.getLogger("favapi.xiaohongshu")
@@ -85,6 +88,42 @@ class XiaohongshuAdapter(BasePlatformAdapter):
     home_url = constants.HOME_URL
     implemented = True
     supported_actions = ("list_favorites",)
+    api_fetch_implemented = True  # API 直连：xhshow 纯算签名 + curl_cffi（见 api_client.py）
+
+    api_operations = (
+        ApiOperation(
+            op_id="list_favorites",
+            name="获取收藏列表",
+            description="API 直连拉取收藏笔记列表（只读，不入库）",
+            params=(
+                ApiOperationParam(
+                    key="count", label="数量 (0 为全部)", type="number",
+                    placeholder="默认 20",
+                    help="返回条数上限",
+                ),
+                ApiOperationParam(
+                    key="user_id", label="用户 ID（可选）", type="text",
+                    help="默认当前登录用户；查他人需对方收藏列表公开",
+                ),
+            ),
+        ),
+        ApiOperation(
+            op_id="list_likes",
+            name="获取点赞列表",
+            description="API 直连拉取点赞（喜欢）笔记列表（只读，不入库）",
+            params=(
+                ApiOperationParam(
+                    key="count", label="数量 (0 为全部)", type="number",
+                    placeholder="默认 20",
+                    help="返回条数上限",
+                ),
+                ApiOperationParam(
+                    key="user_id", label="用户 ID（可选）", type="text",
+                    help="默认当前登录用户；查他人需对方点赞列表公开",
+                ),
+            ),
+        ),
+    )
 
     def validate_params(self, params: dict) -> None:
         raw_url = str(params.get("url") or "").strip()
@@ -254,6 +293,8 @@ class XiaohongshuAdapter(BasePlatformAdapter):
     async def fetch_favorites(
         self, account: AccountContext, params: dict, on_batch=None
     ) -> FetchResult:
+        if self.resolve_fetch_method(params) == "api":
+            return await self.fetch_favorites_api(account, params, on_batch)
         self.validate_params(params)
         user_id = self._target_user_id(params)
         raw_count = params.get("count")
@@ -369,3 +410,110 @@ class XiaohongshuAdapter(BasePlatformAdapter):
             has_more=last_has_more and (not count or len(merged) > skip + len(window)),
             total=len(merged),
         )
+
+    @staticmethod
+    async def _api_user_id(account: AccountContext, cookies: dict, params: dict) -> str:
+        """API 模式解析目标用户 id：params.url/user_id → 账号 extra 回填 → user/me 接口。
+
+        小红书 profile 页不带 id 是 404，列表接口 user_id 必填；无浏览器上下文，
+        用签名直连 user/me 兜底（同时校验登录态）。
+        """
+        uid = XiaohongshuAdapter._target_user_id(params or {})
+        if uid:
+            return uid
+        from app.services import account_manager  # 延迟导入避免循环依赖
+
+        row = await account_manager.get_account(account.account_id)
+        owner = ((row or {}).get("extra") or {}).get("xiaohongshu", {}).get("owner") or {}
+        uid = str(owner.get("user_id") or "")
+        if is_user_id(uid):
+            return uid
+        me = await asyncio.to_thread(api_client.fetch_me, cookies)
+        uid = str(me.get("user_id") or "")
+        if is_user_id(uid):
+            logger.info("[%s] user/me 解析当前用户：%s", account.account_id, uid)
+            return uid
+        raise ValueError(
+            "无法确定目标用户 id：请在参数中传入主页链接 / user_id，"
+            "或先完成一次登录刷新账号身份信息"
+        )
+
+    async def fetch_favorites_api(
+        self, account: AccountContext, params: dict, on_batch=None
+    ) -> FetchResult:
+        """API 直连：profile cookies + xhshow 签名 GET collect/page。
+
+        cursor 语义与浏览器模式一致（已抓取条数偏移）；接口翻页内部用服务端游标。
+        """
+        self.validate_params(params)
+        raw_count = params.get("count")
+        if raw_count in (None, ""):
+            count = constants.DEFAULT_COUNT
+        else:
+            count = max(0, min(int(raw_count), constants.MAX_COUNT))  # 0 = 全部
+        skip = max(0, int(params.get("cursor") or 0))
+        logger.info(
+            "[%s] API 直连抓取收藏：count=%s cursor=%d", account.account_id, count or "全部", skip
+        )
+
+        cookies = await api_client.profile_cookies(account.profile_path)
+        user_id = await self._api_user_id(account, cookies, params)
+        collected, last_has_more = await api_client.fetch_note_pages(
+            cookies, constants.COLLECT_PAGE_URL, user_id,
+            count=(count + skip) if count else 0, on_batch=on_batch,
+        )
+        window = collected[skip:] if not count else collected[skip: skip + count]
+        logger.info(
+            "[%s] API 直连抓取完成：共 %d 条，返回 [%d:%d] %d 条",
+            account.account_id, len(collected), skip, skip + len(window), len(window),
+        )
+        return FetchResult(
+            items=window,
+            cursor=skip + len(window),
+            has_more=last_has_more and (not count or len(collected) >= skip + count),
+            total=len(collected),
+        )
+
+    async def execute_api_operation(
+        self, op_id: str, account: AccountContext, params: dict, on_event=None
+    ) -> dict:
+        if op_id == "list_favorites":
+            return await self._op_list_notes(account, params, on_event, constants.COLLECT_PAGE_URL, "收藏")
+        if op_id == "list_likes":
+            return await self._op_list_notes(account, params, on_event, constants.LIKE_PAGE_URL, "点赞")
+        raise ValueError(f"未知操作：{op_id}")
+
+    async def _op_list_notes(self, account: AccountContext, params: dict,
+                             on_event, url: str, label: str) -> dict:
+        """只读拉取 note 列表（收藏/点赞共用），返回摘要，不入库。"""
+        raw_count = str((params or {}).get("count") or "").strip()
+        count = min(max(int(raw_count), 0), constants.MAX_COUNT) if raw_count.isdigit() else constants.DEFAULT_COUNT
+        logger.info("[%s] API 操作拉取%s列表：count=%s", account.account_id, label, count or "全部")
+
+        async def _collect_progress(batch: dict):
+            if on_event:
+                await on_event({
+                    "type": "stage", "stage": "collecting",
+                    "page": batch.get("page"), "total_fetched": len(batch.get("items") or []),
+                })
+
+        cookies = await api_client.profile_cookies(account.profile_path)
+        user_id = await self._api_user_id(account, cookies, params)
+        collected, has_more = await api_client.fetch_note_pages(
+            cookies, url, user_id, count, on_batch=_collect_progress
+        )
+        summaries = [
+            {
+                "content_id": it.get("content_id"),
+                "title": it.get("title"),
+                "author_name": it.get("author_name"),
+                "collected_at": it.get("collected_at"),
+            }
+            for it in collected[:100]
+        ]
+        return {
+            "total": len(collected),
+            "has_more": has_more,
+            "items": summaries,
+            "note": "仅展示前 100 条摘要" if len(collected) > 100 else "",
+        }

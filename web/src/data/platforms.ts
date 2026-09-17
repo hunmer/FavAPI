@@ -29,6 +29,7 @@ export const PLATFORMS: PlatformMeta[] = [
     badgeBg: 'bg-[#FFF0F2] text-[#FF2442] border-[#FFCCD4]',
     isSupported: true,
     tagline: '支持专辑与笔记收藏抓取、高清图文及视频入库',
+    apiFetch: true,
   },
   {
     id: 'douyin',

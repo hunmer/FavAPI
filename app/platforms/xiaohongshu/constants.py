@@ -9,8 +9,15 @@ PROFILE_URL = "https://www.xiaohongshu.com/user/profile/{user_id}?tab=fav&subTab
 
 # 收藏列表接口（响应拦截匹配用）；edith 接口有 x-s/x-t 签名校验，只能拦截页面自身请求
 COLLECT_PAGE_API = "/api/sns/web/v2/note/collect/page"
-# 当前用户信息接口（需页面内 _webmsxyw 函数签名后请求）
+# 当前用户信息接口（页面通道：需页面内 _webmsxyw 函数签名后请求）
 USER_ME_API = "https://edith.xiaohongshu.com/api/sns/web/v2/user/me"
+
+# API 直连用完整 URL（签名由 xhshow 纯算生成，见 api_client.py）
+USER_ME_URL = USER_ME_API
+COLLECT_PAGE_URL = "https://edith.xiaohongshu.com/api/sns/web/v2/note/collect/page"
+LIKE_PAGE_URL = "https://edith.xiaohongshu.com/api/sns/web/v1/note/like/page"
+API_PAGE_COUNT = 30            # API 直连每页条数（与浏览器抓包一致）
+API_PAGE_INTERVAL_SEC = 1.2    # 翻页间隔（小红书风控较严，慢于抖音）
 
 # 判定已登录的 cookie（任一存在且非空即视为登录）。
 # 注意：web_session 游客也有（实测游客前缀 03/登录 04，不可靠）；id_token 仅登录后存在。
