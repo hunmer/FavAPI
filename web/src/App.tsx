@@ -26,7 +26,7 @@ import { SettingsView } from './components/Settings/SettingsView';
 import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
 import { DevInspector } from './components/DevInspector';
 import { AnimatePresence, motion } from 'motion/react';
-import { useLocation, useNavigate, useNavigationType } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 // 视图切换缓动（motion-design 规范）：入场 MD3 Emphasized 减速 / 出场 MD3 Accelerate 加速
 // 入场 400ms > 出场 200ms（Enter 比 Exit 长 30-50%），总时长落在页面过渡 400-600ms 区间
@@ -77,6 +77,8 @@ export function App() {
   const [tagGroups, setTagGroups] = useState<api.TagGroupRow[]>([]);
   const [stats, setStats] = useState<api.StatsData | null>(null);
   const [browserOpenIds, setBrowserOpenIds] = useState<Set<string>>(new Set());
+  /** 下载队列进行中数量（pending+running），Sidebar 下载图标 badge 用 */
+  const [downloadsActive, setDownloadsActive] = useState(0);
   /** 批量身份刷新进度（正在刷新的账号 + 序号）；null = 未在批量刷新 */
   const [profileRefresh, setProfileRefresh] = useState<api.ProfileRefreshProgress | null>(null);
 
@@ -97,15 +99,17 @@ export function App() {
     if (location.pathname.startsWith('/accounts')) navigate('/accounts');
   }, [navigate, location.pathname]);
 
-  // 浏览器后退/前进（POP）或刷新加载：按 URL ?account= 恢复选中账号
-  const navigationType = useNavigationType();
+  // URL 变化或账号加载完成后，按 ?account= 恢复选中账号。
+  // 不依赖 selectedAccount，避免点击时先更新状态、导航尚未提交而被旧 URL 重置。
   useEffect(() => {
-    if (navigationType !== 'POP' || activeTab !== 'accounts') return;
+    if (activeTab !== 'accounts') return;
     const urlAccountId = new URLSearchParams(location.search).get('account');
     const next = urlAccountId ? accounts.find((a) => a.id === urlAccountId) ?? null : null;
-    console.warn('[DBG-ACC] POP-sync', { param: urlAccountId, next: next?.id ?? null, cur: selectedAccount?.id ?? null, accountsLoaded: accounts.length });
-    if ((selectedAccount?.id ?? null) !== (next?.id ?? null)) setSelectedAccount(next);
-  }, [navigationType, activeTab, location.search, accounts, selectedAccount]);
+    setSelectedAccount((current) => {
+      console.warn('[DBG-ACC] URL-sync', { param: urlAccountId, next: next?.id ?? null, cur: current?.id ?? null, accountsLoaded: accounts.length });
+      return (current?.id ?? null) === (next?.id ?? null) ? current : next;
+    });
+  }, [activeTab, location.search, accounts]);
 
   // Modals State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -263,6 +267,27 @@ export function App() {
       } catch { /* ignore */ }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 下载队列 badge：轮询 pending+running 数量（粗粒度即可，下载页内部有更快的进度轮询）
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const rows = await api.listDownloads();
+        if (alive) {
+          setDownloadsActive(
+            rows.filter((r) => r.status === 'pending' || r.status === 'running').length
+          );
+        }
+      } catch { /* 静默，下轮重试 */ }
+    };
+    load();
+    const timer = window.setInterval(load, 15000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
   }, []);
 
   // ---------- 账号操作 ----------
@@ -603,13 +628,14 @@ export function App() {
           activeTab={activeTab}
           onTabChange={(tab) => {
             // 切回 accounts 时恢复上次打开的账号详情（仅详情页返回按钮清空该记录），
-            // 切走其它 tab 时保留选中态，让下次回来能继续
+            // 切走其它 tab 时保留选中态，让下次回来还能继续
             if (tab === 'accounts' && selectedAccount) {
               navigate(`/accounts?account=${encodeURIComponent(selectedAccount.id)}`);
             } else {
               setActiveTab(tab);
             }
           }}
+          downloadsActive={downloadsActive}
           accountsCount={accounts.length}
           totalItemsCount={scrapedItems.length}
           theme={theme}
@@ -684,8 +710,6 @@ export function App() {
                     accounts={accounts}
                     onSelectAccount={openAccountDetail}
                     onOpenCreateModal={() => setIsCreateModalOpen(true)}
-                    onOpenLoginModal={(acc) => setLoginModalAccount(acc)}
-                    onQuickCheckHealth={handleQuickCheckHealth}
                     onRefreshProfiles={handleRefreshProfiles}
                     onRefreshProfile={handleRefreshProfile}
                     profileRefresh={profileRefresh}

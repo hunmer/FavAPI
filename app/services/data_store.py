@@ -100,8 +100,27 @@ _CONTENT_URL_TEMPLATES = {
     "douyin": "https://www.douyin.com/video/{content_id}",
     "bilibili": "https://www.bilibili.com/video/{content_id}",
     "xiaohongshu": "https://www.xiaohongshu.com/explore/{content_id}",
-    "youtube": "https://www.youtube.com/watch?v={content_id}",
+    # YouTube 收藏的是播放列表（playlistId），watch?v= 打不开
+    "youtube": "https://www.youtube.com/playlist?list={content_id}",
+    "kuaishou": "https://www.kuaishou.com/short-video/{content_id}",
 }
+
+
+def _item_detail_url(platform: str, content_id: str, raw: dict) -> str | None:
+    """按平台拼条目详情页 URL；拼不出可靠链接的平台返回 None。
+
+    tiktok / threads 的 content_id（数字 id/pk）无法独立成链，需从
+    raw_data 里补作者 handle / 帖子 shortcode。
+    """
+    if platform == "tiktok":
+        handle = str((raw.get("author") or {}).get("uniqueId") or "").strip()
+        return f"https://www.tiktok.com/@{handle}/video/{content_id}" if handle else None
+    if platform == "threads":
+        code = str(raw.get("code") or raw.get("shortcode") or "").strip()
+        username = str((raw.get("user") or {}).get("username") or "").strip()
+        return f"https://www.threads.com/@{username}/post/{code}" if code and username else None
+    template = _CONTENT_URL_TEMPLATES.get(platform, "")
+    return template.format(content_id=content_id) or None
 
 
 async def list_favorites(
@@ -222,7 +241,7 @@ async def list_favorites(
             "fav_title": r.get("fav_title") or None,
             "collected_at": r.get("collected_at"),
             "fetched_at": r.get("fetched_at"),
-            "url": source_url or (_CONTENT_URL_TEMPLATES.get(r["platform"], "").format(content_id=r["content_id"]) or None),
+            "url": source_url or _item_detail_url(r["platform"], r["content_id"], raw),
             "description": raw.get("content") or None,
             "tags": [str(t) for t in tags] if isinstance(tags, list) else [],
             "tagged_at": r.get("tagged_at"),

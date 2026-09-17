@@ -301,21 +301,6 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
       {/* Right Column: Interactive Calendar & Rules (1/3) */}
       <div className="w-full lg:w-[340px] xl:w-[380px] shrink-0 flex flex-col gap-6">
         <CalendarCard />
-
-        <div className="bg-white dark:bg-[#161B26] rounded-3xl p-5 border border-slate-100 dark:border-slate-800 shadow-sm">
-          <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-2">Cron 表达式简易说明</h4>
-          <div className="text-xs text-slate-500 dark:text-slate-400 flex flex-col gap-2 leading-relaxed">
-            <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 font-mono text-[11px] text-slate-700 dark:text-slate-300">
-              0 18 * * * (每天下午 18:00 执行)
-            </div>
-            <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 font-mono text-[11px] text-slate-700 dark:text-slate-300">
-              0 23 * * 0 (每周日晚 23:00 全量更新)
-            </div>
-            <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 font-mono text-[11px] text-slate-700 dark:text-slate-300">
-              0 */2 * * * (每 2 小时心跳检查)
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Create Schedule Modal */}

@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { ScrapedItem } from '../../types';
-import { ExternalLink, Link2, Trash2, UserRound } from 'lucide-react';
+import { Download, ExternalLink, Link2, Trash2, UserRound } from 'lucide-react';
 import { useDismiss } from '../../hooks/useDismiss';
 
 /** 收藏卡片/列表行共用的操作菜单项 */
@@ -38,6 +38,8 @@ export interface ItemActionMenuProps {
   onCopyUrl?: (item: ScrapedItem) => void;
   /** 用该条收藏所属账号的隔离浏览器打开（session 浏览器） */
   onOpenWithAccount?: (item: ScrapedItem) => void;
+  /** 加入下载队列（默认 yt-dlp） */
+  onDownload?: (item: ScrapedItem) => void;
   onDelete?: (item: ScrapedItem) => void;
 }
 
@@ -50,10 +52,12 @@ export const ItemActionMenu: React.FC<ItemActionMenuProps> = ({
   onOpenExternal,
   onCopyUrl,
   onOpenWithAccount,
+  onDownload,
   onDelete,
 }) => {
-  // 点击其他区域 / 右键 / 滚动 / 缩放时关闭
-  useDismiss(onClose);
+  // 点击其他区域 / 右键 / 滚动 / 缩放时关闭（浮层内部点击由菜单项 onClick 自行关闭）
+  const rootRef = useRef<HTMLDivElement>(null);
+  useDismiss(onClose, true, rootRef);
 
   const hasUrl = !!item.url;
   const act = (fn?: (item: ScrapedItem) => void) => {
@@ -63,6 +67,7 @@ export const ItemActionMenu: React.FC<ItemActionMenuProps> = ({
 
   return (
     <div
+      ref={rootRef}
       className="fixed z-[60] py-1 w-40 rounded-xl bg-white dark:bg-[#161B26] border border-slate-200 dark:border-slate-700 shadow-lg overflow-hidden anim-modal-enter"
       style={{
         left: Math.max(8, Math.min(x, window.innerWidth - 168)),
@@ -74,6 +79,7 @@ export const ItemActionMenu: React.FC<ItemActionMenuProps> = ({
       <MenuItem icon={ExternalLink} label="新窗口打开" disabled={!hasUrl} onClick={() => act(onOpenExternal)} />
       <MenuItem icon={Link2} label="复制URL" disabled={!hasUrl} onClick={() => act(onCopyUrl)} />
       <MenuItem icon={UserRound} label="账号打开" disabled={!hasUrl} onClick={() => act(onOpenWithAccount)} />
+      <MenuItem icon={Download} label="下载视频" disabled={!hasUrl} onClick={() => act(onDownload)} />
       <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
       <MenuItem icon={Trash2} label="删除" danger onClick={() => act(onDelete)} />
     </div>

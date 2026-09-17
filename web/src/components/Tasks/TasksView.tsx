@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { TaskRecord, PlatformId } from '../../types';
 import { PLATFORMS } from '../../data/platforms';
+import { DropdownSelect } from '../DropdownSelect';
+import { SiteIcon } from '../SiteIcon';
 import {
   ListTodo,
   RefreshCw,
@@ -107,16 +109,19 @@ export const TasksView: React.FC<TasksViewProps> = ({
 
         <div className="flex items-center gap-2">
           {/* Platform select */}
-          <select
+          <DropdownSelect
+            className="w-44 shrink-0"
             value={platformFilter}
-            onChange={(e) => setPlatformFilter(e.target.value)}
-            className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 focus:outline-none"
-          >
-            <option value="all">全部平台</option>
-            {PLATFORMS.filter((p) => p.isSupported).map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
+            onChange={setPlatformFilter}
+            options={[
+              { id: 'all', label: '全部平台' },
+              ...PLATFORMS.filter((p) => p.isSupported).map((p) => ({
+                id: p.id,
+                label: p.name,
+                icon: <SiteIcon platform={p.id} name={p.name} className="w-3.5 h-3.5" />,
+              })),
+            ]}
+          />
 
           {/* Search */}
           <div className="relative">

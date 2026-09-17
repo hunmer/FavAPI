@@ -135,11 +135,6 @@ export const CreateAccountModal: React.FC<CreateAccountModalProps> = ({
             )}
           </div>
 
-          <div className="bg-amber-50/70 dark:bg-amber-950/60 p-3 rounded-xl border border-amber-200/60 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
-            <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-            <span>创建后，服务将为该账号分配专属独立的浏览器 Profile 隔离目录，确保 Cookies 与多账号登录态互不干扰。</span>
-          </div>
-
           {/* Buttons */}
           <div className="pt-2 flex items-center justify-end gap-2.5">
             <button

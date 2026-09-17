@@ -266,15 +266,25 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose,
               <span className="text-xs text-slate-400">
                 归属账号: {item.accountName}
               </span>
-              <a
-                href={item.url}
-                target="_blank"
-                rel="noreferrer"
-                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 text-white text-xs font-bold rounded-xl shadow-xs inline-flex items-center gap-1.5"
-              >
-                前往原站页面
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
+              {item.url ? (
+                <a
+                  href={item.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 text-white text-xs font-bold rounded-xl shadow-xs inline-flex items-center gap-1.5"
+                >
+                  前往原站页面
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              ) : (
+                <span
+                  title="该条目没有可用的原站链接"
+                  className="px-4 py-2 bg-slate-400 text-white text-xs font-bold rounded-xl inline-flex items-center gap-1.5 cursor-not-allowed opacity-70"
+                >
+                  无原站链接
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </span>
+              )}
             </div>
           </div>
         </div>

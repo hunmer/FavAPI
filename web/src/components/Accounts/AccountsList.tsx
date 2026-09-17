@@ -2,15 +2,13 @@ import React, { useState } from 'react';
 import { Account, AccountStatus, PlatformId } from '../../types';
 import { PLATFORMS } from '../../data/platforms';
 import * as api from '../../api';
-import { Plus, CheckCircle2, AlertTriangle, Ban, RefreshCw, QrCode, ArrowUpRight, Search, Clock, Monitor, ChevronRight } from 'lucide-react';
+import { Plus, CheckCircle2, AlertTriangle, Ban, RefreshCw, ArrowUpRight, Search, Clock, Monitor, ChevronRight } from 'lucide-react';
 import { SiteIcon, usePlatformInfos } from '../SiteIcon';
 
 interface AccountsListProps {
   accounts: Account[];
   onSelectAccount: (account: Account) => void;
   onOpenCreateModal: () => void;
-  onOpenLoginModal: (account: Account) => void;
-  onQuickCheckHealth: (account: Account) => void;
   /** 批量刷新账号身份信息（昵称/头像/收藏夹）；结果提示由 App 层负责。 */
   onRefreshProfiles: () => Promise<api.RefreshProfilesResult>;
   onRefreshProfile: (account: Account) => Promise<void>;
@@ -22,8 +20,6 @@ export const AccountsList: React.FC<AccountsListProps> = ({
   accounts,
   onSelectAccount,
   onOpenCreateModal,
-  onOpenLoginModal,
-  onQuickCheckHealth,
   onRefreshProfiles,
   onRefreshProfile,
   profileRefresh,
@@ -151,6 +147,7 @@ export const AccountsList: React.FC<AccountsListProps> = ({
                     : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                 }`}
               >
+                <SiteIcon platform={p.id} name={p.name} className="w-3.5 h-3.5" />
                 <span>{p.name.split(' ')[0]}</span>
                 <span className="text-[10px] opacity-70">({count})</span>
               </button>
@@ -226,8 +223,8 @@ export const AccountsList: React.FC<AccountsListProps> = ({
                       {account.name}
                       <ArrowUpRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
                     </h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5">
-                      ID: {account.id}
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      主号昵称: {account.ownerNickname || '—'}
                     </p>
                   </div>
 
@@ -243,17 +240,13 @@ export const AccountsList: React.FC<AccountsListProps> = ({
                   )}
                 </div>
 
-                {/* Nickname & Folder counts preview (Bilibili/XHS specific) */}
-                {account.ownerNickname && (
+                {/* Folder counts preview (Bilibili/XHS specific) */}
+                {account.folders && (
                   <div className="mt-3 py-2 px-3 bg-slate-50 dark:bg-slate-800 rounded-xl text-xs text-slate-700 dark:text-slate-300 flex items-center justify-between border border-slate-100 dark:border-slate-700">
-                    <span className="font-medium text-slate-600 dark:text-slate-400">
-                      主号昵称: <strong className="text-slate-900 dark:text-white">{account.ownerNickname}</strong>
+                    <span className="font-medium text-slate-600 dark:text-slate-400">收藏夹</span>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                      {account.folders.length} 个
                     </span>
-                    {account.folders && (
-                      <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                        {account.folders.length} 个收藏夹
-                      </span>
-                    )}
                   </div>
                 )}
 
@@ -273,24 +266,6 @@ export const AccountsList: React.FC<AccountsListProps> = ({
               {/* Bottom Action Buttons */}
               <div className="pt-4 mt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5">
-                  {account.platform !== 'wechat' && <button
-                    type="button"
-                    onClick={() => onOpenLoginModal(account)}
-                    className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors inline-flex items-center gap-1"
-                    title="在真实浏览器窗口中扫码续期"
-                  >
-                    <QrCode className="w-3.5 h-3.5" />
-                    {account.status === 'expired' ? '重新扫码' : '扫码登录'}
-                  </button>}
-
-                  {account.platform !== 'wechat' && <button
-                    type="button"
-                    onClick={() => onQuickCheckHealth(account)}
-                    className="px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                    title="验证当前登录凭据是否有效"
-                  >
-                    检查
-                  </button>}
                   {account.platform !== 'wechat' && <button
                     type="button"
                     onClick={() => onRefreshProfile(account)}

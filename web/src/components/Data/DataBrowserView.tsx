@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ScrapedItem, Account } from '../../types';
 import { PLATFORMS } from '../../data/mockFavData';
 import {
@@ -26,11 +26,14 @@ import {
   Trash2,
   CheckSquare,
   ChevronDown,
+  Download,
 } from 'lucide-react';
 import { ItemDetailModal } from './ItemDetailModal';
 import { DataItemCard } from './DataItemCard';
 import { ItemActionMenu } from './ItemActionMenu';
+import { DownloadConfirmModal } from './DownloadConfirmModal';
 import { SiteIcon } from '../SiteIcon';
+import { DropdownSelect } from '../DropdownSelect';
 import * as api from '../../api';
 import { useDismiss } from '../../hooks/useDismiss';
 import { useSearchParams } from 'react-router-dom';
@@ -87,9 +90,6 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
   const [selectedAccountId, setSelectedAccountId] = useState<string>(
     searchParamsInit().get('account') || initialAccountId || 'all'
   );
-  // 账号选择器（自定义折叠列表：原生 select 的 option 无法嵌入平台图标）
-  const [accountListOpen, setAccountListOpen] = useState(false);
-  const selectedAccount = accounts.find((a) => a.id === selectedAccountId);
   // 收藏夹选择器同款交互
   const [folderListOpen, setFolderListOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState(externalSearchQuery || searchParamsInit().get('q') || '');
@@ -135,8 +135,9 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
   const [deleteAlsoContents, setDeleteAlsoContents] = useState(false);
   const [tagDeleting, setTagDeleting] = useState(false);
 
-  // 点击任意处关闭右键菜单
-  useDismiss(() => setCtxMenu(null), !!ctxMenu);
+  // 点击任意处关闭右键菜单（浮层内部点击由按钮 onClick 自行处理）
+  const tagMenuRef = useRef<HTMLDivElement>(null);
+  useDismiss(() => setCtxMenu(null), !!ctxMenu, tagMenuRef);
 
   const openDeleteConfirm = async (tag: string) => {
     setCtxMenu(null);
@@ -356,12 +357,21 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
 
   // ---------- 卡片右键/dots 菜单动作 ----------
   const openExternal = (item: ScrapedItem) => {
-    if (!item.url) return;
-    window.open(item.url, '_blank', 'noopener,noreferrer');
+    if (!item.url) {
+      showToast?.('该条目无链接（刷新页面重新拉取后重试）', 'error');
+      return;
+    }
+    // window.open 被弹窗拦截器拦截时静默返回 null，需明确提示
+    if (!window.open(item.url, '_blank', 'noopener,noreferrer')) {
+      showToast?.('新窗口被浏览器拦截，请允许本站弹窗后重试（地址栏右侧有拦截图标）', 'error');
+    }
   };
 
   const copyUrl = async (item: ScrapedItem) => {
-    if (!item.url) return;
+    if (!item.url) {
+      showToast?.('该条目无链接（刷新页面重新拉取后重试）', 'error');
+      return;
+    }
     try {
       await navigator.clipboard.writeText(item.url);
       showToast?.('已复制链接地址');
@@ -372,7 +382,10 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
 
   /** 账号打开：用该条收藏所属账号的隔离浏览器（session）打开原站链接 */
   const openWithAccount = async (item: ScrapedItem) => {
-    if (!item.url) return;
+    if (!item.url) {
+      showToast?.('该条目无链接（刷新页面重新拉取后重试）', 'error');
+      return;
+    }
     try {
       const res = await api.toggleBrowse(item.accountId, item.url);
       showToast?.(
@@ -385,6 +398,53 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
     } catch (err: any) {
       showToast?.(err?.message || '账号浏览器打开失败', 'error');
     }
+  };
+
+  /** 下载视频：弹窗选下载器后入队（单条/批量共用），进度在「下载队列」页查看 */
+  const [downloadConfirm, setDownloadConfirm] = useState<{ items: ScrapedItem[] } | null>(null);
+  const [downloadSubmitting, setDownloadSubmitting] = useState(false);
+
+  const downloadItem = (item: ScrapedItem) => {
+    if (!item.url) {
+      showToast?.('该条目无链接（刷新页面重新拉取后重试）', 'error');
+      return;
+    }
+    setDownloadConfirm({ items: [item] });
+  };
+
+  const confirmDownload = async (downloader: api.DownloaderId) => {
+    if (!downloadConfirm || downloadSubmitting) return;
+    setDownloadSubmitting(true);
+    const results = await Promise.allSettled(
+      downloadConfirm.items
+        .filter((i) => i.url)
+        .map((i) =>
+          api.createDownload({
+            content_id: i.id,
+            platform: i.platform,
+            account_id: i.accountId || '',
+            title: i.title,
+            url: i.url,
+            downloader,
+          }),
+        ),
+    );
+    const ok = results.filter((r) => r.status === 'fulfilled').length;
+    const failed = results.length - ok;
+    setDownloadSubmitting(false);
+    setDownloadConfirm(null);
+    if (ok) showToast?.(`已加入下载队列 ${ok} 条${failed ? `，失败 ${failed} 条` : ''}`, failed ? 'info' : 'success');
+    else showToast?.('加入下载队列失败', 'error');
+  };
+
+  /** 批量下载所选（selectedKeys 跨页，从全量 serverItems 还原条目） */
+  const downloadSelected = () => {
+    const targets = serverItems.filter((i) => selectedKeys.has(itemKey(i)) && i.url);
+    if (!targets.length) {
+      showToast?.('所选条目均无可下载链接', 'error');
+      return;
+    }
+    setDownloadConfirm({ items: targets });
   };
 
   // 列表视图行右键菜单
@@ -649,72 +709,23 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                 />
               )}
             </div>
-            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setAccountListOpen((v) => !v)}
-                className="w-full px-3 py-2 flex items-center justify-between gap-2 text-xs font-medium text-slate-800 dark:text-slate-200 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-              >
-                <span className="flex items-center gap-1.5 min-w-0">
-                  {selectedAccount ? (
-                    <SiteIcon platform={selectedAccount.platform} name={selectedAccount.name} className="w-3.5 h-3.5" />
-                  ) : (
-                    <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  )}
-                  <span className="truncate">
-                    {selectedAccount
-                      ? `${selectedAccount.name} (${accountCounts.get(selectedAccount.id) ?? 0})`
-                      : `全部账号 (${totalAll})`}
-                  </span>
-                </span>
-                <ChevronDown
-                  className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform ${accountListOpen ? 'rotate-180' : ''}`}
-                />
-              </button>
-              {accountListOpen && (
-                <div className="border-t border-slate-100 dark:border-slate-700 max-h-52 overflow-y-auto bg-white dark:bg-slate-800">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedAccountId('all');
-                      setSelectedFolder('all');
-                      setSelectedAuthor('all');
-                      setAccountListOpen(false);
-                    }}
-                    className={`w-full px-3 py-2 flex items-center gap-1.5 text-xs cursor-pointer transition-colors ${
-                      selectedAccountId === 'all'
-                        ? 'bg-violet-50 dark:bg-violet-950 text-violet-700 dark:text-violet-400 font-semibold'
-                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
-                    }`}
-                  >
-                    <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    <span className="truncate">全部账号 ({totalAll})</span>
-                  </button>
-                  {accounts.map((acc) => (
-                      <button
-                        key={acc.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedAccountId(acc.id);
-                          setSelectedFolder('all');
-                          setSelectedAuthor('all');
-                          setAccountListOpen(false);
-                        }}
-                        className={`w-full px-3 py-2 flex items-center gap-1.5 text-xs cursor-pointer transition-colors ${
-                          selectedAccountId === acc.id
-                            ? 'bg-violet-50 dark:bg-violet-950 text-violet-700 dark:text-violet-400 font-semibold'
-                            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
-                        }`}
-                      >
-                        <SiteIcon platform={acc.platform} name={acc.name} className="w-3.5 h-3.5" />
-                        <span className="truncate">
-                          {acc.name} ({accountCounts.get(acc.id) ?? 0})
-                        </span>
-                      </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <DropdownSelect
+              value={selectedAccountId}
+              onChange={(id) => {
+                setSelectedAccountId(id);
+                setSelectedFolder('all');
+                setSelectedAuthor('all');
+              }}
+              options={[
+                { id: 'all', label: '全部账号', count: totalAll },
+                ...accounts.map((acc) => ({
+                  id: acc.id,
+                  label: acc.name,
+                  count: accountCounts.get(acc.id) ?? 0,
+                  icon: <SiteIcon platform={acc.platform} name={acc.name} className="w-3.5 h-3.5" />,
+                })),
+              ]}
+            />
           </div>
 
           {/* Folder selector（与账号选择器同款折叠列表） */}
@@ -1239,6 +1250,15 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
             </button>
             <button
               type="button"
+              onClick={downloadSelected}
+              disabled={selectedKeys.size === 0}
+              className="px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              下载所选
+            </button>
+            <button
+              type="button"
               onClick={() => setItemsDeleteConfirm(true)}
               disabled={selectedKeys.size === 0}
               className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
@@ -1288,6 +1308,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
               onOpenExternal={openExternal}
               onCopyUrl={copyUrl}
               onOpenWithAccount={openWithAccount}
+              onDownload={downloadItem}
               onDelete={setSingleDelete}
             />
           ))}
@@ -1485,13 +1506,26 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
           onOpenExternal={openExternal}
           onCopyUrl={copyUrl}
           onOpenWithAccount={openWithAccount}
+          onDownload={downloadItem}
           onDelete={setSingleDelete}
+        />
+      )}
+
+      {/* 下载确认弹窗（单条右键菜单 / 批量工具栏共用） */}
+      {downloadConfirm && (
+        <DownloadConfirmModal
+          count={downloadConfirm.items.length}
+          singleTitle={downloadConfirm.items.length === 1 ? downloadConfirm.items[0].title : undefined}
+          confirming={downloadSubmitting}
+          onConfirm={confirmDownload}
+          onClose={() => !downloadSubmitting && setDownloadConfirm(null)}
         />
       )}
 
       {/* 标签右键菜单 */}
       {ctxMenu && (
         <div
+          ref={tagMenuRef}
           className="fixed z-[60] py-1 rounded-xl bg-white dark:bg-[#161B26] border border-slate-200 dark:border-slate-700 shadow-lg overflow-hidden anim-modal-enter"
           style={{ left: Math.min(ctxMenu.x, window.innerWidth - 140), top: ctxMenu.y }}
           onClick={(e) => e.stopPropagation()}

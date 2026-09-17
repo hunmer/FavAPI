@@ -23,6 +23,8 @@ interface SidebarProps {
   onTabChange: (tab: NavTab) => void;
   accountsCount?: number;
   totalItemsCount?: number;
+  /** 下载队列进行中条数（pending+running），>0 时在下载图标上显示 badge */
+  downloadsActive?: number;
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
   avatarUrl?: string | null;
@@ -31,6 +33,7 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   onTabChange,
+  downloadsActive = 0,
   theme,
   onToggleTheme,
   avatarUrl,
@@ -94,6 +97,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     />
                   )}
                   <Icon className="relative z-10 w-5 h-5 shrink-0" />
+                  {/* 下载队列进行中数量 badge */}
+                  {item.id === 'downloads' && downloadsActive > 0 && (
+                    <span className="absolute -top-0.5 -right-0.5 z-20 min-w-[18px] h-[18px] px-1 rounded-full bg-sky-500 text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-[#14161C]">
+                      {downloadsActive > 99 ? '99+' : downloadsActive}
+                    </span>
+                  )}
                 </button>
               </div>
             );

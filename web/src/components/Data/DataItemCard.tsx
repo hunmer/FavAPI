@@ -20,6 +20,8 @@ interface DataItemCardProps {
   onCopyUrl?: (item: ScrapedItem) => void;
   /** 用该条收藏所属账号的隔离浏览器打开（session 浏览器） */
   onOpenWithAccount?: (item: ScrapedItem) => void;
+  /** 加入下载队列（默认 yt-dlp） */
+  onDownload?: (item: ScrapedItem) => void;
   onDelete?: (item: ScrapedItem) => void;
 }
 
@@ -35,6 +37,7 @@ export const DataItemCard: React.FC<DataItemCardProps> = ({
   onOpenExternal,
   onCopyUrl,
   onOpenWithAccount,
+  onDownload,
   onDelete,
 }) => {
   // mock 未收录的平台（如 threads）回退到后端 /platforms 的 display_name
@@ -199,6 +202,7 @@ export const DataItemCard: React.FC<DataItemCardProps> = ({
           onOpenExternal={onOpenExternal}
           onCopyUrl={onCopyUrl}
           onOpenWithAccount={onOpenWithAccount}
+          onDownload={onDownload}
           onDelete={onDelete}
         />
       )}
