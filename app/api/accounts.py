@@ -4,7 +4,7 @@ import json
 import logging
 
 from fastapi import APIRouter, HTTPException, UploadFile, File
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from app import config
 
@@ -51,8 +51,12 @@ async def reload_platforms():
 
 @router.post("/{account_id}/refresh-profile")
 async def refresh_profile(account_id: str):
+    from app.platforms.base import BasePlatformAdapter
+
     account = await _get_account_or_404(account_id)
     adapter = _require_adapter(account["platform"])
+    if type(adapter).refresh_profile is BasePlatformAdapter.refresh_profile:
+        raise HTTPException(status_code=501, detail="该平台暂不支持身份刷新")
     try:
         await adapter.refresh_profile(account_manager.to_context(account))
     except Exception as exc:
@@ -258,6 +262,7 @@ async def list_accounts():
     accounts = await account_manager.list_accounts()
     for a in accounts:
         a["logging_in"] = account_manager.is_logging_in(a["account_id"])
+        a["avatar"] = account_manager.owner_avatar(a)
     return {"accounts": [AccountOut(**a).model_dump() for a in accounts]}
 
 
@@ -273,7 +278,17 @@ async def create_account(body: AccountCreate):
 @router.get("/{account_id}")
 async def get_account(account_id: str):
     account = await _get_account_or_404(account_id)
+    account["avatar"] = account_manager.owner_avatar(account)
     return AccountOut(**account).model_dump()
+
+
+@router.get("/{account_id}/avatar")
+async def get_account_avatar(account_id: str):
+    """下发本地化的账号头像（身份回填时落盘）；未落盘返回 404。"""
+    path = account_manager.avatar_path(account_id)
+    if path is None:
+        raise HTTPException(status_code=404, detail="头像未保存，请先执行登录态检查回填身份")
+    return FileResponse(path)
 
 
 @router.patch("/{account_id}")

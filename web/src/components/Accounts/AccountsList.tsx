@@ -14,6 +14,8 @@ interface AccountsListProps {
   /** 批量刷新账号身份信息（昵称/头像/收藏夹）；结果提示由 App 层负责。 */
   onRefreshProfiles: () => Promise<api.RefreshProfilesResult>;
   onRefreshProfile: (account: Account) => Promise<void>;
+  /** 批量刷新实时进度；null = 未在批量刷新（当前账号卡片高亮）。 */
+  profileRefresh: api.ProfileRefreshProgress | null;
 }
 
 export const AccountsList: React.FC<AccountsListProps> = ({
@@ -24,6 +26,7 @@ export const AccountsList: React.FC<AccountsListProps> = ({
   onQuickCheckHealth,
   onRefreshProfiles,
   onRefreshProfile,
+  profileRefresh,
 }) => {
   const [platformFilter, setPlatformFilter] = useState<string>('all');
   // mock 未收录的平台（如 threads）由此兜底 display_name / icon_url
@@ -101,10 +104,12 @@ export const AccountsList: React.FC<AccountsListProps> = ({
               }
             }}
             className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-2xl text-xs sm:text-sm font-bold shadow-sm border border-slate-200 dark:border-slate-700 transition-transform active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="重新拉取所有账号的昵称/头像/收藏夹信息（Bilibili、抖音、小红书）"
+            title="重新拉取所有账号的昵称/头像/收藏夹信息（除微信收藏外均支持）"
           >
             <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-            {refreshing ? '刷新中...' : '刷新账号信息'}
+            {refreshing
+              ? `刷新中 (${(profileRefresh?.done ?? 0) + 1}/${accounts.length})`
+              : '刷新账号信息'}
           </button>
 
           <button
@@ -171,11 +176,16 @@ export const AccountsList: React.FC<AccountsListProps> = ({
         {filteredAccounts.map((account, idx) => {
           const platform = PLATFORMS.find((p) => p.id === account.platform);
           const platformName = platform?.name || platformInfos[account.platform]?.display_name || account.platform;
+          const isRefreshing = profileRefresh?.accountId === account.id;
           return (
             <div
               key={account.id}
               id={`account-card-${account.id}`}
-              className="anim-card-enter bg-white dark:bg-[#161B26] rounded-[26px] p-5 sm:p-6 border border-slate-200/80 dark:border-slate-800 shadow-2xs hover:shadow-md dark:hover:shadow-slate-950/40 transition-all flex flex-col justify-between group"
+              className={`anim-card-enter bg-white dark:bg-[#161B26] rounded-[26px] p-5 sm:p-6 border shadow-2xs hover:shadow-md dark:hover:shadow-slate-950/40 transition-all flex flex-col justify-between group ${
+                isRefreshing
+                  ? 'border-indigo-400 dark:border-indigo-500 ring-2 ring-indigo-400/40 shadow-md'
+                  : 'border-slate-200/80 dark:border-slate-800'
+              }`}
               style={{ animationDelay: `${Math.min(idx * 30, 240)}ms` }}
             >
               {/* Top row: Platform & Status */}
@@ -190,6 +200,12 @@ export const AccountsList: React.FC<AccountsListProps> = ({
                       <SiteIcon platform={account.platform} name={platformName} className="w-3.5 h-3.5" />
                       {platformName}
                     </span>
+                    {isRefreshing && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950 px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800">
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                        刷新中 ({(profileRefresh?.done ?? 0) + 1}/{profileRefresh?.total})
+                      </span>
+                    )}
                     {account.isBrowserOpen && (
                       <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-sky-700 dark:text-sky-400 bg-sky-50 dark:bg-sky-950 px-2 py-0.5 rounded-full border border-sky-200 dark:border-sky-800">
                         <Monitor className="w-3 h-3" />

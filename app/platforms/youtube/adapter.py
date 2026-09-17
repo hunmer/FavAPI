@@ -40,6 +40,31 @@ class YouTubeAdapter(BasePlatformAdapter):
         async with browser.session(account.profile_path, headless=True) as ctx:
             return browser.has_login_cookies(await ctx.cookies(), self._COOKIE_KEYS)
 
+    async def refresh_profile(self, account: AccountContext) -> None:
+        """登录成功后回填主人信息：首页右上角头像按钮 DOM（img.alt=频道名）。"""
+        async with browser.session(account.profile_path, headless=True) as ctx:
+            page = ctx.pages[0] if ctx.pages else await ctx.new_page()
+            await page.goto("https://www.youtube.com/", wait_until="domcontentloaded")
+            try:
+                await page.wait_for_selector("#avatar-btn img", timeout=10_000)
+            except Exception:
+                logger.info("[%s] 首页无头像按钮（可能未登录），跳过身份回填", account.account_id)
+                return
+            info = await page.evaluate(
+                """() => {
+                    const img = document.querySelector('#avatar-btn img');
+                    return img ? {name: img.alt, avatar: img.src} : null;
+                }"""
+            )
+        if not info:
+            return
+        owner = {"name": info.get("name"), "avatar": info.get("avatar")}
+        from app.services import account_manager  # 延迟导入避免循环依赖
+
+        saved = await account_manager.save_owner(account.account_id, "youtube", {"owner": owner})
+        if saved is not None:
+            logger.info("[%s] 身份信息已回填：%s", account.account_id, owner.get("name"))
+
     async def fetch_favorites(self, account: AccountContext, params: dict, on_batch=None) -> FetchResult:
         target = int(params.get("count") or 0)
         logger.info("[%s] YouTube 喜欢的视频抓取开始：url=%s count=%s",

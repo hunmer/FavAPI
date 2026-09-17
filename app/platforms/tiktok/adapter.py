@@ -343,8 +343,6 @@ class TikTokAdapter(DeclarativeAdapter):
         secUid 不落 cookie 且个人主页 SSR 在登录态下不稳定（实测），
         webapp 身份的唯一可靠来源是 app-context（SSR 或本接口）。
         """
-        import json as _json  # 局部导入，避免与函数内 account_manager 流程耦合
-
         cookie_header = await api_client.profile_cookie_header(account.profile_path)
         try:
             me = await asyncio.to_thread(api_client.fetch_app_context, cookie_header)
@@ -360,19 +358,10 @@ class TikTokAdapter(DeclarativeAdapter):
         }
         from app.services import account_manager  # 延迟导入避免循环依赖
 
-        row = await account_manager.get_account(account.account_id)
-        if row is None:
-            return
-        try:
-            extra = _json.loads(row.get("extra") or "{}")
-        except (TypeError, _json.JSONDecodeError):
-            extra = {}
-        extra["tiktok"] = {"owner": owner}
-        await account_manager.update_account(
-            account.account_id, extra=_json.dumps(extra, ensure_ascii=False)
-        )
-        logger.info("[%s] 身份信息已回填：%s(@%s)",
-                    account.account_id, owner.get("nickname"), owner.get("unique_id"))
+        saved = await account_manager.save_owner(account.account_id, "tiktok", {"owner": owner})
+        if saved is not None:
+            logger.info("[%s] 身份信息已回填：%s(@%s)",
+                        account.account_id, owner.get("nickname"), owner.get("unique_id"))
 
 
 def _count_of(params: dict) -> int:

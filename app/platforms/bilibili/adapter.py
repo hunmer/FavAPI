@@ -222,7 +222,7 @@ class BilibiliAdapter(BasePlatformAdapter):
             owner = {
                 "mid": str(data.get("mid") or mid),
                 "name": data.get("uname"),
-                "face": data.get("face"),
+                "avatar": data.get("face"),  # nav 原字段 face，统一输出为 avatar
             }
             headers = {"Referer": f"https://space.bilibili.com/{owner['mid']}/favlist"}
             folders_data = await self._api_get(
@@ -383,17 +383,13 @@ class BilibiliAdapter(BasePlatformAdapter):
         return data.get("data") or {}
 
     async def _save_owner(self, account_id: str, meta: dict):
-        """记录收藏夹主人信息到账号 extra（延迟导入避免循环依赖）。"""
+        """记录收藏夹主人信息到账号 extra（头像落盘防过期，延迟导入避免循环依赖）。"""
         owner = meta.get("owner") or {}
         if not owner.get("mid"):
             return
         from app.services import account_manager
 
-        row = await account_manager.get_account(account_id)
-        if row is None:
-            return
-        extra = row.get("extra") or {}
-        extra["bilibili"] = {"owner": owner, "folders": meta.get("folders") or []}
-        await account_manager.update_account(
-            account_id, extra=json.dumps(extra, ensure_ascii=False)
+        await account_manager.save_owner(
+            account_id, "bilibili",
+            {"owner": owner, "folders": meta.get("folders") or []},
         )

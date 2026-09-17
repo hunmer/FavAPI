@@ -416,8 +416,6 @@ class DouyinAdapter(BasePlatformAdapter):
 
         该接口带 a_bogus 签名无法直接构造请求，沿用收藏抓取的响应拦截方案。
         """
-        import json
-
         holder: dict = {}
         async with browser.session(account.profile_path, headless=True) as ctx:
             page = ctx.pages[0] if ctx.pages else await ctx.new_page()
@@ -456,19 +454,13 @@ class DouyinAdapter(BasePlatformAdapter):
             "sec_uid": str(user.get("sec_uid") or ""),
             "short_id": str(user.get("short_id") or ""),
             "nickname": user.get("nickname"),
-            "avatar": _avatar(user),  # 带签名 CDN 链接，过期后重新刷新即可
+            "avatar": _avatar(user),  # 带签名 CDN 原链，save_owner 落盘防过期
         }
         from app.services import account_manager  # 延迟导入避免循环依赖
 
-        row = await account_manager.get_account(account.account_id)
-        if row is None:
-            return
-        extra = row.get("extra") or {}
-        extra["douyin"] = {"owner": owner}
-        await account_manager.update_account(
-            account.account_id, extra=json.dumps(extra, ensure_ascii=False)
-        )
-        logger.info("[%s] 身份信息已回填：%s(%s)", account.account_id, owner.get("nickname"), owner["uid"])
+        saved = await account_manager.save_owner(account.account_id, "douyin", {"owner": owner})
+        if saved is not None:
+            logger.info("[%s] 身份信息已回填：%s(%s)", account.account_id, owner.get("nickname"), owner["uid"])
 
     async def fetch_favorites(
         self, account: AccountContext, params: dict, on_batch=None

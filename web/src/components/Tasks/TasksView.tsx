@@ -12,16 +12,19 @@ import {
   X,
   FileCode,
   Terminal,
+  Trash2,
 } from 'lucide-react';
 
 interface TasksViewProps {
   tasks: TaskRecord[];
   onManualRefresh: () => void;
+  onClearRecords: () => void | Promise<void>;
 }
 
 export const TasksView: React.FC<TasksViewProps> = ({
   tasks,
   onManualRefresh,
+  onClearRecords,
 }) => {
   const [platformFilter, setPlatformFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -60,6 +63,19 @@ export const TasksView: React.FC<TasksViewProps> = ({
           >
             <RefreshCw className="w-3.5 h-3.5" />
             立即刷新
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (tasks.length === 0) return;
+              if (window.confirm('确定要清空全部任务记录吗？此操作不可恢复。')) {
+                onClearRecords();
+              }
+            }}
+            className="px-3 py-2 rounded-xl bg-white dark:bg-[#161B26] border border-rose-200 dark:border-rose-900/60 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 text-xs font-semibold shadow-2xs inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            清空记录
           </button>
         </div>
       </div>

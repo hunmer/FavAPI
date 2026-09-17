@@ -77,11 +77,14 @@ export function App() {
   const [tagGroups, setTagGroups] = useState<api.TagGroupRow[]>([]);
   const [stats, setStats] = useState<api.StatsData | null>(null);
   const [browserOpenIds, setBrowserOpenIds] = useState<Set<string>>(new Set());
+  /** 批量身份刷新进度（正在刷新的账号 + 序号）；null = 未在批量刷新 */
+  const [profileRefresh, setProfileRefresh] = useState<api.ProfileRefreshProgress | null>(null);
 
   // 选中账号 ↔ URL ?account= 同步：UI 操作时 push 写入（后退键可退回列表），
   // 浏览器 POP 导航（后退/前进/手动改 hash/刷新）时以 URL 为准反推选中态
   const openAccountDetail = useCallback(
     (acc: Account) => {
+      console.warn('[DBG-ACC] openAccountDetail', acc.id);
       setSelectedAccount(acc);
       navigate(`/accounts?account=${encodeURIComponent(acc.id)}`);
     },
@@ -89,6 +92,7 @@ export function App() {
   );
 
   const closeAccountDetail = useCallback(() => {
+    console.warn('[DBG-ACC] closeAccountDetail');
     setSelectedAccount(null);
     if (location.pathname.startsWith('/accounts')) navigate('/accounts');
   }, [navigate, location.pathname]);
@@ -99,6 +103,7 @@ export function App() {
     if (navigationType !== 'POP' || activeTab !== 'accounts') return;
     const urlAccountId = new URLSearchParams(location.search).get('account');
     const next = urlAccountId ? accounts.find((a) => a.id === urlAccountId) ?? null : null;
+    console.warn('[DBG-ACC] POP-sync', { param: urlAccountId, next: next?.id ?? null, cur: selectedAccount?.id ?? null, accountsLoaded: accounts.length });
     if ((selectedAccount?.id ?? null) !== (next?.id ?? null)) setSelectedAccount(next);
   }, [navigationType, activeTab, location.search, accounts, selectedAccount]);
 
@@ -141,7 +146,10 @@ export function App() {
       const rows = await api.listAccounts();
       const mapped = rows.map((r) => api.toAccount(r, browserOpenIds));
       setAccounts(mapped);
-      setSelectedAccount((prev) => (prev ? mapped.find((a) => a.id === prev.id) || null : null));
+      setSelectedAccount((prev) => {
+        if (prev && !mapped.find((a) => a.id === prev.id)) console.warn('[DBG-ACC] reloadAccounts reset to null, prev =', prev.id);
+        return prev ? mapped.find((a) => a.id === prev.id) || null : null;
+      });
       return new Map(mapped.map((a) => [a.id, a.name] as [string, string]));
     } catch (e: any) {
       showToast(`账号列表加载失败：${e.message}`, 'error');
@@ -345,24 +353,36 @@ export function App() {
     }
   };
 
-  /** 批量刷新账号身份信息；结果 toast 由这里统一提示，组件只管 loading。 */
+  /** 批量刷新账号身份信息：逐账号串行（后端浏览器会话不支持并发），进度驱动列表高亮。 */
   const handleRefreshProfiles = async (): Promise<api.RefreshProfilesResult> => {
-    let res: api.RefreshProfilesResult;
-    try {
-      res = await api.refreshProfiles();
-    } catch (e: any) {
-      showToast(`身份信息刷新失败：${e.message}`, 'error');
-      throw e;
+    const results: api.RefreshProfilesResult['results'] = [];
+    const total = accounts.length;
+    for (let i = 0; i < total; i++) {
+      const acc = accounts[i];
+      setProfileRefresh({ accountId: acc.id, done: i, total });
+      try {
+        await api.refreshProfile(acc.id);
+        results.push({ account_id: acc.id, name: acc.name, status: 'ok', detail: '' });
+      } catch (e: any) {
+        const skipped = e.status === 501; // 平台未实现身份刷新
+        results.push({
+          account_id: acc.id, name: acc.name,
+          status: skipped ? 'skipped' : 'failed', detail: e.message || '',
+        });
+      }
     }
+    setProfileRefresh(null);
     await reloadAccounts();
-    const skipped = res.results.filter((r) => r.status === 'skipped').length;
-    const failedNames = res.results.filter((r) => r.status === 'failed').map((r) => r.name);
-    if (res.failed > 0) {
-      showToast(`刷新完成：成功 ${res.ok}，失败 ${res.failed}（${failedNames.join('、')}），详见服务日志`, 'error');
+    const ok = results.filter((r) => r.status === 'ok').length;
+    const failedNames = results.filter((r) => r.status === 'failed').map((r) => r.name);
+    const skippedNames = results.filter((r) => r.status === 'skipped').map((r) => r.name);
+    const suffix = skippedNames.length ? `，跳过 ${skippedNames.length} 个（${skippedNames.join('、')} 暂不支持）` : '';
+    if (failedNames.length) {
+      showToast(`刷新完成：成功 ${ok}，失败 ${failedNames.length}（${failedNames.join('、')}）${suffix}`, 'error');
     } else {
-      showToast(`刷新完成：成功 ${res.ok} 个${skipped ? `，${skipped} 个平台暂不支持` : ''}`);
+      showToast(`刷新完成：成功 ${ok} 个${suffix}`);
     }
-    return res;
+    return { ok, failed: failedNames.length, results };
   };
 
   // ---------- 抓取 ----------
@@ -582,9 +602,12 @@ export function App() {
         <Sidebar
           activeTab={activeTab}
           onTabChange={(tab) => {
-            setActiveTab(tab);
-            if (tab !== 'accounts') {
-              setSelectedAccount(null);
+            // 切回 accounts 时恢复上次打开的账号详情（仅详情页返回按钮清空该记录），
+            // 切走其它 tab 时保留选中态，让下次回来能继续
+            if (tab === 'accounts' && selectedAccount) {
+              navigate(`/accounts?account=${encodeURIComponent(selectedAccount.id)}`);
+            } else {
+              setActiveTab(tab);
             }
           }}
           accountsCount={accounts.length}
@@ -621,10 +644,7 @@ export function App() {
                 scrapedItems={scrapedItems}
                 schedules={schedules}
                 stats={stats}
-                onSelectAccount={(acc) => {
-                  setSelectedAccount(acc);
-                  setActiveTab('accounts');
-                }}
+                onSelectAccount={openAccountDetail}
                 onOpenCreateAccount={() => setIsCreateModalOpen(true)}
                 onViewAllData={(date) => navigate(date ? `/data?date=${date}&date_end=${date}` : '/data')}
                 onOpenScheduleTab={() => setActiveTab('schedule')}
@@ -668,6 +688,7 @@ export function App() {
                     onQuickCheckHealth={handleQuickCheckHealth}
                     onRefreshProfiles={handleRefreshProfiles}
                     onRefreshProfile={handleRefreshProfile}
+                    profileRefresh={profileRefresh}
                   />
                 )}
               </div>
@@ -701,6 +722,11 @@ export function App() {
                   onManualRefresh={() => {
                     reloadAccounts().then((map) => reloadTasks(map));
                     showToast('已从私有抓取服务同步最新任务执行状态');
+                  }}
+                  onClearRecords={async () => {
+                    const { deleted } = await api.clearTasks();
+                    await reloadTasks();
+                    showToast(`已清空任务记录（删除 ${deleted} 条）`);
                   }}
                 />
               </div>

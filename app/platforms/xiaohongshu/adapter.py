@@ -358,8 +358,6 @@ class XiaohongshuAdapter(BasePlatformAdapter):
 
     async def refresh_profile(self, account: AccountContext) -> None:
         """登录成功后回填主人信息：签名调 /user/me 取昵称/头像/红书号写入 extra。"""
-        import json
-
         async with browser.session(account.profile_path, headless=True) as ctx:
             page, closing = await _open_page(ctx)
             try:
@@ -378,15 +376,9 @@ class XiaohongshuAdapter(BasePlatformAdapter):
 
         from app.services import account_manager  # 延迟导入避免循环依赖
 
-        row = await account_manager.get_account(account.account_id)
-        if row is None:
-            return
-        extra = row.get("extra") or {}
-        extra["xiaohongshu"] = {"owner": owner}
-        await account_manager.update_account(
-            account.account_id, extra=json.dumps(extra, ensure_ascii=False)
-        )
-        logger.info("[%s] 身份信息已回填：%s(%s)", account.account_id, owner.get("nickname"), owner["user_id"])
+        saved = await account_manager.save_owner(account.account_id, "xiaohongshu", {"owner": owner})
+        if saved is not None:
+            logger.info("[%s] 身份信息已回填：%s(%s)", account.account_id, owner.get("nickname"), owner["user_id"])
 
     async def fetch_favorites(
         self, account: AccountContext, params: dict, on_batch=None

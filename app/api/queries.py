@@ -97,6 +97,12 @@ async def get_task(task_id: str):
     return TaskOut(**task).model_dump()
 
 
+@router.delete("/tasks")
+async def clear_tasks():
+    deleted = await data_store.clear_tasks()
+    return {"deleted": deleted}
+
+
 @router.get("/favorites/facets")
 async def favorite_facets(account_id: str | None = None, folder: str | None = None):
     """数据浏览过滤面板候选：总数、各账号计数、收藏夹/作者候选（可按账号+收藏夹联动收敛）。"""

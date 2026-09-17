@@ -28,6 +28,7 @@ class AccountOut(BaseModel):
     last_used_at: str | None = None
     created_at: str | None = None
     extra: dict[str, Any] = Field(default_factory=dict)
+    avatar: str | None = None  # extra.{platform}.owner.avatar 统一提取（本地化 URL）
 
 
 # ---------- 抓取 ----------

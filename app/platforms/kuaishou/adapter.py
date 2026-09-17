@@ -145,6 +145,23 @@ class KuaishouAdapter(DeclarativeAdapter):
         spec = json.loads((Path(base_dir) / "platform.json").read_text(encoding="utf-8"))
         super().__init__(spec, base_dir=Path(base_dir))
 
+    async def refresh_profile(self, account: AccountContext) -> None:
+        """登录成功后回填主人信息：profile/get 直读（昵称/头像，纯 HTTP 无需浏览器）。"""
+        cookie_header = await api_client.profile_cookie_header(account.profile_path)
+        profile = await asyncio.to_thread(api_client.fetch_profile, cookie_header)
+        owner = {
+            "eid": str(profile.get("eid") or ""),
+            "user_id": str(profile.get("user_id") or ""),
+            "nickname": profile.get("user_name"),
+            "avatar": profile.get("avatar"),
+        }
+        from app.services import account_manager  # 延迟导入避免循环依赖
+
+        saved = await account_manager.save_owner(account.account_id, constants.PLATFORM, {"owner": owner})
+        if saved is not None:
+            logger.info("[%s] 身份信息已回填：%s(%s)",
+                        account.account_id, owner.get("nickname"), owner["eid"])
+
     async def fetch_favorites(self, account: AccountContext, params: dict,
                               on_batch=None) -> FetchResult:
         if self.resolve_fetch_method(params) == "api":

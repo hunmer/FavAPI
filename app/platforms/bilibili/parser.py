@@ -74,7 +74,7 @@ def parse_resource_list(data: dict) -> dict:
         "owner": {
             "mid": str(upper.get("mid") or info.get("mid") or ""),
             "name": upper.get("name"),
-            "face": upper.get("face"),
+            "avatar": upper.get("face"),  # B 站原字段 face，统一输出为 avatar
         },
         "favorite": {
             "media_id": str(info.get("id") or ""),
@@ -87,7 +87,7 @@ def parse_resource_list(data: dict) -> dict:
 def parse_folder_list(data: dict) -> dict:
     """fav/folder/created/list-all 的 data → {owner, folders}。
 
-    该接口不含主人昵称/头像，owner.name/face 置空，由 resource/list 的 upper 补全。
+    该接口不含主人昵称/头像，owner.name/avatar 置空，由 resource/list 的 upper 补全。
     """
     folders = [
         {
@@ -101,4 +101,4 @@ def parse_folder_list(data: dict) -> dict:
         if f.get("id")
     ]
     owner_mid = next((str(f.get("mid")) for f in (data.get("list") or []) if f.get("mid")), "")
-    return {"owner": {"mid": owner_mid, "name": None, "face": None}, "folders": folders}
+    return {"owner": {"mid": owner_mid, "name": None, "avatar": None}, "folders": folders}

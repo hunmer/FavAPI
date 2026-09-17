@@ -1,7 +1,10 @@
-"""账号（Session）管理：CRUD + 登录流程状态 + cookie 快照。"""
+"""账号（Session）管理：CRUD + 登录流程状态 + cookie 快照 + 身份回填。"""
 import json
 import logging
 import shutil
+from pathlib import Path
+
+import httpx
 
 from app import config
 from app.database import db
@@ -10,6 +13,67 @@ from app.platforms.base import AccountContext
 from app.utils import new_id, now_iso
 
 logger = logging.getLogger("favapi.accounts")
+
+# 账号头像本地存储（各平台 owner.avatar 为带签名 CDN 链接，会过期，落盘后由本服务下发）
+AVATARS_DIR = config.DATA_DIR / "uploads" / "account_avatars"
+# Content-Type → 扩展名（兜底 .jpg，各平台头像实际均为 jpg/png/webp）
+_AVATAR_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif"}
+
+
+def avatar_url(account_id: str) -> str:
+    """头像的下发 URL（GET /api/v1/accounts/{id}/avatar）。"""
+    return f"/api/v1/accounts/{account_id}/avatar"
+
+
+def avatar_path(account_id: str) -> Path | None:
+    """已落盘的头像文件路径；无则 None。"""
+    if not AVATARS_DIR.exists():
+        return None
+    return next(iter(sorted(AVATARS_DIR.glob(f"{account_id}.*"))), None)
+
+
+async def _save_avatar_file(account_id: str, url: str) -> bool:
+    """下载头像到本地（替换旧文件）；失败仅告警，返回 False。"""
+    try:
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+            resp = await client.get(url)
+        resp.raise_for_status()
+        if not resp.content:
+            return False
+        ext = _AVATAR_TYPES.get(resp.headers.get("content-type", "").split(";")[0].strip(), ".jpg")
+        AVATARS_DIR.mkdir(parents=True, exist_ok=True)
+        for old in AVATARS_DIR.glob(f"{account_id}.*"):
+            old.unlink(missing_ok=True)
+        (AVATARS_DIR / f"{account_id}{ext}").write_bytes(resp.content)
+        return True
+    except Exception as exc:
+        logger.warning("账号 %s 头像下载失败（保留原链，下次刷新重试）：%s", account_id, exc)
+        return False
+
+
+async def save_owner(account_id: str, platform: str, data: dict) -> dict | None:
+    """各平台身份回填的统一入口：extra[platform] = data（形如 {"owner": {...}}）。
+
+    owner.avatar 为 http(s) 时先下载落盘防过期，成功后替换为本服务 URL
+    （avatar_url）；失败保留原链。账号不存在返回 None。
+    """
+    row = await get_account(account_id)
+    if row is None:
+        return None
+    owner = data.setdefault("owner", {})
+    origin = str(owner.get("avatar") or "").strip()
+    if origin.startswith("http") and await _save_avatar_file(account_id, origin):
+        owner["avatar"] = avatar_url(account_id)
+    extra = row.get("extra") or {}
+    extra[platform] = data
+    await update_account(account_id, extra=json.dumps(extra, ensure_ascii=False))
+    return owner
+
+
+def owner_avatar(row: dict) -> str | None:
+    """从账号行提取统一头像字段 extra.{platform}.owner.avatar（平台间已统一命名）。"""
+    platform_data = (row.get("extra") or {}).get(row.get("platform") or "") or {}
+    return (platform_data.get("owner") or {}).get("avatar") or None
 
 # 内存态：正在走登录流程的账号（服务重启即清空）
 _login_in_progress: set[str] = set()
@@ -107,6 +171,8 @@ async def delete_account(account_id: str) -> bool:
     # 收藏关系随账号删除；contents 保留（跨账号去重数据）；任务记录保留（历史排查）
     await db.execute("DELETE FROM favorites WHERE account_id = ?", (account_id,))
     await db.execute("DELETE FROM accounts WHERE account_id = ?", (account_id,))
+    for old in AVATARS_DIR.glob(f"{account_id}.*"):
+        old.unlink(missing_ok=True)
     if row.get("profile_path"):
         shutil.rmtree(row["profile_path"], ignore_errors=True)
     return True

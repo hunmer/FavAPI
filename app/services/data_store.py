@@ -321,6 +321,11 @@ async def list_tasks(limit: int = 50, account_id: str | None = None) -> list[dic
     return [task_row_out(r) for r in rows]
 
 
+async def clear_tasks() -> int:
+    cur = await db.execute("DELETE FROM fetch_tasks")
+    return cur.rowcount
+
+
 # ---------- 标签聚合 ----------
 
 async def list_tag_stats(limit: int = 100) -> list[dict]:

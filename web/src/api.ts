@@ -13,7 +13,11 @@ async function request<T = any>(path: string, opts: RequestInit = {}): Promise<T
     ...opts,
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((data as any).detail || res.statusText);
+  if (!res.ok) {
+    const err = new Error((data as any).detail || res.statusText);
+    (err as any).status = res.status;
+    throw err;
+  }
   return data as T;
 }
 
@@ -30,6 +34,7 @@ export interface AccountRow {
   created_at?: string | null;
   extra?: Record<string, any>;
   logging_in?: boolean;
+  avatar?: string | null;  // 后端统一提取 extra.{platform}.owner.avatar（已本地化防过期）
 }
 
 export interface TaskRow {
@@ -165,8 +170,7 @@ export function toAccount(row: AccountRow, browserOpen: Set<string> = new Set())
     browserProfilePath: row.profile_path || '',
     ownerNickname:
       biliOwner.name || xhsOwner.nickname || dyOwner.nickname || thOwner.username || ttOwner.nickname || extra.nickname,
-    ownerAvatar:
-      biliOwner.face || xhsOwner.avatar || dyOwner.avatar || thOwner.avatar || ttOwner.avatar || extra.avatar,
+    ownerAvatar: row.avatar || extra.avatar,
     ownerUid:
       biliOwner.mid || xhsOwner.user_id || dyOwner.uid || thOwner.id || ttOwner.user_id || extra.uid,
     folders,
@@ -421,6 +425,13 @@ export interface RefreshProfilesResult {
   results: Array<{ account_id: string; name: string; status: 'ok' | 'skipped' | 'failed'; detail: string }>;
 }
 
+/** 批量身份刷新的实时进度（当前刷新到哪个账号）；done 从 0 计。 */
+export interface ProfileRefreshProgress {
+  accountId: string;
+  done: number;
+  total: number;
+}
+
 /** 批量刷新账号身份信息（昵称/头像/收藏夹）；串行执行，账号多时耗时较长。 */
 export async function refreshProfiles(): Promise<RefreshProfilesResult> {
   return request('/accounts/refresh-profile', { method: 'POST' });
@@ -436,6 +447,10 @@ export async function listTasks(limit = 100, accountId?: string): Promise<TaskRo
   const q = accountId ? `?limit=${limit}&account_id=${encodeURIComponent(accountId)}` : `?limit=${limit}`;
   const data = await request<{ tasks: TaskRow[] }>(`/tasks${q}`);
   return data.tasks;
+}
+
+export async function clearTasks(): Promise<{ deleted: number }> {
+  return request('/tasks', { method: 'DELETE' });
 }
 
 // ---------- 统计 ----------
