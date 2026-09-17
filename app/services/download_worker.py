@@ -157,6 +157,20 @@ def delete_log(download_id: str) -> None:
     _log_file(download_id).unlink(missing_ok=True)
 
 
+def clear_logs() -> int:
+    """清空全部下载日志，返回删除数（跳过正在运行的任务，其日志句柄仍被占用）。"""
+    log_dir = downloads_root() / ".logs"
+    if not log_dir.exists():
+        return 0
+    count = 0
+    for path in log_dir.glob("*.log"):
+        if path.stem in _running:
+            continue
+        path.unlink(missing_ok=True)
+        count += 1
+    return count
+
+
 async def _run_one(row: dict):
     download_id, url = row["download_id"], row["url"]
     try:

@@ -872,6 +872,11 @@ export async function getDownloadLog(id: string): Promise<{ download_id: string;
   return request(`/downloads/${id}/log`);
 }
 
+/** 清空全部下载日志（运行中任务的日志保留），返回删除数量 */
+export async function clearDownloadLogs(): Promise<{ deleted: number }> {
+  return request('/downloads/logs', { method: 'DELETE' });
+}
+
 export async function deleteDownload(id: string) {
   return request(`/downloads/${id}`, { method: 'DELETE' });
 }

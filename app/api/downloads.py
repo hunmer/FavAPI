@@ -168,6 +168,12 @@ async def get_download_log(download_id: str):
     return {"download_id": download_id, "log": download_worker.read_log(download_id)}
 
 
+@router.delete("/logs")
+async def clear_download_logs():
+    """清空全部下载日志（运行中任务的日志保留）。"""
+    return {"deleted": download_worker.clear_logs()}
+
+
 @router.delete("/{download_id}")
 async def delete_download(download_id: str):
     row = await _get_or_404(download_id)

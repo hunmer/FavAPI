@@ -22,7 +22,7 @@ import {
   Maximize2,
   Frame
 } from 'lucide-react';
-import { AgentConfigRow, AgentTestResult, DownloaderId, ToolchainStatus, fetchAppSettings, fetchToolchain, updateAppSettings, uploadAvatar } from '../../api';
+import { AgentConfigRow, AgentTestResult, clearDownloadLogs, DownloaderId, ToolchainStatus, fetchAppSettings, fetchToolchain, updateAppSettings, uploadAvatar } from '../../api';
 import { TerminalDialog } from '../TerminalDialog';
 
 interface SettingsViewProps {
@@ -165,6 +165,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     fetchToolchain()
       .then(setToolchain)
       .catch(() => onShowToast('下载工具链检测失败，请确认后端服务正常', 'error'));
+  };
+
+  // ---------- 清空下载日志 ----------
+  const [clearingLogs, setClearingLogs] = useState(false);
+
+  const handleClearLogs = async () => {
+    if (!window.confirm('确定清空全部下载日志？该操作不可恢复（运行中任务的日志保留）。')) return;
+    setClearingLogs(true);
+    try {
+      const { deleted } = await clearDownloadLogs();
+      onShowToast(deleted > 0 ? `已清理 ${deleted} 份下载日志` : '没有可清理的日志', deleted > 0 ? 'success' : 'info');
+    } catch (err: any) {
+      onShowToast(`清理失败：${err?.message || '未知错误'}`, 'error');
+    } finally {
+      setClearingLogs(false);
+    }
   };
 
   useEffect(() => {
@@ -576,6 +592,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
               );
             })}
+          </div>
+
+          {/* 下载日志清理 */}
+          <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-50 dark:border-slate-800/80">
+            <div>
+              <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">下载日志清理</div>
+              <div className="text-[11px] text-slate-400">每个下载任务在 .logs 目录落盘一份日志，清理后不可恢复</div>
+            </div>
+            <button
+              type="button"
+              onClick={handleClearLogs}
+              disabled={clearingLogs}
+              className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-900 hover:bg-rose-100 dark:hover:bg-rose-900/40 transition-colors flex items-center gap-1.5 shrink-0 disabled:opacity-50 cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              {clearingLogs ? '清理中...' : '清空下载日志'}
+            </button>
           </div>
         </div>
 
