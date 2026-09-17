@@ -87,21 +87,22 @@ export const TasksView: React.FC<TasksViewProps> = ({
         {/* Status tabs */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
           {[
-            { id: 'all', label: '全部状态' },
-            { id: 'running', label: '执行中' },
-            { id: 'success', label: '成功' },
-            { id: 'failed', label: '失败' },
+            { id: 'all', label: '全部状态', dot: 'bg-slate-400 dark:bg-slate-500' },
+            { id: 'running', label: '执行中', dot: 'bg-indigo-500 dark:bg-sky-400' },
+            { id: 'success', label: '成功', dot: 'bg-emerald-500 dark:bg-emerald-400' },
+            { id: 'failed', label: '失败', dot: 'bg-rose-500 dark:bg-rose-400' },
           ].map((s) => (
             <button
               key={s.id}
               type="button"
               onClick={() => setStatusFilter(s.id)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer inline-flex items-center gap-1.5 ${
                 statusFilter === s.id
                   ? 'bg-slate-900 dark:bg-sky-600 text-white shadow-2xs'
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             >
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${s.dot}`} />
               {s.label}
             </button>
           ))}

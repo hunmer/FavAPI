@@ -258,8 +258,8 @@ async def stream_fetch_events(task_id: str, account: dict, adapter, action: str,
                 task_id, status="success", result_count=saved_count,
                 new_favorites=new_count, finished_at=now_iso()
             )
-            await queue.put(payload)
             await account_manager.save_cookie_snapshot(account_id)  # 抓取成功自动刷新快照
+            await queue.put(payload)
         except asyncio.CancelledError:
             raise
         except LoginExpiredError as exc:
@@ -269,14 +269,22 @@ async def stream_fetch_events(task_id: str, account: dict, adapter, action: str,
             await _stream_fail(task_id, account_id, queue, friendly_error(exc))
 
     runner = asyncio.create_task(_worker())
+    completed = False
     try:
         while True:
             msg = await queue.get()
             yield msg
             if msg["type"] in ("done", "error"):
+                completed = True
                 break
     finally:
-        if not runner.done():
+        if completed:
+            # 收到 done/error 后 break 是正常结束，只等 worker 收尾，不标记失败
+            try:
+                await runner
+            except Exception:
+                logger.exception("流式抓取任务 %s 收尾异常", task_id)
+        elif not runner.done():
             runner.cancel()
             try:
                 await runner
