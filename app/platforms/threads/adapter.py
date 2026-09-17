@@ -78,13 +78,21 @@ class ThreadsAdapter(BasePlatformAdapter):
         cookie 缺失直接 False；cookie 存在但服务端会话已被踢（sessionid 失效）
         由 fetch_viewer_profile 判定。网络异常向上抛（路由层 503），不误标 expired。
         """
+        logged_in, _ = await self._check_and_maybe_refresh(account, refresh=False)
+        return logged_in
+
+    async def check_login_status_and_refresh(self, account: AccountContext) -> tuple[bool, bool]:
+        """单会话版本：一次读 cookie + 一次 API 校验，登录有效时身份已随响应拿到，直接回填。"""
+        return await self._check_and_maybe_refresh(account, refresh=True)
+
+    async def _check_and_maybe_refresh(self, account: AccountContext, refresh: bool) -> tuple[bool, bool]:
         async with browser.session(
             account.profile_path, headless=True, proxy=api_client.resolve_proxy()
         ) as ctx:
             cookies = await ctx.cookies(urls=[constants.FAVORITES_URL])
         if not browser.has_login_cookies(cookies, constants.LOGIN_COOKIE_KEYS):
             logger.info("[%s] 登录态检查：无效（profile 无登录 cookie）", account.account_id)
-            return False
+            return False, False
         cookie_header = "; ".join(
             f"{c['name']}={c['value']}" for c in cookies if c.get("name"))
         try:
@@ -92,16 +100,26 @@ class ThreadsAdapter(BasePlatformAdapter):
                 api_client.fetch_viewer_profile, cookie_header)
         except LoginExpiredError:
             logger.warning("[%s] 登录态检查：cookie 存在但服务端会话已失效", account.account_id)
-            return False
+            return False, False
         logger.info("[%s] 登录态检查：有效（@%s）", account.account_id, profile.get("username"))
-        return True
+        if not refresh:
+            return True, False
+        try:
+            await self._save_owner(account, profile)
+            return True, True
+        except Exception:
+            logger.warning("[%s] 身份回填失败（不影响登录态结论）", account.account_id, exc_info=True)
+            return True, False
 
     async def refresh_profile(self, account: AccountContext) -> None:
         """登录成功后回填主人信息：extra.threads.owner = {id, username, avatar}。"""
-        import json
-
         cookie_header = await api_client.profile_cookie_header(account.profile_path)
         profile = await asyncio.to_thread(api_client.fetch_viewer_profile, cookie_header)
+        await self._save_owner(account, profile)
+
+    async def _save_owner(self, account: AccountContext, profile: dict) -> None:
+        import json
+
         from app.services import account_manager  # 延迟导入避免循环依赖
 
         row = await account_manager.get_account(account.account_id)

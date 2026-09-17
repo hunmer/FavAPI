@@ -105,17 +105,17 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
           <AccountInfoCards account={account} localStats={localStats} />
 
           {/* Main Workspace: Manual Scraping & Recent Tasks Tabs */}
-          <div className="bg-white rounded-[28px] border border-slate-200/80 shadow-2xs overflow-hidden">
+          <div className="bg-white dark:bg-[#161B26] rounded-[28px] border border-slate-200/80 dark:border-slate-800 shadow-2xs overflow-hidden">
             {/* Subtab Header */}
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 pt-4 pb-1">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-6 pt-4 pb-1">
               <div className="flex items-center gap-4">
                 <button
                   type="button"
                   onClick={() => setActiveSubTab('scrape')}
                   className={`pb-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 ${
                     activeSubTab === 'scrape'
-                      ? 'border-slate-900 text-slate-900'
-                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                      ? 'border-slate-900 dark:border-slate-100 text-slate-900 dark:text-white'
+                      : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                   }`}
                 >
                   <Play className="w-4 h-4" />
@@ -126,8 +126,8 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
                   onClick={() => setActiveSubTab('tasks')}
                   className={`pb-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 ${
                     activeSubTab === 'tasks'
-                      ? 'border-slate-900 text-slate-900'
-                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                      ? 'border-slate-900 dark:border-slate-100 text-slate-900 dark:text-white'
+                      : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                   }`}
                 >
                   <Clock className="w-4 h-4" />

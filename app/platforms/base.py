@@ -70,6 +70,24 @@ class BasePlatformAdapter(ABC):
     async def check_login_status(self, account: AccountContext) -> bool:
         """检查登录态是否有效。"""
 
+    async def check_login_status_and_refresh(self, account: AccountContext) -> tuple[bool, bool]:
+        """登录态检查 + 有效时回填身份，返回 (logged_in, profile_refreshed)。
+
+        默认组合实现（check_login_status + refresh_profile 各自执行）；
+        身份刷新失败不影响检查结论（refreshed=False）。
+        平台可覆写为单会话版本：一次读 cookie / 一次接口同时完成两件事
+        （如 Threads 的 viewer 身份在登录校验时已随响应拿到）。
+        """
+        if not await self.check_login_status(account):
+            return False, False
+        refreshed = False
+        try:
+            await self.refresh_profile(account)
+            refreshed = True
+        except Exception:  # 身份刷新为附带能力，失败不影响登录态结论
+            pass
+        return True, refreshed
+
     def validate_params(self, params: dict) -> None:
         """抓取前参数校验（可选覆写）；不合法抛 ValueError，由任务执行器转为 400。
 

@@ -142,6 +142,7 @@ export function toAccount(row: AccountRow, browserOpen: Set<string> = new Set())
   const biliOwner = extra.bilibili?.owner || {};
   const xhsOwner = extra.xiaohongshu?.owner || {};
   const dyOwner = extra.douyin?.owner || {};
+  const thOwner = extra.threads?.owner || {};
   const folders: BilibiliFolder[] | undefined = Array.isArray(extra.bilibili?.folders)
     ? extra.bilibili.folders.map((f: any) => ({
         id: String(f.media_id ?? ''),
@@ -161,9 +162,11 @@ export function toAccount(row: AccountRow, browserOpen: Set<string> = new Set())
     lastLoginTime: fmtDateTime(row.last_login_at),
     lastUsedTime: fmtDateTime(row.last_used_at),
     browserProfilePath: row.profile_path || '',
-    ownerNickname: biliOwner.name || xhsOwner.nickname || dyOwner.nickname || extra.nickname,
-    ownerAvatar: biliOwner.face || xhsOwner.avatar || dyOwner.avatar || extra.avatar,
-    ownerUid: biliOwner.mid || xhsOwner.user_id || dyOwner.uid || extra.uid,
+    ownerNickname:
+      biliOwner.name || xhsOwner.nickname || dyOwner.nickname || thOwner.username || extra.nickname,
+    ownerAvatar:
+      biliOwner.face || xhsOwner.avatar || dyOwner.avatar || thOwner.avatar || extra.avatar,
+    ownerUid: biliOwner.mid || xhsOwner.user_id || dyOwner.uid || thOwner.id || extra.uid,
     folders,
     isBrowserOpen: browserOpen.has(row.account_id),
   };
@@ -349,10 +352,12 @@ export interface LoginStatus {
   status: string;
   logging_in: boolean;
   busy?: boolean;
+  /** refresh=true 且登录有效时是否成功回填了身份（平台不支持时 False） */
+  profile_refreshed?: boolean;
 }
 
-export async function loginStatus(accountId: string): Promise<LoginStatus> {
-  return request(`/accounts/${accountId}/status`);
+export async function loginStatus(accountId: string, refresh = false): Promise<LoginStatus> {
+  return request(`/accounts/${accountId}/status${refresh ? '?refresh=true' : ''}`);
 }
 
 export async function closeLogin(accountId: string) {

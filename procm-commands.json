@@ -7,8 +7,8 @@
     },
     "dev": {
       "script": ".venv/Scripts/python.exe",
-      "args": ["-m", "uvicorn", "app.server:app", "--host", "127.0.0.1", "--port", "8300", "--reload", "--loop", "asyncio:ProactorEventLoop"],
-      "desc": "（Windows）开发模式（热重载）启动 FavAPI 服务。--loop 必须显式指定 ProactorEventLoop：uvicorn 0.52 在 --reload 下默认 SelectorEventLoop，Windows 上不支持子进程，Playwright 会报 NotImplementedError"
+      "args": ["-m", "uvicorn", "app.server:app", "--host", "127.0.0.1", "--port", "8300", "--reload", "--reload-dir", "app", "--loop", "asyncio:ProactorEventLoop"],
+      "desc": "（Windows）开发模式（热重载）启动 FavAPI 服务。--loop 必须显式指定 ProactorEventLoop：uvicorn 0.52 在 --reload 下默认 SelectorEventLoop，Windows 上不支持子进程，Playwright 会报 NotImplementedError。--reload-dir app：只监听后端代码，避免 data/ 数据库与 profiles 运行时写入触发重载（热重载出的新 worker 不带 --loop，浏览器功能会悄悄失效）"
     },
     "test-parser": {
       "script": ".venv/Scripts/python.exe",

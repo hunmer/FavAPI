@@ -53,13 +53,15 @@ export const DataItemCard: React.FC<DataItemCardProps> = ({
         e.stopPropagation();
         setMenu({ x: e.clientX, y: e.clientY });
       }}
-      className={`anim-card-enter bg-white rounded-[24px] border shadow-2xs hover:shadow-lg transition-all duration-200 overflow-hidden flex flex-col group cursor-pointer ${
-        selected ? 'border-violet-500 ring-2 ring-violet-500/30' : 'border-slate-200/80'
+      className={`anim-card-enter bg-white dark:bg-[#161B26] rounded-[24px] border shadow-2xs hover:shadow-lg dark:hover:shadow-slate-950/40 transition-all duration-200 overflow-hidden flex flex-col group cursor-pointer ${
+        selected
+          ? 'border-violet-500 ring-2 ring-violet-500/30'
+          : 'border-slate-200/80 dark:border-slate-800'
       }`}
       style={{ animationDelay: `${Math.min(idx * 30, 240)}ms` }}
     >
       {/* Cover Image Container with corner badges */}
-      <div className="relative aspect-video w-full bg-slate-100 overflow-hidden">
+      <div className="relative aspect-video w-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
         {item.coverUrl ? (
           <img
             src={item.coverUrl}
@@ -68,7 +70,7 @@ export const DataItemCard: React.FC<DataItemCardProps> = ({
             referrerPolicy="no-referrer"
           />
         ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 text-slate-300">
+          <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 text-slate-300 dark:text-slate-600">
             <ImageOff className="w-8 h-8" />
             <span className="text-[11px] font-medium">暂无封面</span>
           </div>
@@ -122,12 +124,12 @@ export const DataItemCard: React.FC<DataItemCardProps> = ({
 
       {/* Card Body */}
       <div className="p-4 flex flex-col justify-between flex-1 space-y-3">
-        <h4 className="text-xs sm:text-sm font-bold text-slate-900 line-clamp-2 leading-snug group-hover:text-indigo-600 transition-colors">
+        <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white line-clamp-2 leading-snug group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
           {item.title}
         </h4>
 
-        <div className="space-y-2 pt-1 border-t border-slate-100">
-          <div className="flex items-center justify-between text-xs text-slate-600">
+        <div className="space-y-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+          <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-300">
             <div className="flex items-center gap-1.5 min-w-0">
               {item.authorAvatar && (
                 <img
@@ -143,7 +145,7 @@ export const DataItemCard: React.FC<DataItemCardProps> = ({
                   onFilterAuthor?.(item.author);
                 }}
                 title="点击按该作者过滤"
-                className="truncate font-medium cursor-pointer hover:text-indigo-600 transition-colors"
+                className="truncate font-medium cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
               >
                 {item.author}
               </span>
@@ -162,7 +164,7 @@ export const DataItemCard: React.FC<DataItemCardProps> = ({
                   target="_blank"
                   rel="noreferrer"
                   onClick={(e) => e.stopPropagation()}
-                  className="text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-0.5 font-semibold"
+                  className="text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 inline-flex items-center gap-0.5 font-semibold"
                 >
                   原站 <ExternalLink className="w-3 h-3" />
                 </a>
@@ -178,7 +180,7 @@ export const DataItemCard: React.FC<DataItemCardProps> = ({
                   const rect = e.currentTarget.getBoundingClientRect();
                   setMenu({ x: rect.right - 160, y: rect.bottom + 4 });
                 }}
-                className="w-6 h-6 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                className="w-6 h-6 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <MoreVertical className="w-4 h-4" />
               </button>

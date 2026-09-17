@@ -36,21 +36,21 @@ export const ClearFavoritesModal: React.FC<ClearFavoritesModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="anim-modal-enter bg-white w-full max-w-md rounded-[28px] p-6 shadow-2xl border border-slate-100 space-y-4">
-        <h3 className="text-lg font-bold text-slate-900">确认清空收藏夹？</h3>
-        <p className="text-xs text-slate-500 leading-relaxed">
-          将删除 <strong className="text-slate-800">{account.name}</strong> 在本地库中的全部收藏关系（共{' '}
+      <div className="anim-modal-enter bg-white dark:bg-[#161B26] w-full max-w-md rounded-[28px] p-6 shadow-2xl border border-slate-100 dark:border-slate-800 space-y-4">
+        <h3 className="text-lg font-bold text-slate-900 dark:text-white">确认清空收藏夹？</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+          将删除 <strong className="text-slate-800 dark:text-slate-200">{account.name}</strong> 在本地库中的全部收藏关系（共{' '}
           {localStats ? localStats.total : 0} 件）。平台云端收藏不受影响，可随时重新抓取恢复。
         </p>
         {clearError && (
-          <p className="text-xs text-rose-600 bg-rose-50 p-2 rounded-xl">{clearError}</p>
+          <p className="text-xs text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950 p-2 rounded-xl">{clearError}</p>
         )}
         <div className="flex justify-end gap-2 pt-2">
           <button
             type="button"
             disabled={isClearing}
             onClick={onClose}
-            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl disabled:opacity-50"
+            className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100 rounded-xl disabled:opacity-50"
           >
             取消
           </button>

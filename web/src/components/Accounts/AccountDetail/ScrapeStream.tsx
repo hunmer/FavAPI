@@ -12,10 +12,10 @@ export const ScrapeStream: React.FC<ScrapeStreamProps> = ({ streamingItems, isSc
   if (!isScrapingInProgress && streamingItems.length === 0) return null;
 
   return (
-    <div className="mt-8 pt-6 border-t border-slate-200">
+    <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-800">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+          <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
             <Terminal className="w-4 h-4 text-emerald-600" />
             抓取实时反馈流 (已抓取 {streamingItems.length} 条)
           </h4>
@@ -23,7 +23,7 @@ export const ScrapeStream: React.FC<ScrapeStreamProps> = ({ streamingItems, isSc
             增量入库完成，支持点击标题直接预览原站页面
           </p>
         </div>
-        <div className="text-xs font-mono text-slate-500 bg-slate-100 px-3 py-1 rounded-xl">
+        <div className="text-xs font-mono text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-xl">
           {isScrapingInProgress ? '抓取中...' : '已完成'}
         </div>
       </div>
@@ -33,29 +33,29 @@ export const ScrapeStream: React.FC<ScrapeStreamProps> = ({ streamingItems, isSc
         {streamingItems.map((item, idx) => (
           <div
             key={item.id + idx}
-            className="p-3 bg-slate-50/80 rounded-xl border border-slate-200/80 flex items-center justify-between gap-3 text-xs hover:bg-slate-100 transition-colors"
+            className="p-3 bg-slate-50/80 dark:bg-slate-800/60 rounded-xl border border-slate-200/80 dark:border-slate-700 flex items-center justify-between gap-3 text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           >
             <div className="flex items-center gap-3 min-w-0">
               {item.coverUrl ? (
                 <img
                   src={item.coverUrl}
                   alt=""
-                  className="w-12 h-8 rounded-lg object-cover bg-slate-200 shrink-0"
+                  className="w-12 h-8 rounded-lg object-cover bg-slate-200 dark:bg-slate-700 shrink-0"
                   referrerPolicy="no-referrer"
                 />
               ) : (
-                <div className="w-12 h-8 rounded-lg bg-slate-200 shrink-0" />
+                <div className="w-12 h-8 rounded-lg bg-slate-200 dark:bg-slate-700 shrink-0" />
               )}
               <div className="min-w-0">
                 <a
                   href={item.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="font-semibold text-slate-900 hover:text-indigo-600 truncate block text-xs sm:text-sm"
+                  className="font-semibold text-slate-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 truncate block text-xs sm:text-sm"
                 >
                   {item.title}
                 </a>
-                <div className="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5">
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-2 mt-0.5">
                   <span>UP: {item.author}</span>
                   <span>•</span>
                   <span>{item.duration}</span>
@@ -66,7 +66,7 @@ export const ScrapeStream: React.FC<ScrapeStreamProps> = ({ streamingItems, isSc
             </div>
 
             <div className="text-right shrink-0">
-              <span className="text-[11px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+              <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-950 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
                 新增收藏
               </span>
               <div className="text-[10px] text-slate-400 mt-1">{item.favTime}</div>

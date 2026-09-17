@@ -148,9 +148,9 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
   return (
     <>
       {/* Platform API Operations cards */}
-      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-2xs">
+      <div className="bg-white dark:bg-[#161B26] p-4 sm:p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
         <div className="flex items-center justify-between mb-3">
-          <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+          <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
             <Zap className="w-4 h-4 text-amber-500" />
             平台 API 操作
           </h4>
@@ -164,19 +164,19 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
               onClick={() => openOperationModal(op)}
               className={`p-3 rounded-xl border text-left transition-all ${
                 op.danger
-                  ? 'border-rose-200 hover:border-rose-300 hover:bg-rose-50/50'
-                  : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                  ? 'border-rose-200 dark:border-rose-900 hover:border-rose-300 dark:hover:border-rose-800 hover:bg-rose-50/50 dark:hover:bg-rose-950/40'
+                  : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800'
               }`}
             >
               <div className="flex items-center justify-between text-xs font-bold mb-1">
-                <span className={op.danger ? 'text-rose-700' : 'text-slate-900'}>{op.name}</span>
+                <span className={op.danger ? 'text-rose-700 dark:text-rose-400' : 'text-slate-900 dark:text-white'}>{op.name}</span>
                 {op.danger && (
-                  <span className="text-[9px] bg-rose-100 text-rose-600 px-1.5 py-0.5 rounded font-semibold">
+                  <span className="text-[9px] bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 px-1.5 py-0.5 rounded font-semibold">
                     危险操作
                   </span>
                 )}
               </div>
-              <div className="text-[11px] text-slate-500 leading-snug line-clamp-2">
+              <div className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug line-clamp-2">
                 {op.description}
               </div>
             </button>
@@ -187,27 +187,27 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
       {/* API Operation Execute Modal（左：表单 / 右：执行结果） */}
       {activeOp && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="anim-modal-enter bg-white w-full max-w-3xl rounded-[28px] p-6 shadow-2xl border border-slate-100 max-h-[85vh] overflow-y-auto">
+          <div className="anim-modal-enter bg-white dark:bg-[#161B26] w-full max-w-3xl rounded-[28px] p-6 shadow-2xl border border-slate-100 dark:border-slate-800 max-h-[85vh] overflow-y-auto">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* 左栏：参数表单 */}
               <div className="space-y-4">
                 <div>
-                  <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                     {activeOp.name}
                     {activeOp.danger && (
-                      <span className="text-[10px] bg-rose-100 text-rose-600 px-2 py-0.5 rounded-full font-semibold">
+                      <span className="text-[10px] bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 px-2 py-0.5 rounded-full font-semibold">
                         危险操作
                       </span>
                     )}
                   </h3>
                   {activeOp.description && (
-                    <p className="text-xs text-slate-500 mt-1">{activeOp.description}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{activeOp.description}</p>
                   )}
                 </div>
 
                 {activeOp.params.map((p) => (
                   <div key={p.key}>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                       {p.label}
                       {p.required && <span className="text-rose-500 ml-0.5">*</span>}
                     </label>
@@ -215,7 +215,7 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
                       <select
                         value={opForm[p.key] || p.options[0].value}
                         onChange={(e) => setOpForm((f) => ({ ...f, [p.key]: e.target.value }))}
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-slate-900"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900"
                       >
                         {p.options.map((o) => (
                           <option key={o.value} value={o.value}>{o.label}</option>
@@ -227,7 +227,7 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
                         onChange={(e) => setOpForm((f) => ({ ...f, [p.key]: e.target.value }))}
                         placeholder={p.placeholder}
                         rows={5}
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-slate-900"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-mono bg-transparent dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900"
                       />
                     ) : (
                       <input
@@ -235,7 +235,7 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
                         value={opForm[p.key] || ''}
                         onChange={(e) => setOpForm((f) => ({ ...f, [p.key]: e.target.value }))}
                         placeholder={p.placeholder}
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm bg-transparent dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900"
                       />
                     )}
                     {p.help && <p className="text-[11px] text-slate-400 mt-1">{p.help}</p>}
@@ -243,7 +243,7 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
                 ))}
 
                 {showOpDangerConfirm && (
-                  <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 p-3 rounded-xl flex items-start gap-2">
+                  <p className="text-xs text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950 border border-rose-200 dark:border-rose-800 p-3 rounded-xl flex items-start gap-2">
                     <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                     该操作不可恢复！再次点击「确认执行」将真正提交到平台。
                   </p>
@@ -254,7 +254,7 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
                     type="button"
                     disabled={opRunning}
                     onClick={() => setActiveOp(null)}
-                    className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl disabled:opacity-50"
+                    className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100 rounded-xl disabled:opacity-50"
                   >
                     关闭
                   </button>
@@ -265,7 +265,7 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
                     className={`px-5 py-2 text-xs font-bold text-white rounded-xl shadow-xs disabled:opacity-50 inline-flex items-center gap-1.5 ${
                       activeOp.danger
                         ? 'bg-rose-600 hover:bg-rose-700'
-                        : 'bg-slate-900 hover:bg-slate-800'
+                        : 'bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600'
                     }`}
                   >
                     {opRunning && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
@@ -279,13 +279,13 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
               </div>
 
               {/* 右栏：执行结果（实时日志 + 返回 JSON） */}
-              <div className="space-y-3 flex flex-col md:border-l md:border-slate-100 md:pl-6">
-                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+              <div className="space-y-3 flex flex-col md:border-l md:border-slate-100 dark:md:border-slate-800 md:pl-6">
+                <div className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   执行结果
                 </div>
 
                 {opRunning || opEvents.length > 0 ? (
-                  <div className="flex-1 min-h-[14rem] md:min-h-[18rem] rounded-xl border border-slate-200 bg-slate-950 p-3 overflow-y-auto space-y-1">
+                  <div className="flex-1 min-h-[14rem] md:min-h-[18rem] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-950 p-3 overflow-y-auto space-y-1">
                     <div className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-1">
                       实时日志 {opRunning && <span className="animate-pulse">▍</span>}
                     </div>
@@ -310,7 +310,7 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
                     ))}
                   </div>
                 ) : (
-                  <div className="flex-1 min-h-[14rem] md:min-h-[18rem] rounded-xl border border-dashed border-slate-200 bg-slate-50/60 flex flex-col items-center justify-center text-center gap-1.5">
+                  <div className="flex-1 min-h-[14rem] md:min-h-[18rem] rounded-xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/40 flex flex-col items-center justify-center text-center gap-1.5">
                     <Terminal className="w-5 h-5 text-slate-300" />
                     <span className="text-[11px] text-slate-400">
                       填写左侧参数并点击「执行」

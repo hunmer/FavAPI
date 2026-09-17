@@ -34,8 +34,14 @@ const VIEW_EASE_IN: [number, number, number, number] = [0.05, 0.7, 0.1, 1];
 const VIEW_EASE_OUT: [number, number, number, number] = [0.3, 0, 1, 1];
 
 export function App() {
-  // Theme State
-  const [theme, setTheme] = useState<'light' | 'dark'>('light');
+  // Theme State（localStorage 持久化）
+  const [theme, setTheme] = useState<'light' | 'dark'>(() =>
+    localStorage.getItem('favapi_theme') === 'dark' ? 'dark' : 'light'
+  );
+  const setThemeAndSave = (t: 'light' | 'dark') => {
+    setTheme(t);
+    localStorage.setItem('favapi_theme', t);
+  };
 
   // Page Layout：全屏铺满 / 居中卡片窗口（localStorage 持久化）
   const [fullPage, setFullPage] = useState(() => localStorage.getItem('favapi_fullpage') === '1');
@@ -48,7 +54,7 @@ export function App() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
   const toggleTheme = () => {
-    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+    setThemeAndSave(theme === 'light' ? 'dark' : 'light');
   };
 
   // Navigation State：由 URL hash 驱动（/#/data 等），未知路径回落 dashboard
@@ -271,11 +277,15 @@ export function App() {
   const handleQuickCheckHealth = async (account: Account) => {
     showToast(`正在验证「${account.name}」的当前会话 Cookies 有效性...`, 'info');
     try {
-      const s = await api.loginStatus(account.id);
+      // refresh=true：登录有效时后端同会话回填身份（昵称/头像）
+      const s = await api.loginStatus(account.id, true);
       if (s.logged_in === null) {
         showToast(`「${account.name}」浏览器正被占用，稍后再试`, 'error');
       } else if (s.logged_in) {
-        showToast(`「${account.name}」登录态有效（${s.status}）`, 'success');
+        showToast(
+          `「${account.name}」登录态有效（${s.status}）${s.profile_refreshed ? '，身份已刷新' : ''}`,
+          'success',
+        );
       } else {
         showToast(`「${account.name}」登录态已过期（${s.status}），请重新扫码`, 'error');
         setLoginModalAccount(account);
@@ -720,7 +730,7 @@ export function App() {
                 totalItemsCount={scrapedItems.length}
                 theme={theme}
                 onToggleTheme={toggleTheme}
-                onSetTheme={setTheme}
+                onSetTheme={setThemeAndSave}
                 fullPage={fullPage}
                 onSetFullPage={setFullPageAndSave}
                 avatarUrl={avatarUrl}

@@ -44,7 +44,7 @@ const CRON_PRESETS = [
 ];
 
 const inputCls =
-  'w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900';
+  'w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900';
 
 export const ScheduleView: React.FC<ScheduleViewProps> = ({
   schedules,
@@ -158,26 +158,26 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
       {/* Left: Schedule List & Actions (2/3) */}
       <div className="flex-1 flex flex-col gap-6">
         {/* Header summary */}
-        <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="bg-white dark:bg-[#161B26] rounded-3xl p-6 border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
               <CalendarDays className="w-5 h-5 text-sky-600" />
               自动化定时同步任务
             </h2>
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
               通过 Cron 表达式在后台定时执行轻量增量抓取或 AI 智能打标，避免漏抓新收藏。
             </p>
           </div>
 
           <div className="flex items-center gap-3">
-            <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200 flex items-center gap-1.5">
+            <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 flex items-center gap-1.5">
               <CheckCircle2 className="w-4 h-4" />
               {schedules.filter((s) => s.status === 'active').length} 个任务运行中
             </span>
             <button
               type="button"
               onClick={openCreate}
-              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-bold shadow-sm inline-flex items-center gap-1.5"
+              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 text-white rounded-2xl text-xs font-bold shadow-sm inline-flex items-center gap-1.5"
               title="新建定时计划（抓取或 AI 智能打标）"
             >
               <Plus className="w-4 h-4" />
@@ -189,7 +189,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
         {/* Schedule Cards List */}
         <div className="flex flex-col gap-3.5">
           {schedules.length === 0 && (
-            <div className="bg-white rounded-3xl p-12 border border-slate-100 text-center text-xs text-slate-400">
+            <div className="bg-white dark:bg-[#161B26] rounded-3xl p-12 border border-slate-100 dark:border-slate-800 text-center text-xs text-slate-400">
               暂无定时计划，点击右上角「新建计划」创建第一个自动化同步任务
             </div>
           )}
@@ -201,15 +201,17 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
             return (
               <div
                 key={item.id}
-                className={`anim-card-enter bg-white rounded-3xl p-5 border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
-                  isActive ? 'border-slate-100 shadow-sm' : 'border-slate-100/60 bg-slate-50/50 opacity-70'
+                className={`anim-card-enter bg-white dark:bg-[#161B26] rounded-3xl p-5 border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+                  isActive
+                    ? 'border-slate-100 dark:border-slate-800 shadow-sm'
+                    : 'border-slate-100/60 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 opacity-70'
                 }`}
                 style={{ animationDelay: `${Math.min(idx * 40, 240)}ms` }}
               >
                 <div className="flex items-center gap-4 min-w-0">
                   <div
                     className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${
-                      isAiTag ? 'bg-violet-50 text-violet-600' : ''
+                      isAiTag ? 'bg-violet-50 dark:bg-violet-950 text-violet-600 dark:text-violet-400' : ''
                     }`}
                     style={
                       isAiTag ? undefined : { backgroundColor: `${platform.color}15`, color: platform.color }
@@ -220,9 +222,9 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
 
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h4 className="text-sm font-bold text-slate-900">{item.title}</h4>
+                      <h4 className="text-sm font-bold text-slate-900 dark:text-white">{item.title}</h4>
                       {isAiTag ? (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md border bg-violet-50 text-violet-600 border-violet-200">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md border bg-violet-50 dark:bg-violet-950 text-violet-600 dark:text-violet-400 border-violet-200 dark:border-violet-800">
                           智能打标
                         </span>
                       ) : (
@@ -233,18 +235,18 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                         </span>
                       )}
                       {isActive ? (
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-600 border border-emerald-200">
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
                           执行中
                         </span>
                       ) : (
-                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-500">
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
                           已挂起
                         </span>
                       )}
                     </div>
 
-                    <div className="flex items-center gap-3 text-xs text-slate-500 mt-1.5 flex-wrap">
-                      <span className="flex items-center gap-1 font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-medium">
+                    <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 mt-1.5 flex-wrap">
+                      <span className="flex items-center gap-1 font-mono bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-700 dark:text-slate-300 font-medium">
                         <Clock className="w-3 h-3 text-slate-400" />
                         {item.cronExpr}
                       </span>
@@ -258,7 +260,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                 <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
                   <button
                     onClick={() => onToggleSchedule(item.id)}
-                    className="px-3 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors flex items-center gap-1.5"
+                    className="px-3 py-2 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5"
                     title={isActive ? '暂停调度' : '恢复调度'}
                   >
                     {isActive ? (
@@ -276,7 +278,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
 
                   <button
                     onClick={() => onTriggerNow(item)}
-                    className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-900 text-white hover:bg-slate-800 transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+                    className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-900 dark:bg-slate-700 text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
                   >
                     <Play className="w-3.5 h-3.5 fill-current" />
                     立即触发
@@ -284,7 +286,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
 
                   <button
                     onClick={() => setDeleteTarget(item)}
-                    className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                    className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950 transition-colors"
                     title="删除此计划"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -300,16 +302,16 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
       <div className="w-full lg:w-[340px] xl:w-[380px] shrink-0 flex flex-col gap-6">
         <CalendarCard />
 
-        <div className="bg-white rounded-3xl p-5 border border-slate-100 shadow-sm">
-          <h4 className="text-sm font-bold text-slate-900 mb-2">Cron 表达式简易说明</h4>
-          <div className="text-xs text-slate-500 flex flex-col gap-2 leading-relaxed">
-            <div className="p-2.5 rounded-xl bg-slate-50 font-mono text-[11px] text-slate-700">
+        <div className="bg-white dark:bg-[#161B26] rounded-3xl p-5 border border-slate-100 dark:border-slate-800 shadow-sm">
+          <h4 className="text-sm font-bold text-slate-900 dark:text-white mb-2">Cron 表达式简易说明</h4>
+          <div className="text-xs text-slate-500 dark:text-slate-400 flex flex-col gap-2 leading-relaxed">
+            <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 font-mono text-[11px] text-slate-700 dark:text-slate-300">
               0 18 * * * (每天下午 18:00 执行)
             </div>
-            <div className="p-2.5 rounded-xl bg-slate-50 font-mono text-[11px] text-slate-700">
+            <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 font-mono text-[11px] text-slate-700 dark:text-slate-300">
               0 23 * * 0 (每周日晚 23:00 全量更新)
             </div>
-            <div className="p-2.5 rounded-xl bg-slate-50 font-mono text-[11px] text-slate-700">
+            <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 font-mono text-[11px] text-slate-700 dark:text-slate-300">
               0 */2 * * * (每 2 小时心跳检查)
             </div>
           </div>
@@ -324,19 +326,19 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="anim-modal-enter bg-white w-full max-w-lg rounded-[28px] shadow-2xl border border-slate-100 overflow-hidden max-h-[92vh] flex flex-col"
+            className="anim-modal-enter bg-white dark:bg-[#161B26] w-full max-w-lg rounded-[28px] shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden max-h-[92vh] flex flex-col"
           >
-            <div className="p-5 sm:p-6 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+            <div className="p-5 sm:p-6 bg-slate-50 dark:bg-slate-800 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-bold text-slate-900">新建定时计划</h3>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">新建定时计划</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                   按 Cron 周期自动执行收藏增量抓取或 AI 智能打标
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setShowCreateModal(false)}
-                className="w-8 h-8 rounded-full bg-white hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors shadow-2xs"
+                className="w-8 h-8 rounded-full bg-white dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 flex items-center justify-center transition-colors shadow-2xs"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -344,7 +346,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
 
             <form onSubmit={submitCreate} className="p-6 space-y-5 overflow-y-auto">
               {/* 任务类型切换 */}
-              <div className="bg-slate-100 p-1 rounded-2xl border border-slate-200 flex gap-1">
+              <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl border border-slate-200 dark:border-slate-700 flex gap-1">
                 {([
                   { id: 'list_favorites', label: '收藏抓取' },
                   { id: 'ai_tag', label: 'AI 智能打标' },
@@ -354,7 +356,9 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                     type="button"
                     onClick={() => setFormAction(t.id)}
                     className={`flex-1 px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      formAction === t.id ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                      formAction === t.id
+                        ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                     }`}
                   >
                     {t.id === 'ai_tag' && <Sparkles className="w-3.5 h-3.5" />}
@@ -364,7 +368,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wider">
                   计划名称 <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -379,7 +383,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wider">
                   Cron 表达式 <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -395,7 +399,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                       key={p.value}
                       type="button"
                       onClick={() => setFormCron(p.value)}
-                      className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-[11px] font-semibold text-slate-600 transition-colors"
+                      className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[11px] font-semibold text-slate-600 dark:text-slate-300 transition-colors"
                     >
                       {p.label}
                     </button>
@@ -406,7 +410,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
               {formAction === 'list_favorites' ? (
                 <>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wider">
                       绑定账号 <span className="text-red-500">*</span>
                     </label>
                     <select
@@ -423,7 +427,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wider">
                       单次抓取数量（增量）
                     </label>
                     <input
@@ -442,7 +446,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
               ) : (
                 <>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wider">
                       打标平台
                     </label>
                     <select
@@ -464,13 +468,13 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
 
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                         AI Agent 配置 <span className="text-red-500">*</span>
                       </label>
                       <button
                         type="button"
                         onClick={() => setShowAgentForm((v) => !v)}
-                        className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-0.5"
+                        className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 inline-flex items-center gap-0.5"
                       >
                         <Plus className="w-3 h-3" />
                         {showAgentForm ? '收起' : '新建配置'}
@@ -491,8 +495,8 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                     </select>
 
                     {showAgentForm && (
-                      <div className="mt-3 p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-                        <p className="text-[11px] text-slate-500">
+                      <div className="mt-3 p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl space-y-3">
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
                           自定义 OpenAI 兼容接口（Base URL / API Key / Model ID），配置保存后可复用。
                         </p>
                         <input
@@ -537,7 +541,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wider">
                       单轮打标上限
                     </label>
                     <input
@@ -566,14 +570,14 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl"
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100 rounded-xl"
                 >
                   取消
                 </button>
                 <button
                   type="submit"
                   disabled={creating}
-                  className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs sm:text-sm font-bold rounded-xl shadow-xs flex items-center gap-1.5"
+                  className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 disabled:opacity-50 text-white text-xs sm:text-sm font-bold rounded-xl shadow-xs flex items-center gap-1.5"
                 >
                   <Plus className="w-4 h-4" />
                   {creating ? '创建中...' : '创建计划'}
@@ -592,18 +596,18 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="anim-modal-enter bg-white w-full max-w-md rounded-[28px] p-6 shadow-2xl border border-slate-100 space-y-4"
+            className="anim-modal-enter bg-white dark:bg-[#161B26] w-full max-w-md rounded-[28px] p-6 shadow-2xl border border-slate-100 dark:border-slate-800 space-y-4"
           >
-            <h3 className="text-lg font-bold text-slate-900">确认删除定时计划？</h3>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              将停止并删除计划「<strong className="text-slate-800">{deleteTarget.title}</strong>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white">确认删除定时计划？</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+              将停止并删除计划「<strong className="text-slate-800 dark:text-slate-200">{deleteTarget.title}</strong>
               」（{deleteTarget.cronExpr}），已产生的任务记录与收藏数据不受影响。
             </p>
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setDeleteTarget(null)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl"
+                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100 rounded-xl"
               >
                 取消
               </button>

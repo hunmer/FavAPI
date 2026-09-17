@@ -19,8 +19,8 @@ const MenuItem: React.FC<{
       disabled
         ? 'opacity-40 cursor-not-allowed'
         : danger
-          ? 'text-rose-600 hover:bg-rose-50 cursor-pointer'
-          : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 cursor-pointer'
+          ? 'text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950 cursor-pointer'
+          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white cursor-pointer'
     }`}
   >
     <Icon className="w-3.5 h-3.5 shrink-0" />
@@ -63,7 +63,7 @@ export const ItemActionMenu: React.FC<ItemActionMenuProps> = ({
 
   return (
     <div
-      className="fixed z-[60] py-1 w-40 rounded-xl bg-white border border-slate-200 shadow-lg overflow-hidden anim-modal-enter"
+      className="fixed z-[60] py-1 w-40 rounded-xl bg-white dark:bg-[#161B26] border border-slate-200 dark:border-slate-700 shadow-lg overflow-hidden anim-modal-enter"
       style={{
         left: Math.max(8, Math.min(x, window.innerWidth - 168)),
         top: Math.min(y, window.innerHeight - 230),
@@ -74,7 +74,7 @@ export const ItemActionMenu: React.FC<ItemActionMenuProps> = ({
       <MenuItem icon={ExternalLink} label="新窗口打开" disabled={!hasUrl} onClick={() => act(onOpenExternal)} />
       <MenuItem icon={Link2} label="复制URL" disabled={!hasUrl} onClick={() => act(onCopyUrl)} />
       <MenuItem icon={UserRound} label="账号打开" disabled={!hasUrl} onClick={() => act(onOpenWithAccount)} />
-      <div className="my-1 border-t border-slate-100" />
+      <div className="my-1 border-t border-slate-100 dark:border-slate-800" />
       <MenuItem icon={Trash2} label="删除" danger onClick={() => act(onDelete)} />
     </div>
   );

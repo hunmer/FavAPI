@@ -56,7 +56,7 @@ const FilterClearBtn: React.FC<{ onClick: () => void; title: string }> = ({ onCl
     type="button"
     onClick={onClick}
     title={title}
-    className="w-5 h-5 rounded-full bg-slate-100 hover:bg-rose-100 text-slate-400 hover:text-rose-500 flex items-center justify-center transition-colors cursor-pointer shrink-0"
+    className="w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-rose-100 dark:hover:bg-rose-950 text-slate-400 hover:text-rose-500 flex items-center justify-center transition-colors cursor-pointer shrink-0"
   >
     <X className="w-3 h-3" />
   </button>
@@ -610,7 +610,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
     <div id="data-browser-view" className="flex flex-col lg:flex-row gap-6 items-start">
       {/* 左：过滤面板 */}
       <aside className="w-full lg:w-60 xl:w-64 shrink-0 lg:self-stretch">
-        <div className="lg:sticky lg:top-4 lg:max-h-[calc(96vh-7rem)] bg-white rounded-3xl border border-slate-200/80 shadow-2xs flex flex-col overflow-hidden">
+        <div className="lg:sticky lg:top-4 lg:max-h-[calc(96vh-7rem)] bg-white dark:bg-[#161B26] rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col overflow-hidden">
           <div className="lg:overflow-y-auto p-4 flex flex-col gap-4">
           {/* Search */}
           <div className="relative">
@@ -620,13 +620,13 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="搜索标题、UP主、标签..."
-              className={`w-full pl-8 ${searchQuery ? 'pr-8' : 'pr-3'} py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900 bg-slate-50/50`}
+              className={`w-full pl-8 ${searchQuery ? 'pr-8' : 'pr-3'} py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs focus:outline-none focus:ring-2 focus:ring-slate-900 bg-slate-50/50 dark:bg-slate-800 dark:text-slate-200`}
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-slate-200 hover:bg-slate-300 text-slate-500 hover:text-slate-700 flex items-center justify-center transition-colors cursor-pointer"
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-500 dark:text-slate-300 hover:text-slate-700 dark:hover:text-slate-100 flex items-center justify-center transition-colors cursor-pointer"
                 title="清空搜索"
               >
                 <X className="w-3 h-3" />
@@ -637,7 +637,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
           {/* Account selector */}
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">账号</span>
+              <span className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">账号</span>
               {selectedAccountId !== 'all' && (
                 <FilterClearBtn
                   title="清除账号过滤"
@@ -649,11 +649,11 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                 />
               )}
             </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 overflow-hidden">
+            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 overflow-hidden">
               <button
                 type="button"
                 onClick={() => setAccountListOpen((v) => !v)}
-                className="w-full px-3 py-2 flex items-center justify-between gap-2 text-xs font-medium text-slate-800 cursor-pointer hover:bg-slate-100 transition-colors"
+                className="w-full px-3 py-2 flex items-center justify-between gap-2 text-xs font-medium text-slate-800 dark:text-slate-200 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
               >
                 <span className="flex items-center gap-1.5 min-w-0">
                   {selectedAccount ? (
@@ -672,7 +672,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                 />
               </button>
               {accountListOpen && (
-                <div className="border-t border-slate-100 max-h-52 overflow-y-auto bg-white">
+                <div className="border-t border-slate-100 dark:border-slate-700 max-h-52 overflow-y-auto bg-white dark:bg-slate-800">
                   <button
                     type="button"
                     onClick={() => {
@@ -683,8 +683,8 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                     }}
                     className={`w-full px-3 py-2 flex items-center gap-1.5 text-xs cursor-pointer transition-colors ${
                       selectedAccountId === 'all'
-                        ? 'bg-violet-50 text-violet-700 font-semibold'
-                        : 'text-slate-600 hover:bg-slate-50'
+                        ? 'bg-violet-50 dark:bg-violet-950 text-violet-700 dark:text-violet-400 font-semibold'
+                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
                     }`}
                   >
                     <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
@@ -702,8 +702,8 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                         }}
                         className={`w-full px-3 py-2 flex items-center gap-1.5 text-xs cursor-pointer transition-colors ${
                           selectedAccountId === acc.id
-                            ? 'bg-violet-50 text-violet-700 font-semibold'
-                            : 'text-slate-600 hover:bg-slate-50'
+                            ? 'bg-violet-50 dark:bg-violet-950 text-violet-700 dark:text-violet-400 font-semibold'
+                            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
                         }`}
                       >
                         <SiteIcon platform={acc.platform} name={acc.name} className="w-3.5 h-3.5" />
@@ -721,7 +721,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
           {folderFacets.length > 0 && (
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">收藏夹</span>
+                <span className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">收藏夹</span>
                 {selectedFolder !== 'all' && (
                   <FilterClearBtn
                     title="清除收藏夹过滤"
@@ -732,11 +732,11 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                   />
                 )}
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 overflow-hidden">
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 overflow-hidden">
                 <button
                   type="button"
                   onClick={() => setFolderListOpen((v) => !v)}
-                  className="w-full px-3 py-2 flex items-center justify-between gap-2 text-xs font-medium text-slate-800 cursor-pointer hover:bg-slate-100 transition-colors"
+                  className="w-full px-3 py-2 flex items-center justify-between gap-2 text-xs font-medium text-slate-800 dark:text-slate-200 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                 >
                   <span className="flex items-center gap-1.5 min-w-0">
                     <Folder
@@ -751,7 +751,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                   />
                 </button>
                 {folderListOpen && (
-                  <div className="border-t border-slate-100 max-h-52 overflow-y-auto bg-white">
+                  <div className="border-t border-slate-100 dark:border-slate-700 max-h-52 overflow-y-auto bg-white dark:bg-slate-800">
                     <button
                       type="button"
                       onClick={() => {
@@ -761,8 +761,8 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                       }}
                       className={`w-full px-3 py-2 flex items-center gap-1.5 text-xs cursor-pointer transition-colors ${
                         selectedFolder === 'all'
-                          ? 'bg-violet-50 text-violet-700 font-semibold'
-                          : 'text-slate-600 hover:bg-slate-50'
+                          ? 'bg-violet-50 dark:bg-violet-950 text-violet-700 dark:text-violet-400 font-semibold'
+                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
                       }`}
                     >
                       <Folder className="w-3.5 h-3.5 text-slate-400 shrink-0" />
@@ -779,8 +779,8 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                         }}
                         className={`w-full px-3 py-2 flex items-center gap-1.5 text-xs cursor-pointer transition-colors ${
                           selectedFolder === name
-                            ? 'bg-violet-50 text-violet-700 font-semibold'
-                            : 'text-slate-600 hover:bg-slate-50'
+                            ? 'bg-violet-50 dark:bg-violet-950 text-violet-700 dark:text-violet-400 font-semibold'
+                            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
                         }`}
                       >
                         <Folder className="w-3.5 h-3.5 text-amber-500 shrink-0" />
@@ -799,16 +799,16 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
           {authorFacets.length > 0 && (
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">作者 / UP主</span>
+                <span className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">作者 / UP主</span>
                 {selectedAuthor !== 'all' && (
                   <FilterClearBtn title="清除作者过滤" onClick={() => setSelectedAuthor('all')} />
                 )}
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 overflow-hidden">
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 overflow-hidden">
                 <button
                   type="button"
                   onClick={() => setAuthorListOpen((v) => !v)}
-                  className="w-full px-3 py-2 flex items-center justify-between gap-2 text-xs font-medium text-slate-800 cursor-pointer hover:bg-slate-100 transition-colors"
+                  className="w-full px-3 py-2 flex items-center justify-between gap-2 text-xs font-medium text-slate-800 dark:text-slate-200 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                 >
                   <span className="flex items-center gap-1.5 min-w-0">
                     <User
@@ -823,7 +823,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                   />
                 </button>
                 {authorListOpen && (
-                  <div className="border-t border-slate-100 max-h-52 overflow-y-auto bg-white">
+                  <div className="border-t border-slate-100 dark:border-slate-700 max-h-52 overflow-y-auto bg-white dark:bg-slate-800">
                     <button
                       type="button"
                       onClick={() => {
@@ -832,8 +832,8 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                       }}
                       className={`w-full px-3 py-2 flex items-center gap-1.5 text-xs cursor-pointer transition-colors ${
                         selectedAuthor === 'all'
-                          ? 'bg-violet-50 text-violet-700 font-semibold'
-                          : 'text-slate-600 hover:bg-slate-50'
+                          ? 'bg-violet-50 dark:bg-violet-950 text-violet-700 dark:text-violet-400 font-semibold'
+                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
                       }`}
                     >
                       <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
@@ -849,8 +849,8 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                         }}
                         className={`w-full px-3 py-2 flex items-center gap-1.5 text-xs cursor-pointer transition-colors ${
                           selectedAuthor === author
-                            ? 'bg-violet-50 text-violet-700 font-semibold'
-                            : 'text-slate-600 hover:bg-slate-50'
+                            ? 'bg-violet-50 dark:bg-violet-950 text-violet-700 dark:text-violet-400 font-semibold'
+                            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
                         }`}
                       >
                         <User className="w-3.5 h-3.5 text-violet-400 shrink-0" />
@@ -868,7 +868,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
           {/* Crawl date filter（按抓取入库时间过滤） */}
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+              <span className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                 <Clock className="w-3 h-3 text-sky-500" />
                 入库日期
               </span>
@@ -884,7 +884,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                   value={selectedDate}
                   max={selectedEndDate || undefined}
                   onChange={(e) => handleDateFilterChange(e.target.value, selectedEndDate)}
-                  className="flex-1 min-w-0 px-2 py-2 rounded-xl border border-slate-200 text-xs bg-slate-50 text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 font-medium cursor-pointer"
+                  className="flex-1 min-w-0 px-2 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900 font-medium cursor-pointer"
                 />
               </div>
               <div className="flex items-center gap-1.5">
@@ -894,7 +894,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                   value={selectedEndDate}
                   min={selectedDate || undefined}
                   onChange={(e) => handleDateFilterChange(selectedDate, e.target.value)}
-                  className="flex-1 min-w-0 px-2 py-2 rounded-xl border border-slate-200 text-xs bg-slate-50 text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 font-medium cursor-pointer"
+                  className="flex-1 min-w-0 px-2 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900 font-medium cursor-pointer"
                 />
               </div>
             </div>
@@ -906,7 +906,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
           {/* Publish date filter（按作品发布时间过滤，取自内容元数据） */}
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+              <span className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                 <CalendarDays className="w-3 h-3 text-emerald-500" />
                 发布时间
               </span>
@@ -928,7 +928,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                   value={selectedPubDate}
                   max={selectedPubEndDate || undefined}
                   onChange={(e) => setSelectedPubDate(e.target.value)}
-                  className="flex-1 min-w-0 px-2 py-2 rounded-xl border border-slate-200 text-xs bg-slate-50 text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 font-medium cursor-pointer"
+                  className="flex-1 min-w-0 px-2 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900 font-medium cursor-pointer"
                 />
               </div>
               <div className="flex items-center gap-1.5">
@@ -938,7 +938,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                   value={selectedPubEndDate}
                   min={selectedPubDate || undefined}
                   onChange={(e) => setSelectedPubEndDate(e.target.value)}
-                  className="flex-1 min-w-0 px-2 py-2 rounded-xl border border-slate-200 text-xs bg-slate-50 text-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900 font-medium cursor-pointer"
+                  className="flex-1 min-w-0 px-2 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900 font-medium cursor-pointer"
                 />
               </div>
             </div>
@@ -950,7 +950,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
           {/* AI 标签：按体系分组展示，badge 多选（OR）*/}
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+              <span className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                 <Tag className="w-3 h-3 text-violet-500" />
                 AI 标签
               </span>
@@ -968,7 +968,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                     setNewGroupTags([]);
                     setShowGroupCreate(true);
                   }}
-                  className="w-6 h-6 rounded-lg bg-violet-50 border border-violet-100 text-violet-500 hover:bg-violet-100 hover:text-violet-600 flex items-center justify-center transition-all active:scale-95 cursor-pointer"
+                  className="w-6 h-6 rounded-lg bg-violet-50 dark:bg-violet-950 border border-violet-100 dark:border-violet-900 text-violet-500 dark:text-violet-400 hover:bg-violet-100 dark:hover:bg-violet-900 hover:text-violet-600 flex items-center justify-center transition-all active:scale-95 cursor-pointer"
                   title="新建标签分组"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -998,7 +998,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                                 if (e.key === 'Enter') submitGroupRename();
                                 if (e.key === 'Escape') setEditingGroup(null);
                               }}
-                              className="flex-1 min-w-0 px-2 py-1 rounded-lg border border-violet-300 text-[11px] font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                              className="flex-1 min-w-0 px-2 py-1 rounded-lg border border-violet-300 dark:border-violet-700 bg-transparent text-[11px] font-bold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500"
                             />
                             <button
                               type="button"
@@ -1012,7 +1012,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                             <button
                               type="button"
                               onClick={() => setEditingGroup(null)}
-                              className="p-1 rounded-md text-slate-400 hover:bg-slate-100 cursor-pointer"
+                              className="p-1 rounded-md text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                               title="取消"
                             >
                               <X className="w-3.5 h-3.5" />
@@ -1023,7 +1023,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                             <button
                               type="button"
                               onClick={() => setCollapsedGroups((prev) => ({ ...prev, [g.group]: !collapsed }))}
-                              className="flex items-center gap-1 text-[11px] font-bold text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
+                              className="flex items-center gap-1 text-[11px] font-bold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer"
                             >
                               {g.group}
                               {groupSelected > 0 && (
@@ -1075,8 +1075,8 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                                     active
                                       ? 'bg-violet-600 text-white border-violet-600 shadow-xs'
                                       : count
-                                        ? 'bg-violet-50/60 text-violet-600 border-violet-100 hover:bg-violet-100 hover:border-violet-200'
-                                        : 'bg-slate-50 text-slate-400 border-slate-100 hover:border-slate-200 hover:text-slate-500'
+                                        ? 'bg-violet-50/60 dark:bg-violet-950 text-violet-600 dark:text-violet-400 border-violet-100 dark:border-violet-900 hover:bg-violet-100 dark:hover:bg-violet-900 hover:border-violet-200'
+                                        : 'bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-100 dark:border-slate-700 hover:border-slate-200 hover:text-slate-500'
                                   }`}
                                 >
                                   #{t}
@@ -1099,8 +1099,8 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
           </div>
 
           {/* 筛选统计小结 */}
-          <div className="pt-3 border-t border-slate-100 text-[11px] text-slate-400">
-            命中 <strong className="text-slate-700">{totalCount}</strong> / {totalAll} 条
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-400">
+            命中 <strong className="text-slate-700 dark:text-slate-200">{totalCount}</strong> / {totalAll} 条
             {(selectedDate || selectedEndDate) && (
               <span>（入库 {selectedDate || '…'} ~ {selectedEndDate || '…'}）</span>
             )}
@@ -1114,11 +1114,11 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
 
           {/* 清空全部过滤（面板底部固定，不随过滤项滚动） */}
           {totalAll > 0 && hasActiveFilters && (
-            <div className="p-3 border-t border-slate-100">
+            <div className="p-3 border-t border-slate-100 dark:border-slate-800">
               <button
                 type="button"
                 onClick={clearAllFilters}
-                className="w-full px-4 py-2 rounded-xl border border-slate-200 hover:border-rose-200 hover:bg-rose-50 text-slate-500 hover:text-rose-600 text-xs font-bold shadow-2xs inline-flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-rose-200 hover:bg-rose-50 dark:hover:bg-rose-950 text-slate-500 dark:text-slate-400 hover:text-rose-600 text-xs font-bold shadow-2xs inline-flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
                 清空全部过滤
@@ -1133,7 +1133,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
       {/* Header with Title & View Mode Switcher（移动端页面滚动时吸顶） */}
       <div className="sticky top-0 z-20 bg-[#F8FAFC] dark:bg-[#0D1117] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
             数据浏览
             {listLoading && <Loader2 className="w-4 h-4 text-violet-500 animate-spin" />}
           </h2>
@@ -1145,7 +1145,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
             <button
               type="button"
               onClick={exitSelectionMode}
-              className="px-4 py-2 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-sm inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+              className="px-4 py-2 rounded-2xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 text-white text-xs font-bold shadow-sm inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
             >
               <X className="w-3.5 h-3.5" />
               退出多选
@@ -1155,7 +1155,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
               type="button"
               onClick={() => setSelectionMode(true)}
               disabled={totalCount === 0}
-              className="px-4 py-2 rounded-2xl bg-white hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed border border-slate-200 text-slate-700 text-xs font-bold shadow-sm inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+              className="px-4 py-2 rounded-2xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold shadow-sm inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
               title="进入多选模式，可勾选多条收藏批量删除"
             >
               <CheckSquare className="w-3.5 h-3.5" />
@@ -1172,14 +1172,14 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
             <Sparkles className="w-3.5 h-3.5" />
             一键打标
           </button>
-          <div className="bg-slate-100 p-1 rounded-2xl border border-slate-200 flex items-center gap-1 shadow-2xs">
+          <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl border border-slate-200 dark:border-slate-700 flex items-center gap-1 shadow-2xs">
             <button
               type="button"
               onClick={() => handleViewModeChange('grid')}
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
                 viewMode === 'grid'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
               title="网格视图：封面卡片流，适合快速找内容"
             >
@@ -1191,8 +1191,8 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
               onClick={() => handleViewModeChange('list')}
               className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
                 viewMode === 'list'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
               title="列表视图：逐条信息核对，展现点赞/收藏与时间明细"
             >
@@ -1205,8 +1205,8 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
 
       {/* 多选模式批量操作条：全选当前页 / 删除 */}
       {selectionMode && totalCount > 0 && (
-        <div className="bg-white p-3 rounded-2xl border border-violet-200/80 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-          <span className="font-semibold text-slate-700">
+        <div className="bg-white dark:bg-[#161B26] p-3 rounded-2xl border border-violet-200/80 dark:border-violet-900 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <span className="font-semibold text-slate-700 dark:text-slate-200">
             已选 <strong className="text-violet-600">{selectedKeys.size}</strong> 条收藏
             <span className="ml-2 text-[11px] text-slate-400 font-normal">点击卡片勾选，再次点击取消</span>
           </span>
@@ -1216,7 +1216,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
               onClick={toggleSelectAllFiltered}
               disabled={selectingAll}
               title="选中当前过滤器命中的全部条目（跨页），再次点击取消全部"
-              className="px-3.5 py-2 rounded-xl border border-slate-200 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-wait text-slate-700 font-semibold inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+              className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-wait text-slate-700 dark:text-slate-200 font-semibold inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
             >
               {selectingAll ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1232,7 +1232,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
             <button
               type="button"
               onClick={toggleSelectAllPage}
-              className="px-3.5 py-2 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-700 font-semibold inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+              className="px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
             >
               <CheckSquare className="w-3.5 h-3.5" />
               {allPageSelected ? '取消本页全选' : '全选本页'}
@@ -1257,11 +1257,11 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
       >
       {totalCount === 0 ? (
         /* 空数据占位：区分全库为空与筛选无命中 */
-        <div className="bg-white rounded-[28px] border border-dashed border-slate-200 py-20 flex flex-col items-center justify-center gap-3 text-center">
-          <div className="w-14 h-14 rounded-3xl bg-slate-50 text-slate-300 flex items-center justify-center">
+        <div className="bg-white dark:bg-[#161B26] rounded-[28px] border border-dashed border-slate-200 dark:border-slate-800 py-20 flex flex-col items-center justify-center gap-3 text-center">
+          <div className="w-14 h-14 rounded-3xl bg-slate-50 dark:bg-slate-800 text-slate-300 dark:text-slate-600 flex items-center justify-center">
             <Database className="w-7 h-7" />
           </div>
-          <div className="text-sm font-bold text-slate-500">
+          <div className="text-sm font-bold text-slate-500 dark:text-slate-300">
             {totalAll === 0 ? '收藏库还是空的' : '没有符合条件的收藏'}
           </div>
           <p className="text-xs text-slate-400 max-w-xs leading-relaxed">
@@ -1294,11 +1294,11 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
         </div>
       ) : (
         /* List View: Detailed row inspection */
-        <div className="bg-white rounded-[28px] border border-slate-200/80 shadow-2xs overflow-hidden">
+        <div className="bg-white dark:bg-[#161B26] rounded-[28px] border border-slate-200/80 dark:border-slate-800 shadow-2xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="bg-slate-50/80 text-slate-500 border-b border-slate-200 font-semibold">
+                <tr className="bg-slate-50/80 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-700 font-semibold">
                   {selectionMode && (
                     <th className="py-3 px-4 w-10">
                       <input
@@ -1320,7 +1320,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                   <th className="py-3 px-4">抓取入库时间</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {currentItems.map((item, idx) => {
                   const rowSelected = selectionMode && selectedKeys.has(itemKey(item));
                   return (
@@ -1332,7 +1332,9 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                       setRowMenu({ x: e.clientX, y: e.clientY, item });
                     }}
                     className={`anim-row-enter cursor-pointer transition-colors ${
-                      rowSelected ? 'bg-violet-50/70' : 'hover:bg-slate-50/80'
+                      rowSelected
+                        ? 'bg-violet-50/70 dark:bg-violet-950/60'
+                        : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/60'
                     }`}
                     style={{ animationDelay: `${Math.min(idx * 20, 200)}ms` }}
                   >
@@ -1360,7 +1362,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                         target="_blank"
                         rel="noreferrer"
                         onClick={(e) => e.stopPropagation()}
-                        className="font-bold text-slate-900 hover:text-indigo-600 line-clamp-2"
+                        className="font-bold text-slate-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 line-clamp-2"
                       >
                         {item.title}
                       </a>
@@ -1369,7 +1371,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                           {item.tags.slice(0, 4).map((t) => (
                             <span
                               key={t}
-                              className="px-1.5 py-0.5 rounded bg-violet-50 text-violet-600 text-[10px] font-medium border border-violet-100"
+                              className="px-1.5 py-0.5 rounded bg-violet-50 dark:bg-violet-950 text-violet-600 dark:text-violet-400 text-[10px] font-medium border border-violet-100 dark:border-violet-900"
                             >
                               #{t}
                             </span>
@@ -1380,25 +1382,25 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                         <span>{item.accountName}</span>
                       </div>
                     </td>
-                    <td className="py-2.5 px-4 font-medium text-slate-800 whitespace-nowrap">
+                    <td className="py-2.5 px-4 font-medium text-slate-800 dark:text-slate-200 whitespace-nowrap">
                       {item.author}
                     </td>
-                    <td className="py-2.5 px-4 font-mono text-slate-600 whitespace-nowrap">
+                    <td className="py-2.5 px-4 font-mono text-slate-600 dark:text-slate-400 whitespace-nowrap">
                       {item.duration || '—'}
                     </td>
-                    <td className="py-2.5 px-4 text-right whitespace-nowrap font-medium text-slate-700">
+                    <td className="py-2.5 px-4 text-right whitespace-nowrap font-medium text-slate-700 dark:text-slate-200">
                       <div>{(item.likes / 1000).toFixed(1)}k 赞</div>
                       <div className="text-[10px] text-slate-400">{(item.favorites / 1000).toFixed(1)}k 藏</div>
                     </td>
                     <td className="py-2.5 px-4 whitespace-nowrap">
-                      <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-medium">
+                      <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium">
                         {item.folderName}
                       </span>
                     </td>
-                    <td className="py-2.5 px-4 text-slate-500 whitespace-nowrap">
+                    <td className="py-2.5 px-4 text-slate-500 dark:text-slate-400 whitespace-nowrap">
                       {item.favTime}
                     </td>
-                    <td className="py-2.5 px-4 text-slate-400 text-[11px] whitespace-nowrap">
+                    <td className="py-2.5 px-4 text-slate-400 dark:text-slate-500 text-[11px] whitespace-nowrap">
                       {item.crawlTime}
                     </td>
                   </tr>
@@ -1413,12 +1415,12 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
 
       {/* Pagination Footer（无数据时隐藏；sticky 于 main 滚动视口底部，卡片圆角样式，不脱离容器） */}
       {totalCount > 0 && (
-      <div className="sticky bottom-4 z-20 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-600">
+      <div className="sticky bottom-4 z-20 bg-white dark:bg-[#161B26] p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-600 dark:text-slate-300">
         <div className="flex items-center gap-3">
           <span>
-            显示第 <strong className="text-slate-900">{startIndex + 1}</strong> 到{' '}
-            <strong className="text-slate-900">{endIndex}</strong> 条，共{' '}
-            <strong className="text-slate-900">{totalCount}</strong> 条已入库收藏
+            显示第 <strong className="text-slate-900 dark:text-white">{startIndex + 1}</strong> 到{' '}
+            <strong className="text-slate-900 dark:text-white">{endIndex}</strong> 条，共{' '}
+            <strong className="text-slate-900 dark:text-white">{totalCount}</strong> 条已入库收藏
           </span>
 
           <div className="flex items-center gap-1">
@@ -1426,7 +1428,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
             <select
               value={pageSize}
               onChange={(e) => setPageSize(Number(e.target.value))}
-              className="px-2 py-1 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 font-semibold"
+              className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold"
             >
               <option value="20">20 条</option>
               <option value="50">50 条</option>
@@ -1442,19 +1444,19 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
             type="button"
             disabled={currentPage <= 1}
             onClick={() => gotoPage(currentPage - 1)}
-            className="p-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed shadow-2xs"
+            className="p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed shadow-2xs"
             title="上一页"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <span className="px-3 py-1 font-semibold text-slate-800">
+          <span className="px-3 py-1 font-semibold text-slate-800 dark:text-slate-200">
             {currentPage} / {totalPages}
           </span>
           <button
             type="button"
             disabled={currentPage >= totalPages}
             onClick={() => gotoPage(currentPage + 1)}
-            className="p-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed shadow-2xs"
+            className="p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed shadow-2xs"
             title="下一页"
           >
             <ChevronRight className="w-4 h-4" />
@@ -1490,7 +1492,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
       {/* 标签右键菜单 */}
       {ctxMenu && (
         <div
-          className="fixed z-[60] py-1 rounded-xl bg-white border border-slate-200 shadow-lg overflow-hidden anim-modal-enter"
+          className="fixed z-[60] py-1 rounded-xl bg-white dark:bg-[#161B26] border border-slate-200 dark:border-slate-700 shadow-lg overflow-hidden anim-modal-enter"
           style={{ left: Math.min(ctxMenu.x, window.innerWidth - 140), top: ctxMenu.y }}
           onClick={(e) => e.stopPropagation()}
         >
@@ -1513,19 +1515,19 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="anim-modal-enter bg-white w-full max-w-sm rounded-[28px] p-6 shadow-2xl border border-slate-100 space-y-4"
+            className="anim-modal-enter bg-white dark:bg-[#161B26] w-full max-w-sm rounded-[28px] p-6 shadow-2xl border border-slate-100 dark:border-slate-800 space-y-4"
           >
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+              <div className="w-10 h-10 rounded-2xl bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
                 <AlertTriangle className="w-5 h-5" />
               </div>
-              <h3 className="text-base font-bold text-slate-900">删除标签</h3>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">删除标签</h3>
             </div>
-            <p className="text-xs text-slate-600 leading-relaxed">
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
               将从
               {deleteConfirm.usage >= 0 ? (
                 <>
-                  <strong className="text-slate-900">{deleteConfirm.usage}</strong> 条内容中
+                  <strong className="text-slate-900 dark:text-white">{deleteConfirm.usage}</strong> 条内容中
                 </>
               ) : ''}{' '}
               移除标签 <span className="font-bold text-violet-600">#{deleteConfirm.tag}</span>
@@ -1538,8 +1540,8 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                 onChange={(e) => setDeleteAlsoContents(e.target.checked)}
                 className="mt-0.5 w-4 h-4 rounded accent-rose-600 cursor-pointer"
               />
-              <span className="text-xs text-slate-700">
-                <strong className="text-rose-600">一并删除这些收藏内容</strong>
+              <span className="text-xs text-slate-700 dark:text-slate-300">
+                <strong className="text-rose-600 dark:text-rose-400">一并删除这些收藏内容</strong>
                 <span className="block text-[11px] text-slate-400 mt-0.5">
                   含该标签的收藏将全部从收藏库移除（不可恢复），内容元数据保留
                 </span>
@@ -1550,7 +1552,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                 type="button"
                 onClick={() => setDeleteConfirm(null)}
                 disabled={tagDeleting}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl cursor-pointer"
+                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100 rounded-xl cursor-pointer"
               >
                 取消
               </button>
@@ -1576,15 +1578,15 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="anim-modal-enter bg-white w-full max-w-sm rounded-[28px] p-6 shadow-2xl border border-slate-100 space-y-4"
+            className="anim-modal-enter bg-white dark:bg-[#161B26] w-full max-w-sm rounded-[28px] p-6 shadow-2xl border border-slate-100 dark:border-slate-800 space-y-4"
           >
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+              <div className="w-10 h-10 rounded-2xl bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
                 <AlertTriangle className="w-5 h-5" />
               </div>
-              <h3 className="text-base font-bold text-slate-900">批量删除收藏</h3>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">批量删除收藏</h3>
             </div>
-            <p className="text-xs text-slate-600 leading-relaxed">
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
               确定删除已选中的{' '}
               <strong className="text-rose-600">{selectedKeys.size}</strong> 条收藏吗？
               删除后将从收藏列表移除（不可恢复），内容元数据保留。
@@ -1594,7 +1596,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                 type="button"
                 onClick={() => setItemsDeleteConfirm(false)}
                 disabled={itemsDeleting}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl cursor-pointer"
+                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100 rounded-xl cursor-pointer"
               >
                 取消
               </button>
@@ -1620,17 +1622,17 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="anim-modal-enter bg-white w-full max-w-sm rounded-[28px] p-6 shadow-2xl border border-slate-100 space-y-4"
+            className="anim-modal-enter bg-white dark:bg-[#161B26] w-full max-w-sm rounded-[28px] p-6 shadow-2xl border border-slate-100 dark:border-slate-800 space-y-4"
           >
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+              <div className="w-10 h-10 rounded-2xl bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
                 <AlertTriangle className="w-5 h-5" />
               </div>
-              <h3 className="text-base font-bold text-slate-900">删除收藏</h3>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">删除收藏</h3>
             </div>
-            <p className="text-xs text-slate-600 leading-relaxed">
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
               确定删除收藏「
-              <strong className="text-slate-900 break-all line-clamp-2">{singleDelete.title}</strong>
+              <strong className="text-slate-900 dark:text-white break-all line-clamp-2">{singleDelete.title}</strong>
               」吗？删除后将从收藏列表移除（不可恢复），内容元数据保留。
             </p>
             <div className="flex justify-end gap-2 pt-1">
@@ -1638,7 +1640,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                 type="button"
                 onClick={() => setSingleDelete(null)}
                 disabled={singleDeleting}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl cursor-pointer"
+                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100 rounded-xl cursor-pointer"
               >
                 取消
               </button>
@@ -1664,11 +1666,11 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="anim-modal-enter bg-white w-full max-w-sm rounded-[28px] shadow-2xl border border-slate-100 overflow-hidden"
+            className="anim-modal-enter bg-white dark:bg-[#161B26] w-full max-w-sm rounded-[28px] shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden"
           >
-            <div className="p-5 bg-slate-50 border-b border-slate-100">
-              <h3 className="text-base font-bold text-slate-900">新建标签分组</h3>
-              <p className="text-xs text-slate-500 mt-0.5">
+            <div className="p-5 bg-slate-50 dark:bg-slate-800 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">新建标签分组</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 创建后可在分组内积累标签，打标标签池同步生效
               </p>
             </div>
@@ -1679,7 +1681,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                 value={newGroupName}
                 onChange={(e) => setNewGroupName(e.target.value)}
                 placeholder="分组名称，如：兴趣爱好"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-600"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-600"
               />
               {(() => {
                 const otherGroup = tagGroups.find((g) => g.group === '其他');
@@ -1693,7 +1695,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                 }
                 return (
                   <div>
-                    <span className="text-xs font-bold text-slate-600 block mb-2">
+                    <span className="text-xs font-bold text-slate-600 dark:text-slate-400 block mb-2">
                       归入「其他」组的标签（可选）
                     </span>
                     <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto p-1">
@@ -1711,7 +1713,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                             className={`px-2 py-1 rounded-lg text-[11px] font-medium border transition-all cursor-pointer active:scale-95 ${
                               on
                                 ? 'bg-violet-600 text-white border-violet-600'
-                                : 'bg-violet-50/60 text-violet-600 border-violet-100 hover:bg-violet-100'
+                                : 'bg-violet-50/60 dark:bg-violet-950 text-violet-600 dark:text-violet-400 border-violet-100 dark:border-violet-900 hover:bg-violet-100 dark:hover:bg-violet-900'
                             }`}
                           >
                             #{t}
@@ -1727,7 +1729,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                   type="button"
                   onClick={() => setShowGroupCreate(false)}
                   disabled={groupSaving}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl cursor-pointer"
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100 rounded-xl cursor-pointer"
                 >
                   取消
                 </button>
@@ -1754,15 +1756,15 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="anim-modal-enter bg-white w-full max-w-md rounded-[28px] shadow-2xl border border-slate-100 overflow-hidden"
+            className="anim-modal-enter bg-white dark:bg-[#161B26] w-full max-w-md rounded-[28px] shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden"
           >
-            <div className="p-5 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+            <div className="p-5 bg-slate-50 dark:bg-slate-800 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
               <div>
-                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-violet-600" />
                   一键 AI 智能打标
                 </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                   对尚未打标的收藏内容执行一次性批量打标
                 </p>
               </div>
@@ -1770,7 +1772,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowTagModal(false)}
-                  className="w-8 h-8 rounded-full bg-white hover:bg-slate-200 text-slate-700 flex items-center justify-center shadow-2xs cursor-pointer"
+                  className="w-8 h-8 rounded-full bg-white dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 flex items-center justify-center shadow-2xs cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -1781,13 +1783,13 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
               {tagPhase === 'idle' ? (
                 <>
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wider">
                       AI Agent 配置 <span className="text-red-500">*</span>
                     </label>
                     <select
                       value={tagAgentId}
                       onChange={(e) => setTagAgentId(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-600"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-600"
                     >
                       {agents.map((a) => (
                         <option key={a.agent_id} value={a.agent_id}>
@@ -1801,13 +1803,13 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wider">
                       打标平台
                     </label>
                     <select
                       value={tagPlatform}
                       onChange={(e) => setTagPlatform(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-600"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-600"
                     >
                       <option value="">全部平台</option>
                       {PLATFORMS.filter((p) => p.isSupported).map((p) => (
@@ -1819,7 +1821,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wider">
                       打标上限
                     </label>
                     <input
@@ -1828,7 +1830,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                       max="2000"
                       value={tagLimit}
                       onChange={(e) => setTagLimit(Number(e.target.value))}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-600"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-600"
                     />
                     <p className="text-[11px] text-slate-400 mt-1">
                       本次最多处理多少条未打标内容（分批请求模型，每批 20 条）。
@@ -1839,7 +1841,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setShowTagModal(false)}
-                      className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl cursor-pointer"
+                      className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100 rounded-xl cursor-pointer"
                     >
                       取消
                     </button>
@@ -1857,14 +1859,14 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
               ) : tagPhase === 'running' ? (
                 <div className="flex flex-col gap-4">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
+                    <div className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white">
                       <Loader2 className="w-4 h-4 text-violet-600 animate-spin" />
                       模型打标进行中...
                     </div>
                     <button
                       type="button"
                       onClick={stopTagging}
-                      className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-rose-50 hover:text-rose-600 transition-colors cursor-pointer"
+                      className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-rose-50 dark:hover:bg-rose-950 hover:text-rose-600 transition-colors cursor-pointer"
                     >
                       停止
                     </button>
@@ -1874,13 +1876,13 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                   <div>
                     <div className="flex items-center justify-between text-xs text-slate-500 mb-1.5">
                       <span>
-                        已处理 <strong className="text-slate-800">{tagProgress.processed}</strong> / {tagProgress.limit || tagLimit} 条
+                        已处理 <strong className="text-slate-800 dark:text-slate-200">{tagProgress.processed}</strong> / {tagProgress.limit || tagLimit} 条
                       </span>
                       <span>
                         已打标 <strong className="text-violet-600">{tagProgress.tagged}</strong> 条
                       </span>
                     </div>
-                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-violet-500 rounded-full transition-all duration-500"
                         style={{ width: `${Math.min(100, (tagProgress.processed / (tagProgress.limit || tagLimit)) * 100)}%` }}
@@ -1889,7 +1891,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                   </div>
 
                   {/* 每批打标结果（SSE 实时追加，自动滚动到底部） */}
-                  <div ref={tagListRef} className="max-h-56 overflow-y-auto border border-slate-100 rounded-2xl divide-y divide-slate-50 bg-slate-50/50">
+                  <div ref={tagListRef} className="max-h-56 overflow-y-auto border border-slate-100 dark:border-slate-800 rounded-2xl divide-y divide-slate-50 dark:divide-slate-800 bg-slate-50/50 dark:bg-slate-800/60">
                     {tagProgress.results.length === 0 ? (
                       <div className="py-6 text-center text-xs text-slate-400">
                         等待第一批结果（每批 20 条，取决于模型响应速度）...
@@ -1897,10 +1899,10 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                     ) : (
                       tagProgress.results.map((r, i) => (
                         <div key={i} className="px-3.5 py-2.5 flex flex-col gap-1 anim-row-enter">
-                          <div className="text-xs font-medium text-slate-800 line-clamp-1">{r.title}</div>
+                          <div className="text-xs font-medium text-slate-800 dark:text-slate-200 line-clamp-1">{r.title}</div>
                           <div className="flex flex-wrap gap-1">
                             {r.tags.map((t) => (
-                              <span key={t} className="px-1.5 py-0.5 rounded bg-violet-50 text-violet-600 text-[10px] font-medium border border-violet-100">
+                              <span key={t} className="px-1.5 py-0.5 rounded bg-violet-50 dark:bg-violet-950 text-violet-600 dark:text-violet-400 text-[10px] font-medium border border-violet-100 dark:border-violet-900">
                                 #{t}
                               </span>
                             ))}
@@ -1916,10 +1918,10 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
               ) : tagPhase === 'success' ? (
                 <div className="py-6 flex flex-col items-center gap-3 text-center">
                   <CheckCircle2 className="w-10 h-10 text-emerald-500" />
-                  <div className="text-sm font-bold text-slate-900">打标完成</div>
+                  <div className="text-sm font-bold text-slate-900 dark:text-white">打标完成</div>
                   <p className="text-xs text-slate-500">
-                    共处理 <strong className="text-slate-800">{tagResult?.processed}</strong> 条，成功打标{' '}
-                    <strong className="text-slate-800">{tagResult?.tagged}</strong> 条，列表与标签统计已刷新。
+                    共处理 <strong className="text-slate-800 dark:text-slate-200">{tagResult?.processed}</strong> 条，成功打标{' '}
+                    <strong className="text-slate-800 dark:text-slate-200">{tagResult?.tagged}</strong> 条，列表与标签统计已刷新。
                   </p>
                   <button
                     type="button"
@@ -1932,7 +1934,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
               ) : (
                 <div className="py-6 flex flex-col items-center gap-3 text-center">
                   <AlertTriangle className="w-10 h-10 text-rose-500" />
-                  <div className="text-sm font-bold text-slate-900">打标失败</div>
+                  <div className="text-sm font-bold text-slate-900 dark:text-white">打标失败</div>
                   <p className="text-xs text-rose-600 break-all">{tagResult?.error || '未知错误'}</p>
                   <button
                     type="button"

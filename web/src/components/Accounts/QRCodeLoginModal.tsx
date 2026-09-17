@@ -93,17 +93,17 @@ export const QRCodeLoginModal: React.FC<QRCodeLoginModalProps> = ({
       <div
         id="qr-login-modal"
         onClick={(e) => e.stopPropagation()}
-        className="anim-modal-enter bg-white w-full max-w-md rounded-[32px] shadow-2xl border border-slate-100 overflow-hidden flex flex-col"
+        className="anim-modal-enter bg-white dark:bg-[#161B26] w-full max-w-md rounded-[32px] shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden flex flex-col"
       >
         {/* Header */}
-        <div className="p-5 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+        <div className="p-5 bg-slate-50 dark:bg-slate-800 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-slate-900 text-white flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-slate-900 dark:bg-slate-700 text-white flex items-center justify-center">
               <QrCode className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900">平台扫码登录</h3>
-              <p className="text-xs text-slate-500">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">平台扫码登录</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
                 {account.name} • {platformMeta.name}
               </p>
             </div>
@@ -111,7 +111,7 @@ export const QRCodeLoginModal: React.FC<QRCodeLoginModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors shadow-2xs"
+            className="w-8 h-8 rounded-full bg-white dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 flex items-center justify-center transition-colors shadow-2xs"
           >
             <X className="w-4 h-4" />
           </button>
@@ -120,7 +120,7 @@ export const QRCodeLoginModal: React.FC<QRCodeLoginModalProps> = ({
         {/* Modal Body */}
         <div className="p-6 flex flex-col items-center text-center">
           {/* Browser Profile notification */}
-          <div className="w-full bg-slate-100/70 py-1.5 px-3 rounded-xl text-[11px] text-slate-600 mb-5 flex items-center justify-center gap-1.5">
+          <div className="w-full bg-slate-100/70 dark:bg-slate-800 py-1.5 px-3 rounded-xl text-[11px] text-slate-600 dark:text-slate-300 mb-5 flex items-center justify-center gap-1.5">
             <Monitor className="w-3.5 h-3.5 text-slate-500" />
             <span>已启动本地 Chromium 窗口并挂载隔离会话</span>
           </div>
@@ -128,7 +128,7 @@ export const QRCodeLoginModal: React.FC<QRCodeLoginModalProps> = ({
           {step === 'starting' && (
             <div className="py-12 space-y-3">
               <RefreshCw className="w-8 h-8 text-indigo-600 animate-spin mx-auto" />
-              <p className="text-sm font-semibold text-slate-800">
+              <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
                 正在启动浏览器环境...
               </p>
               <p className="text-xs text-slate-400">
@@ -140,7 +140,7 @@ export const QRCodeLoginModal: React.FC<QRCodeLoginModalProps> = ({
           {step === 'waiting' && (
             <div className="space-y-4 flex flex-col items-center">
               {/* QR Code Container（真实二维码展示在弹出的浏览器窗口中，此处为引导示意） */}
-              <div className="relative p-4 bg-white rounded-2xl border-2 border-slate-200/90 shadow-sm">
+              <div className="relative p-4 bg-white dark:bg-slate-100 rounded-2xl border-2 border-slate-200/90 dark:border-slate-700 shadow-sm">
                 <div className="w-48 h-48 bg-slate-900 rounded-xl p-2 flex items-center justify-center relative overflow-hidden">
                   <svg viewBox="0 0 100 100" className="w-full h-full text-white fill-current opacity-60">
                     <rect x="10" y="10" width="25" height="25" fill="white" />
@@ -169,7 +169,7 @@ export const QRCodeLoginModal: React.FC<QRCodeLoginModalProps> = ({
 
               {/* Status text & Countdown */}
               <div>
-                <p className="text-sm font-bold text-slate-800 flex items-center justify-center gap-1.5">
+                <p className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center justify-center gap-1.5">
                   <Smartphone className="w-4 h-4 text-indigo-600" />
                   请在弹出的浏览器窗口中完成扫码
                 </p>
@@ -182,7 +182,7 @@ export const QRCodeLoginModal: React.FC<QRCodeLoginModalProps> = ({
               <button
                 type="button"
                 onClick={handleManualCheck}
-                className="text-xs text-indigo-600 hover:text-indigo-800 font-semibold underline"
+                className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 font-semibold underline"
               >
                 我已登录
               </button>
@@ -191,21 +191,21 @@ export const QRCodeLoginModal: React.FC<QRCodeLoginModalProps> = ({
 
           {step === 'success' && (
             <div className="py-6 space-y-4">
-              <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-xs anim-modal-enter">
+              <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto shadow-xs anim-modal-enter">
                 <CheckCircle2 className="w-9 h-9" />
               </div>
               <div>
-                <h4 className="text-lg font-bold text-slate-900">登录成功！</h4>
-                <p className="text-xs text-slate-500 mt-1">
+                <h4 className="text-lg font-bold text-slate-900 dark:text-white">登录成功！</h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                   已成功提取当前会话 Cookies 并写入本地数据库备用。
                 </p>
               </div>
 
-              <div className="bg-emerald-50 text-emerald-800 p-3 rounded-2xl border border-emerald-200/60 text-xs text-left space-y-1">
+              <div className="bg-emerald-50 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 p-3 rounded-2xl border border-emerald-200/60 dark:border-emerald-800 text-xs text-left space-y-1">
                 <div className="flex items-center gap-1.5 font-bold">
                   <ShieldCheck className="w-4 h-4 text-emerald-600" /> 登录态续期完毕
                 </div>
-                <div className="text-[11px] text-emerald-700">
+                <div className="text-[11px] text-emerald-700 dark:text-emerald-400">
                   账号状态已更新为「已启用」，可以正常进行全量或增量抓取。
                 </div>
               </div>
@@ -213,7 +213,7 @@ export const QRCodeLoginModal: React.FC<QRCodeLoginModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl shadow-xs"
+                className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 text-white text-xs font-bold rounded-xl shadow-xs"
               >
                 完成并返回
               </button>
@@ -223,12 +223,12 @@ export const QRCodeLoginModal: React.FC<QRCodeLoginModalProps> = ({
           {step === 'expired' && (
             <div className="py-6 space-y-3">
               <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto" />
-              <h4 className="text-base font-bold text-slate-900">登录未完成</h4>
-              <p className="text-xs text-slate-500">{errorMsg || '超时未检测到扫码，请重试'}</p>
+              <h4 className="text-base font-bold text-slate-900 dark:text-white">登录未完成</h4>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{errorMsg || '超时未检测到扫码，请重试'}</p>
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 bg-slate-900 text-white text-xs font-bold rounded-xl shadow-xs inline-flex items-center gap-1.5"
+                className="px-4 py-2 bg-slate-900 dark:bg-slate-700 text-white text-xs font-bold rounded-xl shadow-xs inline-flex items-center gap-1.5"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 我已完成登录

@@ -134,6 +134,15 @@ curl ... -d '{"platform":"bilibili",...,"params":{"method":"api"}}'   # → 400 
 6. **登录态判定复用** `browser.has_login_cookies(cookies, LOGIN_COOKIE_KEYS)`，失效抛 `LoginExpiredError`，
    任务执行器会自动把账号标记 expired。
 7. **procm 双实例**：dev 命令曾起过两个实例抢 8300 端口，排查前先 `procm list` 看重复。
+   Windows 下 SO_REUSEADDR 允许双进程同时 LISTEN，请求会随机打到坏实例（症状：秒回 503 且日志无请求记录），
+   `netstat -ano | grep 8300` 看 LISTEN 的 PID 是否唯一，`taskkill /PID <旧reloader> /T /F` 清理。
+8. **`--reload` 下 playwright 失效的两个触发链**（Windows）：
+   a) `--loop asyncio:ProactorEventLoop` 只对初始 worker 生效，WatchFiles 重载出的新 worker 退回
+      SelectorEventLoop → playwright 子进程 `NotImplementedError`（秒回 503）；
+   b) 默认监听整个仓库，**运行时写库（如身份回填 update_account）就会触发重载**——用户没改代码也会踩 a)。
+   修复（procm-commands.json 的 dev 已带）：`--reload-dir app` 只监听后端代码；
+   症状排查：503 秒回 + worker 日志无请求记录时，`netstat -ano | grep 8300` 看 LISTEN 是否唯一、
+   `wmic` 查 python 命令行是否带 `--loop`（不带的实例是手动起的坏实例，taskkill 清理后按 procm-command 重启）。
 
 ## 5. 平台支持现状
 

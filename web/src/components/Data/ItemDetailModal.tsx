@@ -80,7 +80,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose,
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="anim-modal-enter relative bg-white w-full max-w-lg lg:max-w-4xl rounded-[32px] shadow-2xl border border-slate-100 overflow-hidden flex flex-col lg:flex-row h-[75vh]"
+        className="anim-modal-enter relative bg-white dark:bg-[#161B26] w-full max-w-lg lg:max-w-4xl rounded-[32px] shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden flex flex-col lg:flex-row h-[75vh]"
       >
         {/* Cover preview: 跟随图片原始比例，不裁切；宽屏撑满弹窗固定高，contain 居中于黑底 */}
         <div className="relative bg-slate-900 lg:w-1/2 lg:shrink-0">
@@ -104,38 +104,38 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose,
         <div className="flex flex-col flex-1 min-h-0 p-6 gap-4 lg:absolute lg:inset-y-0 lg:right-0 lg:w-1/2">
           <div className="flex-1 min-h-0 overflow-y-auto space-y-4">
             <div>
-              <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+              <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
                 {item.folderName}
               </span>
-              <h3 className="text-base font-bold text-slate-900 mt-2">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white mt-2">
                 {item.title}
               </h3>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 p-4 rounded-2xl border border-slate-100">
+            <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl border border-slate-100 dark:border-slate-700">
               <div>
                 <span className="text-slate-400">作者 / UP主</span>
-                <div className="font-semibold text-slate-800 mt-0.5">{item.author}</div>
+                <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{item.author}</div>
               </div>
               <div>
                 <span className="text-slate-400">内容时长</span>
-                <div className="font-semibold text-slate-800 mt-0.5">{item.duration || '—'}</div>
+                <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{item.duration || '—'}</div>
               </div>
               <div>
                 <span className="text-slate-400">收藏时间</span>
-                <div className="font-semibold text-slate-800 mt-0.5">{item.favTime}</div>
+                <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{item.favTime}</div>
               </div>
               <div>
                 <span className="text-slate-400">抓取入库时间</span>
-                <div className="font-semibold text-slate-800 mt-0.5">{item.crawlTime}</div>
+                <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{item.crawlTime}</div>
               </div>
             </div>
-            {item.notes && <div className="text-sm text-slate-600 whitespace-pre-wrap bg-white border border-slate-100 rounded-xl p-3">{item.notes}</div>}
+            {item.notes && <div className="text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3">{item.notes}</div>}
 
             {/* 媒体标签：查看 / 手动编辑两种模式 */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <span className="text-xs font-bold text-slate-500">媒体标签</span>
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400">媒体标签</span>
                 {onSaveTags && !editing && (
                   <button
                     type="button"
@@ -157,7 +157,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose,
                     {draftTags.map((t) => (
                       <span
                         key={t}
-                        className="group/tag inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-md bg-violet-50 text-violet-700 text-xs border border-violet-100"
+                        className="group/tag inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-md bg-violet-50 dark:bg-violet-950 text-violet-700 dark:text-violet-400 text-xs border border-violet-100 dark:border-violet-900"
                       >
                         #{t}
                         <button
@@ -183,12 +183,12 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose,
                         }
                       }}
                       placeholder="输入新标签，回车添加"
-                      className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500"
+                      className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs bg-transparent dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500"
                     />
                     <button
                       type="button"
                       onClick={addInputTag}
-                      className="px-2.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors cursor-pointer"
+                      className="px-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
                       title="添加"
                     >
                       <Plus className="w-3.5 h-3.5" />
@@ -199,7 +199,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose,
                       type="button"
                       onClick={() => setEditing(false)}
                       disabled={saving}
-                      className="px-3 py-1.5 text-xs font-semibold text-slate-500 hover:text-slate-700 cursor-pointer"
+                      className="px-3 py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
                     >
                       取消
                     </button>
@@ -218,7 +218,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose,
                 <div className="flex flex-wrap gap-1.5">
                   {item.tags && item.tags.length > 0 ? (
                     item.tags.map((t) => (
-                      <span key={t} className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-xs">
+                      <span key={t} className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs">
                         #{t}
                       </span>
                     ))
@@ -233,14 +233,14 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose,
           </div>
 
           {/* 固定底行：不参与滚动 */}
-          <div className="shrink-0 pt-3 border-t border-slate-100 space-y-2.5">
+          <div className="shrink-0 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2.5">
             {/* 加入下载队列：选择下载器后入队，进度在「下载队列」页查看 */}
             <div className="flex items-center gap-2">
               <select
                 value={downloader}
                 onChange={(e) => setDownloader(e.target.value as DownloaderId)}
                 disabled={added}
-                className="px-2.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-sky-400 cursor-pointer disabled:opacity-60"
+                className="px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-400 cursor-pointer disabled:opacity-60"
                 title="选择下载器"
               >
                 <option value="yt-dlp">yt-dlp</option>
@@ -270,7 +270,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose,
                 href={item.url}
                 target="_blank"
                 rel="noreferrer"
-                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl shadow-xs inline-flex items-center gap-1.5"
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 text-white text-xs font-bold rounded-xl shadow-xs inline-flex items-center gap-1.5"
               >
                 前往原站页面
                 <ExternalLink className="w-3.5 h-3.5" />

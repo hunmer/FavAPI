@@ -439,9 +439,11 @@ async def get_account_cookies(account_id: str):
 
 
 @router.get("/{account_id}/status")
-async def login_status(account_id: str):
+async def login_status(account_id: str, refresh: bool = False):
     """检查登录态：打开 profile 检查关键 cookie，并同步修正账号 status。
 
+    refresh=true 时登录有效则同时回填身份信息（昵称/头像，单会话完成），
+    响应附带 profile_refreshed；平台未实现身份刷新时为 False。
     若该账号的浏览器正被登录/抓取占用，直接快速返回（不排队开浏览器），
     避免登录等待期间轮询请求在 profile 锁上堆积、结束后集中弹出浏览器窗口。
     """
@@ -460,9 +462,14 @@ async def login_status(account_id: str):
             "checked_at": now_iso(),
         }
     try:
-        logged_in = await asyncio.wait_for(
-            adapter.check_login_status(account_manager.to_context(account)), timeout=90
-        )
+        if refresh:
+            logged_in, profile_refreshed = await asyncio.wait_for(
+                adapter.check_login_status_and_refresh(
+                    account_manager.to_context(account)), timeout=120)
+        else:
+            logged_in = await asyncio.wait_for(
+                adapter.check_login_status(account_manager.to_context(account)), timeout=90)
+            profile_refreshed = False
     except Exception as exc:
         raise HTTPException(status_code=503, detail=friendly_error(exc))
 
@@ -479,4 +486,5 @@ async def login_status(account_id: str):
         "logging_in": account_manager.is_logging_in(account_id),
         "last_login_at": account.get("last_login_at"),
         "checked_at": now_iso(),
+        "profile_refreshed": profile_refreshed,
     }
