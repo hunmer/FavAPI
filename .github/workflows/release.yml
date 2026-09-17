@@ -97,11 +97,12 @@ jobs:
           merge-multiple: true
 
       - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            dist/FavAPI-*.tar.gz
-            dist/FavAPI-*.zip
-          generate_release_notes: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 官方 CLI 上传；Release 已存在（重跑场景）则改为补传并覆盖同名资产
+          if ! gh release create "$GITHUB_REF_NAME" dist/FavAPI-*.tar.gz dist/FavAPI-*.zip \
+               --title "${GITHUB_REF_NAME#v}" --generate-notes; then
+            echo "Release 已存在，改为上传资产"
+            gh release upload "$GITHUB_REF_NAME" dist/FavAPI-*.tar.gz dist/FavAPI-*.zip --clobber
+          fi
