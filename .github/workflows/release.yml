@@ -101,9 +101,19 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}   # job 无 checkout，gh 无法从 .git 推断仓库，须显式指定
         run: |
-          # 官方 CLI 上传；Release 已存在（重跑场景）则改为补传并覆盖同名资产
-          if ! gh release create -R "$REPO" "$GITHUB_REF_NAME" dist/FavAPI-*.tar.gz dist/FavAPI-*.zip \
-               --title "${GITHUB_REF_NAME#v}" --generate-notes; then
-            echo "Release 已存在，改为上传资产"
-            gh release upload -R "$REPO" "$GITHUB_REF_NAME" dist/FavAPI-*.tar.gz dist/FavAPI-*.zip --clobber
-          fi
+          retry() {  # uploads.github.com 对大资产偶发 HTTP 500，须重试
+            local n=0
+            until "$@"; do
+              n=$((n + 1))
+              [ "$n" -ge 5 ] && return 1
+              echo "第 $n 次失败，$((n * 20))s 后重试: $*"
+              sleep $((n * 20))
+            done
+          }
+          # 先建 Release 本体（小请求），已存在则忽略
+          gh release create -R "$REPO" "$GITHUB_REF_NAME" \
+            --title "${GITHUB_REF_NAME#v}" --generate-notes || true
+          # 逐文件上传并重试（--clobber 覆盖重跑时的同名资产）
+          for f in dist/FavAPI-*.tar.gz dist/FavAPI-*.zip; do
+            retry gh release upload -R "$REPO" "$GITHUB_REF_NAME" "$f" --clobber
+          done
