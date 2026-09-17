@@ -19,6 +19,7 @@ from app.platforms.base import (
     LoginExpiredError,
 )
 from app.services import browser
+from app.utils import filter_by_date_window, parse_date_window
 from . import api_client, constants
 from .parser import extract_user_id, is_user_id, parse_collect_page
 
@@ -94,12 +95,20 @@ class XiaohongshuAdapter(BasePlatformAdapter):
         ApiOperation(
             op_id="list_favorites",
             name="获取收藏列表",
-            description="API 直连拉取收藏笔记列表（只读，不入库）",
+            description="API 直连拉取收藏笔记列表（只读，不入库），可按笔记发布日期过滤",
             params=(
                 ApiOperationParam(
                     key="count", label="数量 (0 为全部)", type="number",
                     placeholder="默认 20",
-                    help="返回条数上限",
+                    help="返回条数上限；日期区间过滤在拉取后应用",
+                ),
+                ApiOperationParam(
+                    key="date_from", label="发布日期从", type="date",
+                    help="可选；接口无收藏时间，统一按笔记发布时间判定",
+                ),
+                ApiOperationParam(
+                    key="date_to", label="发布日期至", type="date",
+                    help="可选，闭区间（含当天）",
                 ),
                 ApiOperationParam(
                     key="user_id", label="用户 ID（可选）", type="text",
@@ -110,16 +119,105 @@ class XiaohongshuAdapter(BasePlatformAdapter):
         ApiOperation(
             op_id="list_likes",
             name="获取点赞列表",
-            description="API 直连拉取点赞（喜欢）笔记列表（只读，不入库）",
+            description="API 直连拉取点赞（喜欢）笔记列表（只读，不入库），可按笔记发布日期过滤",
             params=(
                 ApiOperationParam(
                     key="count", label="数量 (0 为全部)", type="number",
                     placeholder="默认 20",
-                    help="返回条数上限",
+                    help="返回条数上限；日期区间过滤在拉取后应用",
+                ),
+                ApiOperationParam(
+                    key="date_from", label="发布日期从", type="date",
+                    help="可选；接口无点赞时间，统一按笔记发布时间判定",
+                ),
+                ApiOperationParam(
+                    key="date_to", label="发布日期至", type="date",
+                    help="可选，闭区间（含当天）",
                 ),
                 ApiOperationParam(
                     key="user_id", label="用户 ID（可选）", type="text",
                     help="默认当前登录用户；查他人需对方点赞列表公开",
+                ),
+            ),
+        ),
+        ApiOperation(
+            op_id="collect_note",
+            name="收藏笔记",
+            description="收藏指定笔记（API 直连执行，需活跃登录态）",
+            params=(
+                ApiOperationParam(
+                    key="note_id", label="笔记 ID", type="text", required=True,
+                    placeholder="例如：6aa3e227000000002503650b",
+                    help="24 位十六进制笔记 id，可在笔记链接中获取",
+                ),
+            ),
+        ),
+        ApiOperation(
+            op_id="uncollect_multi",
+            name="批量取消收藏",
+            description="按 ID 列表批量取消收藏笔记（操作不可恢复）",
+            danger=True,
+            params=(
+                ApiOperationParam(
+                    key="note_ids", label="笔记 ID 列表", type="textarea", required=True,
+                    placeholder="ID 之间用逗号或换行分隔，例如：\n6aa3e227000000002503650b\n6aa797b3000000002b013ac9",
+                    help="要取消收藏的笔记 id 列表",
+                ),
+            ),
+        ),
+        ApiOperation(
+            op_id="like_note",
+            name="点赞笔记",
+            description="给指定笔记点赞（API 直连执行）",
+            params=(
+                ApiOperationParam(
+                    key="note_oid", label="笔记 ID", type="text", required=True,
+                    placeholder="例如：6aa3e227000000002503650b",
+                    help="即笔记 id（接口字段名 note_oid）",
+                ),
+            ),
+        ),
+        ApiOperation(
+            op_id="dislike_note",
+            name="取消点赞",
+            description="取消指定笔记的点赞（API 直连执行，可再次点赞恢复）",
+            params=(
+                ApiOperationParam(
+                    key="note_oid", label="笔记 ID", type="text", required=True,
+                    placeholder="例如：6aa3e227000000002503650b",
+                    help="即笔记 id（接口字段名 note_oid）",
+                ),
+            ),
+        ),
+        ApiOperation(
+            op_id="cancel_collect_by_date",
+            name="按日期区间批量取消收藏",
+            description="完整扫描收藏列表，按笔记发布日期区间匹配后批量取消收藏（操作不可恢复）",
+            danger=True,
+            params=(
+                ApiOperationParam(
+                    key="date_from", label="发布日期从", type="date", required=True,
+                    help="必填（至少一个边界）；接口无收藏时间，按笔记发布时间（note_id 时间戳）判定",
+                ),
+                ApiOperationParam(
+                    key="date_to", label="发布日期至", type="date",
+                    help="可选，闭区间（含当天）；留空取该日期之后全部",
+                ),
+            ),
+        ),
+        ApiOperation(
+            op_id="cancel_like_by_date",
+            name="按日期区间批量取消喜欢",
+            description="完整扫描点赞列表，按笔记发布日期区间匹配后逐条取消点赞（无批量接口，条数多时较慢；操作可逆但繁琐）",
+            danger=True,
+            params=(
+                ApiOperationParam(
+                    key="date_from", label="发布日期从", type="date", required=True,
+                    help="必填（至少一个边界）；接口无点赞时间，按笔记发布时间（note_id 时间戳）判定",
+                ),
+                ApiOperationParam(
+                    key="date_to", label="发布日期至", type="date",
+                    help="可选，闭区间（含当天）；留空取该日期之后全部",
                 ),
             ),
         ),
@@ -481,14 +579,168 @@ class XiaohongshuAdapter(BasePlatformAdapter):
             return await self._op_list_notes(account, params, on_event, constants.COLLECT_PAGE_URL, "收藏")
         if op_id == "list_likes":
             return await self._op_list_notes(account, params, on_event, constants.LIKE_PAGE_URL, "点赞")
+        if op_id == "collect_note":
+            return await self._op_collect_note(account, params)
+        if op_id == "uncollect_multi":
+            return await self._op_uncollect_multi(account, params, on_event)
+        if op_id == "like_note":
+            return await self._op_like_note(account, params, like=True)
+        if op_id == "dislike_note":
+            return await self._op_like_note(account, params, like=False)
+        if op_id == "cancel_collect_by_date":
+            return await self._op_cancel_by_date(account, params, on_event, batch=True)
+        if op_id == "cancel_like_by_date":
+            return await self._op_cancel_by_date(account, params, on_event, batch=False)
         raise ValueError(f"未知操作：{op_id}")
+
+    @staticmethod
+    def _note_id_param(params: dict, key: str) -> str:
+        """校验并取出笔记 ID 参数（16~32 位十六进制）。"""
+        note_id = str((params or {}).get(key) or "").strip()
+        if not is_user_id(note_id):  # 与用户 id 同为 Mongo ObjectId 格式，形状校验复用
+            raise ValueError(f"请填写有效的笔记 ID（16~32 位十六进制）：{note_id or '空'}")
+        return note_id
+
+    async def _op_collect_note(self, account: AccountContext, params: dict) -> dict:
+        """收藏一条笔记。"""
+        note_id = self._note_id_param(params, "note_id")
+        logger.info("[%s] API 操作 collect_note：%s", account.account_id, note_id)
+        cookies = await api_client.profile_cookies(account.profile_path)
+        data = await asyncio.to_thread(api_client.collect_note, cookies, note_id)
+        return {"note_id": note_id, "collected": True, "raw": data}
+
+    async def _op_uncollect_multi(self, account: AccountContext, params: dict,
+                                  on_event=None) -> dict:
+        """批量取消收藏：按 UNCOLLECT_BATCH 分批，on_progress 逐批回调。"""
+        raw = str((params or {}).get("note_ids") or "")
+        note_ids = [t for t in (s.strip() for s in raw.replace("\n", ",").split(",")) if t]
+        if not note_ids:
+            raise ValueError("请填写要取消收藏的笔记 ID 列表")
+        for note_id in note_ids:
+            if not is_user_id(note_id):
+                raise ValueError(f"笔记 ID 列表含无效项：{note_id}")
+
+        async def _progress(batch_no: int, total_batches: int, done: int, ids: list[str]):
+            if on_event:
+                await on_event({
+                    "type": "progress", "batch_no": batch_no,
+                    "total_batches": total_batches, "done": done, "ids": ids,
+                })
+
+        logger.info("[%s] API 操作 uncollect_multi：%d 条", account.account_id, len(note_ids))
+        cookies = await api_client.profile_cookies(account.profile_path)
+        batches = [note_ids[i: i + constants.UNCOLLECT_BATCH]
+                   for i in range(0, len(note_ids), constants.UNCOLLECT_BATCH)]
+        uncollected = 0
+        for i, chunk in enumerate(batches, start=1):
+            await asyncio.to_thread(api_client.uncollect_notes, cookies, chunk)
+            uncollected += len(chunk)
+            logger.info("uncollect 第 %d/%d 批：%d 条", i, len(batches), len(chunk))
+            await _progress(i, len(batches), uncollected, chunk)
+            if i < len(batches):
+                await asyncio.sleep(constants.UNCOLLECT_INTERVAL_SEC)
+        return {"total": len(note_ids), "batches": len(batches), "uncollected": uncollected}
+
+    async def _op_like_note(self, account: AccountContext, params: dict, like: bool) -> dict:
+        """点赞 / 取消点赞一条笔记（同一接口族，body 字段均为 note_oid）。"""
+        note_oid = self._note_id_param(params, "note_oid")
+        op = "like_note" if like else "dislike_note"
+        logger.info("[%s] API 操作 %s：%s", account.account_id, op, note_oid)
+        cookies = await api_client.profile_cookies(account.profile_path)
+        fn = api_client.like_note if like else api_client.dislike_note
+        data = await asyncio.to_thread(fn, cookies, note_oid)
+        return {"note_oid": note_oid, "liked": like, "raw": data}
+
+    async def _op_cancel_by_date(self, account: AccountContext, params: dict,
+                                 on_event, batch: bool) -> dict:
+        """按发布日期区间批量取消收藏（batch=True）/ 点赞（batch=False）。
+
+        列表按收藏/点赞时间倒序而条目时间为发布时间，两者不同序 → 无法提前
+        终止，且取消会改变列表 → 必须完整扫描收集命中 ID 后再统一取消（同
+        抖音 cancel_collect_by_window 策略）。取消点赞无批量接口，逐条执行。
+        """
+        label = "收藏" if batch else "点赞"
+        dt_from, dt_to = parse_date_window(params or {})
+        if not dt_from and not dt_to:
+            raise ValueError("请至少填写一个日期边界（从/至），全留空会取消全部{label}记录".format(label=label))
+        logger.info("[%s] API 操作按日期取消%s：区间=%s~%s", account.account_id, label, dt_from, dt_to)
+
+        cookies = await api_client.profile_cookies(account.profile_path)
+        user_id = await self._api_user_id(account, cookies, params)
+        url = constants.COLLECT_PAGE_URL if batch else constants.LIKE_PAGE_URL
+
+        # 阶段 1：完整扫描，按发布日期过滤收集命中 ID（content_id 去重）
+        matched_ids: list[str] = []
+        matched_seen: set[str] = set()
+        scan_state = {"page": 0, "total_fetched": 0, "oldest": None}
+
+        async def _scan_batch(batch: dict):
+            scan_state["page"] = batch.get("page") or scan_state["page"]
+            items = batch.get("items") or []
+            scan_state["total_fetched"] += len(items)
+            matched = filter_by_date_window(items, dt_from, dt_to)
+            for it in matched:
+                content_id = it.get("content_id")
+                if content_id and content_id not in matched_seen:
+                    matched_seen.add(content_id)
+                    matched_ids.append(content_id)
+            page_ts = [it.get("collected_at") for it in items if it.get("collected_at")]
+            if page_ts:
+                page_oldest = min(page_ts)
+                if scan_state["oldest"] is None or page_oldest < scan_state["oldest"]:
+                    scan_state["oldest"] = page_oldest
+            if on_event:
+                await on_event({
+                    "type": "progress", "page": scan_state["page"],
+                    "oldest_collected_at": scan_state["oldest"],
+                    "fetched_this_page": len(items), "matched_this_page": len(matched),
+                    "canceled": 0, "total_fetched": scan_state["total_fetched"],
+                })
+
+        await api_client.fetch_note_pages(cookies, url, user_id, count=0, on_batch=_scan_batch)
+        logger.info("[%s] 扫描完成：%d 页 %d 条，命中 %d 条，开始取消",
+                    account.account_id, scan_state["page"], scan_state["total_fetched"], len(matched_ids))
+
+        # 阶段 2：统一取消（收藏走批量接口；点赞逐条）
+        canceled = 0
+        if batch:
+            batches = [matched_ids[i: i + constants.UNCOLLECT_BATCH]
+                       for i in range(0, len(matched_ids), constants.UNCOLLECT_BATCH)]
+            for i, chunk in enumerate(batches, start=1):
+                await asyncio.to_thread(api_client.uncollect_notes, cookies, chunk)
+                canceled += len(chunk)
+                if on_event:
+                    await on_event({"type": "progress", "batch_no": i,
+                                    "total_batches": len(batches), "done": canceled, "ids": chunk})
+                if i < len(batches):
+                    await asyncio.sleep(constants.UNCOLLECT_INTERVAL_SEC)
+        else:
+            for i, note_oid in enumerate(matched_ids, start=1):
+                await asyncio.to_thread(api_client.dislike_note, cookies, note_oid)
+                canceled += 1
+                if on_event:
+                    await on_event({"type": "progress", "batch_no": i,
+                                    "total_batches": len(matched_ids), "done": canceled,
+                                    "ids": [note_oid]})
+                if i < len(matched_ids):
+                    await asyncio.sleep(constants.UNCOLLECT_INTERVAL_SEC)
+
+        return {
+            "matched": len(matched_ids),
+            "canceled": canceled,
+            "pages": scan_state["page"],
+            "stopped_early": False,
+            "total_fetched": scan_state["total_fetched"],
+        }
 
     async def _op_list_notes(self, account: AccountContext, params: dict,
                              on_event, url: str, label: str) -> dict:
-        """只读拉取 note 列表（收藏/点赞共用），返回摘要，不入库。"""
+        """只读拉取 note 列表（收藏/点赞共用），返回摘要，不入库；可按发布日期过滤。"""
         raw_count = str((params or {}).get("count") or "").strip()
         count = min(max(int(raw_count), 0), constants.MAX_COUNT) if raw_count.isdigit() else constants.DEFAULT_COUNT
-        logger.info("[%s] API 操作拉取%s列表：count=%s", account.account_id, label, count or "全部")
+        dt_from, dt_to = parse_date_window(params or {})
+        logger.info("[%s] API 操作拉取%s列表：count=%s 区间=%s~%s",
+                    account.account_id, label, count or "全部", dt_from, dt_to)
 
         async def _collect_progress(batch: dict):
             if on_event:
@@ -502,6 +754,7 @@ class XiaohongshuAdapter(BasePlatformAdapter):
         collected, has_more = await api_client.fetch_note_pages(
             cookies, url, user_id, count, on_batch=_collect_progress
         )
+        matched = filter_by_date_window(collected, dt_from, dt_to)
         summaries = [
             {
                 "content_id": it.get("content_id"),
@@ -509,11 +762,12 @@ class XiaohongshuAdapter(BasePlatformAdapter):
                 "author_name": it.get("author_name"),
                 "collected_at": it.get("collected_at"),
             }
-            for it in collected[:100]
+            for it in matched[:100]
         ]
         return {
             "total": len(collected),
+            "matched": len(matched),
             "has_more": has_more,
             "items": summaries,
-            "note": "仅展示前 100 条摘要" if len(collected) > 100 else "",
+            "note": "仅展示前 100 条摘要" if len(matched) > 100 else "",
         }

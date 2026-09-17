@@ -2,7 +2,7 @@
 
 > 背景：FavAPI 各平台的收藏抓取原本只有「浏览器模拟」一种方式（起 Chromium → 滚动页面 → 拦截 XHR 响应），单页 20 条要 3~5 秒，全量抓取动辄数分钟。
 > 2026-09 抖音平台率先落地了「API 请求」直连模式（curl-impersonate 模拟 Chrome 指纹 + profile cookies 直连接口），39 条收藏 3.8 秒拿完，快一个量级。
-> 本文档交代原理、通用架构，以及**如何为一个新平台复刻这套流程**：Chrome DevTools 抓包分析 → 用户登录 → Python 原型验证 → 落地到 platform 代码。
+> 本文档交代原理、通用架构，以及**如何为一个新平台复刻这套流程**：JS Reverse MCP 抓包/逆向分析 → 用户登录 → Python 原型验证 → 落地到 platform 代码。
 
 ## 1. 原理：为什么不能直接用 httpx/requests 请求
 
@@ -58,21 +58,25 @@ async def fetch_favorites(self, account, params, on_batch=None) -> FetchResult:
 
 以抖音为参照模板，代码在 `app/platforms/douyin/`（adapter.py / api_client.py / constants.py / parser.py）。
 
-### 第一步：Chrome DevTools 抓包分析（不开玩笑，这一步定成败）
+### 第一步：抓包与签名逆向（JS Reverse MCP，不开玩笑，这一步定成败）
 
-用 chrome-devtools MCP（或其他 DevTools）连接一个真实浏览器，搞清楚平台前端**到底怎么请求收藏列表**：
+用 JS Reverse MCP 连接一个真实 Chrome，搞清楚平台前端**到底怎么请求收藏列表**、签名（如有）**到底怎么生成**：
 
-1. **连接并导航**：`new_page` 打开平台收藏页 URL（抖音是 `/user/self?showTab=favorite_collection`）。
-2. **让用户登录**：触发登录弹窗（截图二维码给用户扫），登录后从任意 XHR 请求头里能拿到完整 cookie（含 HttpOnly）。
-3. **抓收藏列表请求**：`list_network_requests` 过滤 xhr/fetch，找到真正的收藏列表接口，**逐项记录**：
+1. **连接并导航**：`select_page` 确认目标标签页 → `navigate_page` 打开平台收藏页 URL（抖音是 `/user/self?showTab=favorite_collection`；需要新标签页用 `new_page`）。
+2. **让用户登录**：触发登录弹窗后 `take_screenshot` 截图二维码给用户扫；`evaluate_script` 读 `document.cookie` 粗查登录 cookie 名（HttpOnly 的从下一步请求头里确认）。
+3. **抓收藏列表请求**：`list_network_requests` 过滤（`resourceTypes: ["xhr","fetch"]` + `urlFilter` 传接口路径片段），找到真正的收藏列表接口后带 `reqid` 看详情，**逐项记录**：
    - **HTTP 方法**：抖音 `listcollection` 是 **POST**（用 GET 会 404 `Unsupported path(Janus)`，这个坑查了半小时）
    - **URL + query 公共参数**：完整复制（device_platform/aid/version_code 等一长串，保持与浏览器一致最稳）
    - **请求体**：抖音 POST body 只有 `count=10&cursor=0`（form-urlencoded）
-   - **特殊 header**：如 `x-secsdk-csrf-token: DOWNGRADE`
-   - **响应结构**：字段名、翻页 cursor 语义
+   - **特殊 header**：如 `x-secsdk-csrf-token: DOWNGRADE`。注意内联展示的 cookie 头是 redacted 的，`outputFile` + `outputPart: "all"` 导出 JSON 才有完整值（含 HttpOnly，可直接喂第二步的 Python 原型）
+   - **响应结构**：字段名、翻页 cursor 语义（快手 `pcursor` 末页返回 `"no_more"` 哨兵而非布尔 has_more）
 4. **小心同名接口陷阱**：抖音同时存在 `mix/listcollection`（返回「收藏的**合集**」`mix_infos`）和 `aweme/listcollection`（收藏的**视频** `aweme_list`），别抓错。看清响应顶层字段再下结论。
-5. **对照实验**（判断哪些参数/签名必需）：在页面 console 里用 fetch 重放，分别试
-   原样 / 篡改签名 / 去掉签名 / 去掉可疑 header，观察哪些是硬性要求。抖音实测 a_bogus/msToken 都可省。
+5. **对照实验**（判断哪些参数/签名必需）：`evaluate_script`（任意脚本需 `confirm: true`）在页面里用 fetch 重放，分别试
+   原样 / 篡改签名 / 去掉签名 / 去掉可疑 header，观察哪些是硬性要求。实测对照：抖音 a_bogus/msToken 都可省（拦截全靠 TLS 指纹层）；快手 `__NS_hxfalcon` 缺失/伪造一律 `result=50`（强校验），`kww` header 可省。
+6. **签名逆向**（仅当对照实验证明签名强校验时）：
+   - `search_in_sources` 搜签名参数名（如 `__NS_hxfalcon`）或生成函数名（如 `getSig4`），定位所在 bundle；
+   - `save_script_source` 把整个（压缩）bundle 存到本地，用 acorn 按语法边界截取签名器 —— 快手的 `var Jose = (IIFE)` 自包含无依赖，整体剥离即可（截取别信括号计数，字符串字面量里的括号会坑你）；
+   - 先在原页面 `evaluate_script`（`mainWorld: true` + `localFilePath` 传剥离后的文件）验证能产出有效签名，再移植到目标运行时（Node 需最小 window/document/navigator shim；快手 VM 还要求间接 eval + 事件循环内执行 + LF 换行，全记录在 `kuaishou/sig4.cjs` 文件头）。
 
 ### 第二步：Python 原型验证（`.venv` 里跑一次性脚本）
 
@@ -123,6 +127,10 @@ curl ... -d '{"platform":"bilibili",...,"params":{"method":"api"}}'   # → 400 
 
 ## 4. 踩坑记录（全部实测过，别再踩）
 
+0. **JS Reverse MCP 常见坑**：`evaluate_script` 默认跑在 isolated world，看不到页面 JS 全局变量，查页面上下文必须 `mainWorld: true`；
+   内联展示的请求 cookie 头是 redacted 的，完整值只能 `outputFile` 导出；
+   从 bundle 剥离 JS 代码时 Windows 下 Python `write_text` 默认把 `\n` 写成 `\r\n`，会悄悄破坏 VM 内部自解码字符串（必须 `newline="\n"`）；
+   截取 IIFE 用括号计数必被字符串字面量里的括号坑，用 acorn 按语法边界截。
 1. **GET/POST 搞错**：抖音 listcollection 必须 POST，GET 返回 `404 Unsupported path(Janus)`（网关层按方法路由）。
 2. **空响应 = 指纹拦截**：HTTP 200 + `Content-Length: 0`。换 curl_cffi `impersonate="chrome"`，不要在 cookies 上浪费时间。
 3. **uvicorn `--reload` 下 playwright 异步 API 起不来**：Windows 上 reload 模式的 event loop 是 SelectorEventLoop，
@@ -152,13 +160,16 @@ curl ... -d '{"platform":"bilibili",...,"params":{"method":"api"}}'   # → 400 
 | bilibili | ✅ | ❌ | 接口带 WBI 签名，按本指南流程接入 |
 | xiaohongshu | ✅ | ✅ | 2026-09 接入：x-s/x-s-common/x-t 签名用 [xhshow](https://github.com/Cloxl/xhshow) 纯算生成（XYS_ 格式）+ curl_cffi 直连；坑见 `xiaohongshu/api_client.py` 模块 docstring（query 编码必须与签名逐字节一致、cookies 传 dict） |
 | wechat | JSON 导入 | — | 无浏览器抓取概念，不适用 |
-| youtube / kuaishou | 视实现 | ❌ | 按需接入 |
+| youtube | ✅ | ❌ | 按需接入 |
+| kuaishou | ✅ | ✅ | 2026-09 接入：`__NS_hxfalcon` 签名强校验（缺失/伪造 → result=50），签名 VM 从站点 bundle 剥离到 `kuaishou/sig_vm.js`，经 `sig4.cjs`（Node CLI ≥16，系统依赖）离线生成；坑见 `kuaishou/api_client.py` 模块 docstring（profile 混入 live/id 域 cookie 必须按 domain 过滤，否则多个 userId 并存 → result=109；VM 必须间接 eval + 事件循环内执行；换行符必须 LF） |
 | threads | ✅ | ✅ | 2026-09 接入：GraphQL（`/graphql/query`），直连需 `x-csrftoken` + lsd + 完整 relay pv 标志（`constants.SAVED_PV_FLAGS`）；代理沿用声明式 auto 解析 |
 
 ## 6. 快速回顧：一次成功接入的样子
 
 ```
-Chrome DevTools 连浏览器 → 用户扫码登录 → 抓包记录接口细节
+JS Reverse MCP 连浏览器 → 用户扫码登录 → 抓包记录接口细节 → 对照实验判定签名是否必需
+    ↓（签名强校验时）
+search_in_sources / save_script_source 定位并剥离签名器 → 页面验证 → Node 离线生成
     ↓
 Python 一次性脚本：profile cookies + curl_cffi(impersonate="chrome") 原型打通
     ↓
@@ -169,6 +180,10 @@ constants.py / api_client.py / adapter.py 三件套 + mockFavData.ts 加 apiFetc
 
 抖音全流程参考提交：`app/platforms/douyin/api_client.py`（新增）、`adapter.py`（分发 + fetch_favorites_api）、
 `base.py` / `task_executor.py` / `registry.py`（通用层）、前端 4 文件（types / api / mockFavData / AccountDetail）。
+
+快手全流程参考（含签名逆向）：`app/platforms/kuaishou/`（`sig_vm.js` 剥离的签名 VM +
+`sig4.cjs` Node CLI + constants / parser / api_client / adapter）、`registry.py`（声明式注册后覆盖）、
+前端 `web/src/data/platforms.ts` 加条目；声明式浏览器模式通过继承 `DeclarativeAdapter` 保留，零重复实现。
 
 ## 7. 平台 API 操作（写操作 / 管理类）
 

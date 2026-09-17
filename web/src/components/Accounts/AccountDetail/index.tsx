@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Account, TaskRecord, ScrapedItem, ScrapingFormData } from '../../../types';
 import { PLATFORMS } from '../../../data/platforms';
 import { favoriteFacets } from '../../../api';
@@ -76,6 +76,14 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
     reloadLocalStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account.id]);
+
+  // 抓取结束（进行中 → 完成）后重拉统计，收藏夹概览总数实时反映本次入库
+  const wasScraping = useRef(false);
+  useEffect(() => {
+    if (wasScraping.current && !isScrapingInProgress) reloadLocalStats();
+    wasScraping.current = isScrapingInProgress;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isScrapingInProgress]);
 
   // 确认弹窗开关由顶栏「更多菜单」触发
   const [showClearConfirm, setShowClearConfirm] = useState(false);

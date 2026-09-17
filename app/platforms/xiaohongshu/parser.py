@@ -50,6 +50,18 @@ def _ts_iso(value) -> str | None:
         return None
 
 
+def _id_ts_iso(value) -> str | None:
+    """id 前 8 位十六进制为对象创建时间 Unix 秒（小红书 note_id 为 Mongo ObjectId 格式）。
+
+    列表接口（collect/like page）不含任何时间字段，用 note_id 时间戳兜底发布时间
+    （2026-09 实测多条笔记与标题语境吻合）。
+    """
+    try:
+        return _ts_iso(int(str(value)[:8], 16) * 1000)
+    except (TypeError, ValueError):
+        return None
+
+
 def parse_note(note: dict) -> dict:
     """单个 note → contents 表字段（不含 platform / account_id，由写入方补）。"""
     user = note.get("user") or {}
@@ -66,8 +78,11 @@ def parse_note(note: dict) -> dict:
             {"liked_count": _as_int(interact.get("liked_count"))}, ensure_ascii=False
         ),
         "raw_data": json.dumps(note, ensure_ascii=False),
-        # 收藏列表接口不含收藏时间，兜底用笔记发布时间（note.time 毫秒时间戳）
-        "collected_at": _ts_iso(note.get("time") or note.get("last_update_time")),
+        # 收藏列表接口不含收藏时间，兜底链：发布时间字段 → note_id 时间戳（均为发布时间）
+        "collected_at": (
+            _ts_iso(note.get("time") or note.get("last_update_time"))
+            or _id_ts_iso(note.get("note_id"))
+        ),
     }
 
 

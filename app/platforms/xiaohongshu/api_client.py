@@ -49,23 +49,8 @@ async def profile_cookies(profile_path: str) -> dict[str, str]:
     return {c["name"]: c["value"] for c in cookies if c.get("name")}
 
 
-def _signed_get(cookies: dict[str, str], url: str, params: dict[str, str],
-                user_id: str | None = None) -> dict:
-    """签名 + 直连 GET，返回响应 JSON；code != 0 抛 RuntimeError。
-
-    URL 用 xhshow.build_url 构造以保证与签名内容逐字节一致（见模块 docstring）。
-    """
-    sign = _signer.sign_headers_get(url, cookies=cookies, params=params, user_id=user_id)
-    response = requests.get(
-        _signer.build_url(url, params),
-        headers={
-            **_HEADERS, **sign,
-            "cookie": "; ".join(f"{k}={v}" for k, v in cookies.items()),
-        },
-        impersonate="chrome", timeout=20,
-    )
-    response.raise_for_status()
-    data = response.json()
+def _check(data: dict) -> dict:
+    """响应 code 检查；非 0 抛 RuntimeError（300011 单独提示）。"""
     code = data.get("code")
     if code == 300011:
         raise RuntimeError(
@@ -75,6 +60,48 @@ def _signed_get(cookies: dict[str, str], url: str, params: dict[str, str],
     if code != 0:
         raise RuntimeError(f"小红书接口返回错误 code={code} msg={data.get('msg')}")
     return data
+
+
+def _cookie_header(cookies: dict[str, str]) -> str:
+    return "; ".join(f"{k}={v}" for k, v in cookies.items())
+
+
+def _signed_get(cookies: dict[str, str], url: str, params: dict[str, str],
+                user_id: str | None = None) -> dict:
+    """签名 + 直连 GET，返回响应 JSON。
+
+    URL 用 xhshow.build_url 构造以保证与签名内容逐字节一致（见模块 docstring）。
+    """
+    sign = _signer.sign_headers_get(url, cookies=cookies, params=params, user_id=user_id)
+    response = requests.get(
+        _signer.build_url(url, params),
+        headers={**_HEADERS, **sign, "cookie": _cookie_header(cookies)},
+        impersonate="chrome", timeout=20,
+    )
+    response.raise_for_status()
+    return _check(response.json())
+
+
+def _signed_post(cookies: dict[str, str], url: str, payload: dict) -> dict:
+    """签名 + 直连 POST JSON，返回响应 JSON。
+
+    body 必须用 xhshow.build_json_body 序列化（紧凑、不转义中文），
+    与签名的 content string（uri + 紧凑 JSON）逐字节一致；curl_cffi 的
+    json= 用默认分隔符（带空格），直接用会签名不匹配被拒。
+    """
+    sign = _signer.sign_headers_post(url, cookies=cookies, payload=payload)
+    response = requests.post(
+        url,
+        data=_signer.build_json_body(payload).encode("utf-8"),
+        headers={
+            **_HEADERS, **sign,
+            "content-type": "application/json;charset=UTF-8",
+            "cookie": _cookie_header(cookies),
+        },
+        impersonate="chrome", timeout=20,
+    )
+    response.raise_for_status()
+    return _check(response.json())
 
 
 def fetch_me(cookies: dict[str, str]) -> dict:
@@ -128,3 +155,33 @@ async def fetch_note_pages(cookies: dict[str, str], url: str, user_id: str,
             return collected, True
         cursor = batch["cursor"]
         await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
+
+
+# ---- 写操作（2026-09 实测：签名校验与读接口同链路，直连可用）----
+# 注意三个接口的 body 字段名不同（抓包原样）：
+#   collect  -> {"note_id": "..."}   收藏单条
+#   uncollect-> {"note_ids": "a,b"}  取消收藏（复数，逗号分隔批量）
+#   like     -> {"note_oid": "..."}  点赞（是 note_oid 不是 note_id！）
+#   dislike  -> {"note_oid": "..."}  取消点赞（返回 data.like_count 为取消后计数）
+
+
+def collect_note(cookies: dict[str, str], note_id: str) -> dict:
+    """收藏一条笔记（同步阻塞，异步侧用 asyncio.to_thread）。"""
+    return _signed_post(cookies, constants.COLLECT_NOTE_URL, {"note_id": note_id})
+
+
+def uncollect_notes(cookies: dict[str, str], note_ids: list[str]) -> dict:
+    """批量取消收藏（同步阻塞）；note_ids 逗号拼接单请求，单批上限 UNCOLLECT_BATCH。"""
+    return _signed_post(
+        cookies, constants.UNCOLLECT_NOTE_URL, {"note_ids": ",".join(note_ids)}
+    )
+
+
+def like_note(cookies: dict[str, str], note_oid: str) -> dict:
+    """点赞一条笔记（同步阻塞）；成功响应 data.new_like=true。"""
+    return _signed_post(cookies, constants.LIKE_NOTE_URL, {"note_oid": note_oid})
+
+
+def dislike_note(cookies: dict[str, str], note_oid: str) -> dict:
+    """取消点赞一条笔记（同步阻塞）；成功响应 data.like_count 为取消后计数。"""
+    return _signed_post(cookies, constants.DISLIKE_NOTE_URL, {"note_oid": note_oid})

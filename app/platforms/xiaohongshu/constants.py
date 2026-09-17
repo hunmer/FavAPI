@@ -19,6 +19,14 @@ LIKE_PAGE_URL = "https://edith.xiaohongshu.com/api/sns/web/v1/note/like/page"
 API_PAGE_COUNT = 30            # API 直连每页条数（与浏览器抓包一致）
 API_PAGE_INTERVAL_SEC = 1.2    # 翻页间隔（小红书风控较严，慢于抖音）
 
+# 写操作接口（POST JSON，body 字段名各异见 api_client.py；签名与读接口同链路）
+COLLECT_NOTE_URL = "https://edith.xiaohongshu.com/api/sns/web/v1/note/collect"
+UNCOLLECT_NOTE_URL = "https://edith.xiaohongshu.com/api/sns/web/v1/note/uncollect"
+LIKE_NOTE_URL = "https://edith.xiaohongshu.com/api/sns/web/v1/note/like"
+DISLIKE_NOTE_URL = "https://edith.xiaohongshu.com/api/sns/web/v1/note/dislike"
+UNCOLLECT_BATCH = 20            # 批量取消收藏单批条数（对齐抖音量级，防参数过长）
+UNCOLLECT_INTERVAL_SEC = 0.5    # 批间间隔（防风控）
+
 # 判定已登录的 cookie（任一存在且非空即视为登录）。
 # 注意：web_session 游客也有（实测游客前缀 03/登录 04，不可靠）；id_token 仅登录后存在。
 LOGIN_COOKIE_KEYS = ("id_token",)

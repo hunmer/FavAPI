@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Account } from '../../../types';
 import { executeOperationStream, listPlatforms, OperationStreamEvent, OperationSpec } from '../../../api';
-import { AlertTriangle, RefreshCw, Terminal, Zap } from 'lucide-react';
+import { AlertTriangle, RefreshCw, Terminal, X, Zap } from 'lucide-react';
 
 interface PlatformOperationsProps {
   account: Account;
@@ -187,10 +187,18 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
       {/* API Operation Execute Modal（左：表单 / 右：执行结果） */}
       {activeOp && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="anim-modal-enter bg-white dark:bg-[#161B26] w-full max-w-3xl rounded-[28px] p-6 shadow-2xl border border-slate-100 dark:border-slate-800 max-h-[85vh] overflow-y-auto">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* 左栏：参数表单 */}
-              <div className="space-y-4">
+          <div className="relative anim-modal-enter bg-white dark:bg-[#161B26] w-full max-w-3xl rounded-[28px] p-6 shadow-2xl border border-slate-100 dark:border-slate-800 h-[85vh] flex flex-col overflow-hidden">
+            <button
+              type="button"
+              disabled={opRunning}
+              onClick={() => setActiveOp(null)}
+              className="absolute top-4 right-4 z-10 p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <div className="grid grid-cols-1 md:grid-cols-2 grid-rows-2 md:grid-rows-1 gap-6 flex-1 min-h-0">
+              {/* 左栏：参数表单（内容超高时内部滚动） */}
+              <div className="space-y-4 min-h-0 overflow-y-auto">
                 <div>
                   <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                     {activeOp.name}
@@ -278,14 +286,14 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
                 </div>
               </div>
 
-              {/* 右栏：执行结果（实时日志 + 返回 JSON） */}
-              <div className="space-y-3 flex flex-col md:border-l md:border-slate-100 dark:md:border-slate-800 md:pl-6">
+              {/* 右栏：执行结果（实时日志 + 返回 JSON），占满剩余高度，内部滚动 */}
+              <div className="space-y-3 flex flex-col min-h-0 md:border-l md:border-slate-100 dark:md:border-slate-800 md:pl-6">
                 <div className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   执行结果
                 </div>
 
                 {opRunning || opEvents.length > 0 ? (
-                  <div className="flex-1 min-h-[14rem] md:min-h-[18rem] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-950 p-3 overflow-y-auto space-y-1">
+                  <div className="flex-1 min-h-0 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-950 p-3 overflow-y-auto space-y-1">
                     <div className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-1">
                       实时日志 {opRunning && <span className="animate-pulse">▍</span>}
                     </div>
@@ -310,7 +318,7 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
                     ))}
                   </div>
                 ) : (
-                  <div className="flex-1 min-h-[14rem] md:min-h-[18rem] rounded-xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/40 flex flex-col items-center justify-center text-center gap-1.5">
+                  <div className="flex-1 min-h-0 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/40 flex flex-col items-center justify-center text-center gap-1.5">
                     <Terminal className="w-5 h-5 text-slate-300" />
                     <span className="text-[11px] text-slate-400">
                       填写左侧参数并点击「执行」

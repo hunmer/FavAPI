@@ -42,6 +42,16 @@ export const PLATFORMS: PlatformMeta[] = [
     apiFetch: true,
   },
   {
+    id: 'kuaishou',
+    name: '快手 Kuaishou',
+    icon: 'kuaishou',
+    color: '#FF7300',
+    badgeBg: 'bg-[#FFF3E8] text-[#FF7300] border-[#FFD8B0]',
+    isSupported: true,
+    tagline: '支持收藏/点赞视频抓取，API 直连与浏览器模拟',
+    apiFetch: true,
+  },
+  {
     id: 'threads',
     name: 'Threads',
     icon: 'threads',
