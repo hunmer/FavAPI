@@ -99,10 +99,11 @@ jobs:
       - name: Upload to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}   # job 无 checkout，gh 无法从 .git 推断仓库，须显式指定
         run: |
           # 官方 CLI 上传；Release 已存在（重跑场景）则改为补传并覆盖同名资产
-          if ! gh release create "$GITHUB_REF_NAME" dist/FavAPI-*.tar.gz dist/FavAPI-*.zip \
+          if ! gh release create -R "$REPO" "$GITHUB_REF_NAME" dist/FavAPI-*.tar.gz dist/FavAPI-*.zip \
                --title "${GITHUB_REF_NAME#v}" --generate-notes; then
             echo "Release 已存在，改为上传资产"
-            gh release upload "$GITHUB_REF_NAME" dist/FavAPI-*.tar.gz dist/FavAPI-*.zip --clobber
+            gh release upload -R "$REPO" "$GITHUB_REF_NAME" dist/FavAPI-*.tar.gz dist/FavAPI-*.zip --clobber
           fi
