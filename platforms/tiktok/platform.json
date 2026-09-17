@@ -1,0 +1,29 @@
+{
+  "platform": "tiktok",
+  "display_name": "TikTok",
+  "home_url": "https://www.tiktok.com/favorites",
+  "homepage": "https://www.tiktok.com",
+  "login_cookies": ["sessionid"],
+  "proxy": "auto",
+  "supported_actions": ["list_favorites"],
+  "capture": {
+    "url_contains": "/api/user/collect/item_list/",
+    "page_url": "https://www.tiktok.com/favorites",
+    "wait_ms": 4000,
+    "max_rounds": 20,
+    "scroll_step": 2400,
+    "scroll_wait_ms": 1800,
+    "items_path": "itemList[]",
+    "cursor_path": "cursor",
+    "has_more_path": "hasMore",
+    "fields": {
+      "content_id": "id",
+      "title": "desc",
+      "description": "desc",
+      "author_id": "author.uniqueId",
+      "author_name": "author.nickname",
+      "cover_url": "video.cover",
+      "duration": "video.duration"
+    }
+  }
+}

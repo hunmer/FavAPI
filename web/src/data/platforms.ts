@@ -62,6 +62,16 @@ export const PLATFORMS: PlatformMeta[] = [
     apiFetch: true,
   },
   {
+    id: 'tiktok',
+    name: 'TikTok',
+    icon: 'tiktok',
+    color: '#FF0050',
+    badgeBg: 'bg-[#FFF0F3] text-[#FF0050] border-[#FFCCD6]',
+    isSupported: true,
+    tagline: '收藏/点赞视频抓取与用户信息查询，支持 API 直连与浏览器模拟',
+    apiFetch: true,
+  },
+  {
     id: 'zhihu',
     name: '知乎 Zhihu',
     icon: 'zhihu',

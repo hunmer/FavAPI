@@ -21,6 +21,7 @@ SIG_SCRIPT = "sig4.cjs"
 
 API_PAGE_COUNT = 18          # API 直连单页条数（服务端实测每页 18 条）
 API_PAGE_INTERVAL_SEC = 0.8  # API 直连翻页间隔（防风控节流）
+WRITE_INTERVAL_SEC = 0.5     # 批量写操作（点赞/收藏）逐条间隔（防风控节流）
 
 # 翻页结束哨兵：末页 pcursor 返回 "no_more"
 PCURSOR_NO_MORE = "no_more"

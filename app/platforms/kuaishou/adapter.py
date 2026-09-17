@@ -8,6 +8,7 @@ params.method 分发，并提供 get_profile / list_favorites / list_likes
 import asyncio
 import json
 import logging
+import re
 from pathlib import Path
 
 from app.platforms.base import (
@@ -17,7 +18,7 @@ from app.platforms.base import (
     FetchResult,
 )
 from app.platforms.declarative import DeclarativeAdapter
-from app.utils import parse_date_window
+from app.utils import filter_by_date_window, parse_date_window
 from . import api_client
 from . import constants
 
@@ -33,6 +34,23 @@ _PHOTO_ACTION_PARAMS = (
     ApiOperationParam(
         key="user_id", label="作者 ID（可选）", type="text",
         help="作者 eid，服务端不校验，可留空",
+    ),
+)
+
+# 批量写操作共用表单参数（ID 列表 / 日期区间二选一，日期优先）
+_MULTI_ACTION_PARAMS = (
+    ApiOperationParam(
+        key="photo_ids", label="视频 ID 列表", type="textarea",
+        placeholder="ID 之间用逗号或换行分隔，例如：\n3xp76sm9jikcx7i\n3xvmfg43gz5hpt9",
+        help="与日期区间二选一；填写日期区间时忽略本项。点赞类操作会从已抓取记录自动补全作者 ID",
+    ),
+    ApiOperationParam(
+        key="date_from", label="按日期区间：从", type="date",
+        help="填日期区间时会完整扫描列表后按视频时间匹配，无需手填 ID",
+    ),
+    ApiOperationParam(
+        key="date_to", label="按日期区间：至", type="date",
+        help="闭区间（含当天）",
     ),
 )
 
@@ -94,6 +112,32 @@ class KuaishouAdapter(DeclarativeAdapter):
             description="取消收藏指定视频（操作不可恢复，需重新收藏）",
             danger=True,
             params=_PHOTO_ACTION_PARAMS,
+        ),
+        ApiOperation(
+            op_id="like_multi",
+            name="批量点赞",
+            description="按 ID 列表批量点赞视频（作者 ID 自动从已抓取记录补全）；当日次数用完自动停止",
+            params=(
+                ApiOperationParam(
+                    key="photo_ids", label="视频 ID 列表", type="textarea", required=True,
+                    placeholder="ID 之间用逗号或换行分隔，例如：\n3xp76sm9jikcx7i\n3xvmfg43gz5hpt9",
+                    help="逐条执行，间隔 0.5s 防风控；未入库的视频需先抓取或改用单条点赞",
+                ),
+            ),
+        ),
+        ApiOperation(
+            op_id="cancel_like_multi",
+            name="批量取消点赞",
+            description="批量取消点赞：ID 列表与日期区间二选一（日期优先，操作不可恢复）",
+            danger=True,
+            params=_MULTI_ACTION_PARAMS,
+        ),
+        ApiOperation(
+            op_id="cancel_collect_multi",
+            name="批量取消收藏",
+            description="批量取消收藏：ID 列表与日期区间二选一（日期优先，操作不可恢复）",
+            danger=True,
+            params=_MULTI_ACTION_PARAMS,
         ),
     )
 
@@ -161,6 +205,15 @@ class KuaishouAdapter(DeclarativeAdapter):
             return await self._op_photo_action(
                 account, params, api_client.set_collect,
                 enable=op_id == "collect_item", label=op_id)
+        if op_id == "like_multi":
+            return await self._op_multi_action(
+                account, params, on_event, action="like", label=op_id)
+        if op_id == "cancel_like_multi":
+            return await self._op_multi_action(
+                account, params, on_event, action="cancel_like", label=op_id)
+        if op_id == "cancel_collect_multi":
+            return await self._op_multi_action(
+                account, params, on_event, action="cancel_collect", label=op_id)
         raise ValueError(f"未知操作：{op_id}")
 
     async def _op_photo_action(self, account: AccountContext, params: dict,
@@ -177,6 +230,98 @@ class KuaishouAdapter(DeclarativeAdapter):
         if "liked_remain_count" in data:  # 点赞接口返回当日剩余次数
             result["liked_remain_count"] = data["liked_remain_count"]
         return result
+
+    # 批量动作 → 单视频写函数（enable 语义在此绑定）
+    _MULTI_ACTIONS = {
+        "like": lambda c, p, a: api_client.set_like(c, p, a, like=True),
+        "cancel_like": lambda c, p, a: api_client.set_like(c, p, a, like=False),
+        "cancel_collect": lambda c, p, a: api_client.set_collect(c, p, a, collect=False),
+    }
+
+    async def _op_multi_action(self, account: AccountContext, params: dict,
+                               on_event, action: str, label: str) -> dict:
+        """批量写操作共用实现：ID 列表 / 日期区间二选一（日期优先）。
+
+        日期区间模式：全量扫描列表后按视频时间（collected_at 为发布时间兜底）
+        匹配再执行 —— 发布时间不随翻页递减，无法像抖音那样提前终止翻页。
+        """
+        raw = str((params or {}).get("photo_ids") or "")
+        photo_ids = [t for t in re.split(r"[\s,，;；]+", raw) if t]
+        dt_from, dt_to = parse_date_window(params or {})
+        if not photo_ids and not (dt_from or dt_to):
+            raise ValueError("请填写视频 ID 列表或日期区间（二选一）")
+
+        cookie_header = await api_client.profile_cookie_header(account.profile_path)
+        fn = self._MULTI_ACTIONS[action]
+        result: dict = {"action": label, "matched": 0}
+
+        if dt_from or dt_to:
+            async def _scan_progress(batch: dict):
+                if on_event:
+                    await on_event({
+                        "type": "stage", "stage": "scanning", "page": batch.get("page"),
+                        "total_fetched": len(batch.get("items") or []),
+                    })
+
+            if action == "cancel_collect":
+                user_eid = await asyncio.to_thread(api_client.resolve_user_eid, cookie_header)
+                collected, _ = await api_client.fetch_collect(
+                    cookie_header, user_eid, 0, on_batch=_scan_progress)
+            else:
+                collected, _ = await api_client.fetch_like(
+                    cookie_header, 0, on_batch=_scan_progress)
+            matched = filter_by_date_window(collected, dt_from, dt_to)
+            items = [{"photo_id": it["content_id"], "author_id": it.get("author_id") or ""}
+                     for it in matched]
+            result["scanned"] = len(collected)
+            result["matched"] = len(items)
+            logger.info("[%s] %s 日期区间 %s~%s：扫描 %d 条，命中 %d 条",
+                        account.account_id, label, dt_from, dt_to,
+                        len(collected), len(items))
+        else:
+            items = [{"photo_id": p, "author_id": ""} for p in photo_ids]
+            if action in ("like", "cancel_like"):
+                # photo/like 强校验作者 user_id（缺失 → result=21），
+                # 从已抓取入库的 contents 自动补全
+                known = await self._resolve_author_ids(photo_ids)
+                missing = []
+                for it in items:
+                    it["author_id"] = known.get(it["photo_id"]) or ""
+                    if not it["author_id"]:
+                        missing.append(it["photo_id"])
+                if missing:
+                    raise ValueError(
+                        f"点赞接口必须提供作者 ID，以下视频未在已抓取记录中找到："
+                        f"{'、'.join(missing[:10])}（先抓取收藏/点赞列表入库，或改用单条操作并手填作者 ID）")
+            result["matched"] = len(items)
+
+        if not items:
+            result["done"] = 0
+            result["note"] = "没有匹配的视频，未执行操作"
+            return result
+
+        async def _exec_progress(info: dict):
+            if on_event:
+                await on_event({"type": "progress", **info})
+
+        result.update(await api_client.execute_item_actions(
+            cookie_header, items, fn, on_progress=_exec_progress, label=label,
+            stop_on_quota=(action == "like")))
+        logger.info("[%s] %s 完成：%s", account.account_id, label, result)
+        return result
+
+    @staticmethod
+    async def _resolve_author_ids(photo_ids: list[str]) -> dict[str, str]:
+        """从已入库的 contents 查视频 → 作者 eid 映射。"""
+        from app.database import db
+
+        placeholders = ",".join("?" for _ in photo_ids)
+        rows = await db.query_all(
+            f"SELECT content_id, author_id FROM contents "
+            f"WHERE platform = ? AND content_id IN ({placeholders}) AND author_id IS NOT NULL",
+            (constants.PLATFORM, *photo_ids),
+        )
+        return {r["content_id"]: r["author_id"] for r in rows}
 
     async def _op_get_profile(self, account: AccountContext) -> dict:
         cookie_header = await api_client.profile_cookie_header(account.profile_path)

@@ -75,6 +75,7 @@ from app.platforms.bilibili.adapter import BilibiliAdapter  # noqa: E402
 from app.platforms.douyin.adapter import DouyinAdapter  # noqa: E402
 from app.platforms.kuaishou.adapter import KuaishouAdapter  # noqa: E402
 from app.platforms.threads.adapter import ThreadsAdapter  # noqa: E402
+from app.platforms.tiktok.adapter import TikTokAdapter  # noqa: E402
 from app.platforms.xiaohongshu.adapter import XiaohongshuAdapter  # noqa: E402
 from app.platforms.youtube.adapter import YouTubeAdapter  # noqa: E402
 from app.platforms.wechat.adapter import WeChatAdapter  # noqa: E402
@@ -88,3 +89,5 @@ register(YouTubeAdapter(config.PLATFORMS_DIR / "youtube"))
 register(ThreadsAdapter(config.PLATFORMS_DIR / "threads"))
 # 快手：声明式注册之上叠加 API 直连能力（浏览器模式仍走 DeclarativeAdapter）
 register(KuaishouAdapter(config.PLATFORMS_DIR / "kuaishou"))
+# TikTok：同快手模式，外部声明 + API 直连（收藏/点赞/用户信息）
+register(TikTokAdapter(config.PLATFORMS_DIR / "tiktok"))

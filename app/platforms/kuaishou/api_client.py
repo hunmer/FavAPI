@@ -176,6 +176,37 @@ def set_like(cookie_header: str, photo_id: str, author_user_id: str = "",
     return _post(cookie_header, "/rest/v/photo/like", body, signed=False)
 
 
+async def execute_item_actions(cookie_header: str, items: list[dict], action,
+                                on_progress=None, label: str = "",
+                                stop_on_quota: bool = False) -> dict:
+    """逐条执行单视频写操作（action(cookie, photo_id, author_id)，enable 语义由调用方绑定）。
+
+    items: [{photo_id, author_id}]；间隔 WRITE_INTERVAL_SEC 防风控。
+    stop_on_quota=True（批量点赞）时，响应 liked_remain_count 归零即停止。
+    on_progress({"done", "total"}) 逐条回调。
+    返回 {total, done, stopped_reason?, liked_remain_count?}。
+    """
+    done = 0
+    result: dict = {"total": len(items), "done": 0}
+    for i, item in enumerate(items, start=1):
+        data = await asyncio.to_thread(
+            action, cookie_header, item["photo_id"], item.get("author_id") or "")
+        done += 1
+        remain = data.get("liked_remain_count")
+        if isinstance(remain, int):
+            result["liked_remain_count"] = remain
+        if on_progress:
+            await on_progress({"done": done, "total": len(items)})
+        logger.info("%s 第 %d/%d 条：%s", label, i, len(items), item["photo_id"])
+        if stop_on_quota and isinstance(remain, int) and remain <= 0:
+            result["stopped_reason"] = f"当日点赞次数已用完（liked_remain_count=0），剩余 {len(items) - done} 条未执行"
+            break
+        if i < len(items):
+            await asyncio.sleep(constants.WRITE_INTERVAL_SEC)
+    result["done"] = done
+    return result
+
+
 async def _fetch_paged(fetch_page, count: int, on_batch, label: str):
     """按 pcursor 游标翻页共用循环（fetch_page(pcursor) → 单页 dict）。"""
     collected: list[dict] = []

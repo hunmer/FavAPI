@@ -163,6 +163,7 @@ curl ... -d '{"platform":"bilibili",...,"params":{"method":"api"}}'   # → 400 
 | youtube | ✅ | ❌ | 按需接入 |
 | kuaishou | ✅ | ✅ | 2026-09 接入：`__NS_hxfalcon` 签名强校验（缺失/伪造 → result=50），签名 VM 从站点 bundle 剥离到 `kuaishou/sig_vm.js`，经 `sig4.cjs`（Node CLI ≥16，系统依赖）离线生成；坑见 `kuaishou/api_client.py` 模块 docstring（profile 混入 live/id 域 cookie 必须按 domain 过滤，否则多个 userId 并存 → result=109；VM 必须间接 eval + 事件循环内执行；换行符必须 LF） |
 | threads | ✅ | ✅ | 2026-09 接入：GraphQL（`/graphql/query`），直连需 `x-csrftoken` + lsd + 完整 relay pv 标志（`constants.SAVED_PV_FLAGS`）；代理沿用声明式 auto 解析 |
+| tiktok | ✅ | ✅ | 2026-09 接入（外部扩展模式同快手）：签名（X-Gnarly/X-Bogus/msToken/X-Dynosaur/verifyFp）**全部不做强校验**，但 query 需保留 msToken+X-Bogus=1 占位（全删触发空响应软拦截）；收藏 `user/collect/item_list` 强登录态（复制出的 cookie 数分钟即被拒，必须 profile 活会话，status_code=8 → LoginExpiredError）；点赞 `favorite/item_list` 半公开（私密点赞返回空列表非报错）；用户信息走个人主页 HTML 的 `__UNIVERSAL_DATA_FOR_REHYDRATION__` SSR 解析（`/api/user/detail/` 对非浏览器上下文返回空 userInfo）；secUid 不落 cookie，登录后 refresh_profile 从浏览器提取回填 extra；坑详见 `tiktok/api_client.py` 模块 docstring |
 
 ## 6. 快速回顧：一次成功接入的样子
 
@@ -208,6 +209,22 @@ constants.py / api_client.py / adapter.py 三件套 + mockFavData.ts 加 apiFetc
 
 Threads 已实现：`save_post`（收藏帖子，media_id）/ `cancel_saved_multi`（批量取消，post_ids）。
 写 mutation 与读接口同套最小字段集直连（无需 fb_dtsg），文档见 `threads/constants.py`。
+
+快手已实现 10 个操作（`kuaishou/adapter.py`）：
+
+| op_id | 说明 | 参数 |
+|---|---|---|
+| `get_profile` | 获取当前登录用户信息 | — |
+| `list_favorites` / `list_likes` | 只读拉取收藏/点赞列表 | count |
+| `like_item` / `cancel_like_item` | 单视频点赞/取消 | photo_id（必填）、user_id（作者，可选） |
+| `collect_item` / `cancel_collect_item` | 单视频收藏/取消 | 同上 |
+| `like_multi` | 批量点赞，当日次数用完（liked_remain_count=0）自动停止 | photo_ids |
+| `cancel_like_multi` / `cancel_collect_multi` | 批量取消点赞/收藏 | photo_ids / 日期区间二选一 |
+
+快手写接口要点：`photo/collect`、`photo/like` **不在 `__NS_hxfalcon` 签名白名单**
+（直连即可，比读接口还简单）；`photo/like` 强校验作者 `user_id`（缺失 → result=21，
+批量 ID 模式从 contents 表自动补全，未入库视频先抓取入库）；
+`photo/collect` 的作者 `userId` 可省；`exp_tag` 均可省。批量操作逐条执行 + 0.5s 节流。
 
 日期区间过滤复用 `app/utils.py::parse_date_window / filter_by_date_window`
 （collected_at 缺失由 parser 兜底发布时间）；task_executor 的抓取过滤也走同一份实现。

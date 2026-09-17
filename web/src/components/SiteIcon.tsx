@@ -8,6 +8,7 @@ const SITE_ICONS: Record<string, string> = {
   kuaishou: '/site_icons/kuaishou.ico',
   weibo: '/site_icons/weibo.ico',
   xiaohongshu: '/site_icons/xiaohongshu.ico',
+  tiktok: '/site_icons/tiktok.ico',
   wechat: '/site_icons/wechat.svg',
 };
 
