@@ -245,6 +245,8 @@ def fetch_user_detail(handle: str, cookie_header: str | None = None) -> dict:
     """获取用户信息：解析个人主页 HTML 的服务端渲染数据（公开，访客可用）。
 
     /api/user/detail/ 接口对非浏览器上下文返回空 userInfo（实测），HTML 路径稳定。
+    注意：带登录 cookie 时该页 SSR 结构可能不含 webapp.user-detail（实测），
+    查他人请不传 cookie；本人信息用 fetch_app_context。
     """
     response = requests.get(
         f"{constants.HOMEPAGE}/@{handle}",
@@ -258,16 +260,51 @@ def fetch_user_detail(handle: str, cookie_header: str | None = None) -> dict:
     return info
 
 
-def resolve_self_sec_uid(cookie_header: str) -> str | None:
-    """登录态访问 /favorites，从 SSR 数据提取当前账号 secUid（兜底路径）。
+def fetch_app_context(cookie_header: str) -> dict:
+    """获取当前登录用户信息（JS Reverse 定位：webapp 身份即本接口的 user 段）。
 
-    主路径是 adapter.refresh_profile 登录后回填的 extra；本函数供 extra
-    缺失时在线补救。提取失败返回 None。
+    GET /node-webapp/api/common-app-context（无签名要求，登录 cookie 直连可用），
+    返回 {user_id, sec_uid, unique_id, nickname, avatar, signature, odin_id}。
+    未登录时响应无 user 段，抛 LoginExpiredError。
+    """
+    response = requests.get(
+        constants.APP_CONTEXT_URL,
+        headers={**_HEADERS, "cookie": cookie_header, "referer": constants.HOMEPAGE},
+        impersonate="chrome", timeout=30, proxy=resolve_proxy(),
+    )
+    response.raise_for_status()
+    data = response.json()
+    user = data.get("user") or {}
+    if not user.get("secUid"):
+        raise LoginExpiredError("TikTok 登录态失效（common-app-context 无用户信息），请重新登录")
+    avatar_uri = user.get("avatarUri")
+    if isinstance(avatar_uri, list):  # 头像字段原生是 URL 列表，取首个
+        avatar_uri = avatar_uri[0] if avatar_uri else None
+    return {
+        "user_id": str(user.get("uid") or ""),
+        "sec_uid": user.get("secUid"),
+        "unique_id": user.get("uniqueId"),
+        "nickname": user.get("nickName"),
+        "avatar": avatar_uri,
+        "signature": user.get("signature"),
+        "odin_id": str(data.get("odinId") or ""),
+    }
+
+
+def resolve_self_sec_uid(cookie_header: str) -> str | None:
+    """当前账号 secUid：优先 common-app-context，失败回退 foryou SSR 解析。
+
+    SSR 备用通道同样来自 webapp.app-context（服务端渲染内嵌），访客页面无 user 段。
     """
     try:
+        return fetch_app_context(cookie_header)["sec_uid"]
+    except (LoginExpiredError, HTTPError, RequestException, RuntimeError, ValueError) as exc:
+        logger.warning("common-app-context 获取身份失败，回退 foryou SSR：%s", exc)
+    try:
         response = requests.get(
-            constants.HOME_URL,
-            headers={**_HEADERS, "cookie": cookie_header},
+            f"{constants.HOMEPAGE}/foryou",
+            headers={**_HEADERS, "cookie": cookie_header,
+                     "accept": "text/html,application/xhtml+xml,*/*;q=0.8"},
             impersonate="chrome", timeout=30, proxy=resolve_proxy(),
         )
         response.raise_for_status()

@@ -14,6 +14,7 @@ import json
 import logging
 from pathlib import Path
 
+from app import config
 from app.platforms.base import (
     AccountContext,
     ApiOperation,
@@ -26,24 +27,6 @@ from . import api_client
 from . import constants
 
 logger = logging.getLogger("favapi.tiktok")
-
-# 浏览器首页顶栏头像/昵称链接即本人主页 /@handle
-_HANDLE_JS = """() => {
-    for (const a of document.querySelectorAll('a[href^="/@"]')) {
-        const h = a.getAttribute('href');
-        if (h && h.length > 2) return h.slice(1).split('?')[0];
-    }
-    return null;
-}"""
-
-# 个人主页 SSR 身份数据（公开，webapp.user-detail）
-_USER_INFO_JS = """() => {
-    try {
-        const el = document.getElementById('__UNIVERSAL_DATA_FOR_REHYDRATION__');
-        const data = JSON.parse(el.textContent);
-        return data.__DEFAULT_SCOPE__?.['webapp.user-detail']?.userInfo || null;
-    } catch (e) { return null; }
-}"""
 
 
 class TikTokAdapter(DeclarativeAdapter):
@@ -125,10 +108,9 @@ class TikTokAdapter(DeclarativeAdapter):
 
         cookie_header = await api_client.profile_cookie_header(account.profile_path)
         sec_uid = await self._resolve_sec_uid(account, params, cookie_header)
-        collected, last_has_more = await api_client.fetch_collect(
-            cookie_header, sec_uid, count=(count + skip) if count else 0,
-            on_batch=on_batch,
-        )
+        collected, last_has_more = await self._fetch_collect_with_fallback(
+            account, cookie_header, sec_uid,
+            count=(count + skip) if count else 0, on_batch=on_batch)
         window = collected[skip:] if not count else collected[skip: skip + count]
         logger.info("[%s] API 直连抓取完成：共 %d 条，返回 [%d:%d] %d 条",
                     account.account_id, len(collected), skip, skip + len(window),
@@ -148,10 +130,13 @@ class TikTokAdapter(DeclarativeAdapter):
         if op_id == "list_favorites":
             cookie_header = await api_client.profile_cookie_header(account.profile_path)
             sec_uid = await self._resolve_sec_uid(account, params, cookie_header)
-            return await self._op_list(
-                account, params, on_event,
-                lambda c, cb: api_client.fetch_collect(c, sec_uid, _count_of(params), on_batch=cb),
-                "收藏")
+            count = _count_of(params)
+
+            async def _fetch(c, cb):
+                return await self._fetch_collect_with_fallback(
+                    account, c, sec_uid, count, on_batch=cb)
+
+            return await self._op_list(account, params, on_event, _fetch, "收藏")
         if op_id == "list_likes":
             cookie_header = await api_client.profile_cookie_header(account.profile_path)
             sec_uid = await self._resolve_sec_uid(account, params, cookie_header)
@@ -162,19 +147,26 @@ class TikTokAdapter(DeclarativeAdapter):
         raise ValueError(f"未知操作：{op_id}")
 
     async def _op_get_profile(self, account: AccountContext, params: dict) -> dict:
-        """获取用户信息：handle 优先参数，其次 extra 回填的本人 handle。"""
+        """获取用户信息：handle 优先参数；空 = 本人（common-app-context，需登录）。"""
         handle = str((params or {}).get("handle") or "").strip().lstrip("@")
-        cookie_header = None
-        if not handle:
-            owner = await self._owner_extra(account)
-            handle = str(owner.get("unique_id") or "").strip()
-            if not handle:
-                raise ValueError("无法确定当前账号 handle，请先登录（自动回填）或手动填写 handle 参数")
-            cookie_header = await api_client.profile_cookie_header(account.profile_path)
-        info = await asyncio.to_thread(api_client.fetch_user_detail, handle, cookie_header)
-        logger.info("[%s] API 操作 get_profile：%s(%s) 粉丝 %s",
-                    account.account_id, info.get("nickname"), handle,
-                    (info.get("stats") or {}).get("followerCount"))
+        if handle:
+            info = await asyncio.to_thread(api_client.fetch_user_detail, handle, None)
+            logger.info("[%s] API 操作 get_profile(@%s)：%s",
+                        account.account_id, handle, info.get("nickname"))
+            return info
+        cookie_header = await api_client.profile_cookie_header(account.profile_path)
+        me = await asyncio.to_thread(api_client.fetch_app_context, cookie_header)
+        # 公开资料（粉丝数等 stats）从个人主页补全，无则用身份基础信息
+        try:
+            detail = await asyncio.to_thread(
+                api_client.fetch_user_detail, me.get("unique_id"), None)
+            detail["odin_id"] = me.get("odin_id")
+            detail["user_id"] = detail.get("user_id") or me.get("user_id")
+            info = detail
+        except RuntimeError:
+            info = {**me, "stats": {}}
+        logger.info("[%s] API 操作 get_profile：%s(@%s)",
+                    account.account_id, info.get("nickname"), info.get("unique_id"))
         return info
 
     async def _op_list(self, account: AccountContext, params: dict, on_event,
@@ -214,9 +206,109 @@ class TikTokAdapter(DeclarativeAdapter):
             "note": "仅展示前 100 条摘要" if len(collected) > 100 else "",
         }
 
+    async def _fetch_collect_with_fallback(self, account: AccountContext,
+                                           cookie_header: str, sec_uid: str,
+                                           count: int, on_batch=None):
+        """收藏列表：API 直连优先，空响应（风控拦截）时降级浏览器页面拦截。
+
+        collect 接口的签名（X-Gnarly）由站点 web worker 在请求构造时生成，
+        不 hook 页面 fetch（JS Reverse 实测），直连无法复刻；浏览器模式下由
+        站点自身发起请求，拦截响应即可。
+        返回 (items, has_more)。
+        """
+        try:
+            return await api_client.fetch_collect(cookie_header, sec_uid, count,
+                                                  on_batch=on_batch)
+        except RuntimeError as exc:
+            logger.warning("[%s] 收藏直连被拦截（%s），降级浏览器拦截模式",
+                           account.account_id, exc)
+        owner = await self._owner_extra(account)
+        handle = str(owner.get("unique_id") or "").strip()
+        if not handle:
+            me = await asyncio.to_thread(api_client.fetch_app_context, cookie_header)
+            handle = me.get("unique_id")
+        return await self._collect_via_browser(account, handle, count, on_batch)
+
+    async def _collect_via_browser(self, account: AccountContext, handle: str,
+                                   count: int, on_batch=None):
+        """浏览器拦截本人主页 Saved 标签的 collect 响应并滚动翻页。"""
+        from .parser import parse_item_list
+
+        batches: list[dict] = []
+
+        async def _on_response(response):
+            if "/api/user/collect/item_list/" not in response.url:
+                return
+            try:
+                data = await response.json()
+            except Exception:
+                return
+            batch = parse_item_list(data)
+            if batch["items"] or batches:
+                batches.append(batch)
+                logger.info("[%s] 捕获 collect 批次 #%d：%d 条，hasMore=%s",
+                            account.account_id, len(batches), len(batch["items"]),
+                            batch["has_more"])
+                if on_batch and batch["items"]:
+                    await on_batch({"page": len(batches), "items": batch["items"]})
+
+        async with browser.session(account.profile_path, headless=config.HEADLESS,
+                                   proxy=api_client.resolve_proxy()) as ctx:
+            page = ctx.pages[0] if ctx.pages else await ctx.new_page()
+            page.on("response", _on_response)
+            await page.goto(f"{constants.HOMEPAGE}/@{handle}",
+                            wait_until="domcontentloaded")
+            # 首批由主页预取或 Saved 标签触发；等 hydration 后尝试点击标签
+            await page.wait_for_timeout(6000)
+            if not batches:
+                try:
+                    await page.evaluate("""() => {
+                        const cands = Array.from(
+                            document.querySelectorAll('[data-e2e="saved-tab"], [role="tab"]'))
+                            .filter(el => /saved|已保存|收藏|儲存/i.test(
+                                el.innerText || '') ||
+                                /saved/i.test(el.getAttribute('data-e2e') || ''));
+                        if (cands.length) cands[0].click();
+                    }""")
+                    logger.info("[%s] 已尝试点击 Saved 标签", account.account_id)
+                except Exception as exc:
+                    logger.debug("[%s] 点击 Saved 标签失败：%s", account.account_id, exc)
+            for _ in range(15):
+                if batches:
+                    break
+                await page.wait_for_timeout(1000)
+
+            # 滚动加载余页（douyin 浏览器模式同款节奏）
+            rounds, stall = 0, 0
+            while rounds < constants.MAX_SCROLL_ROUNDS:
+                seen = sum(len(b["items"]) for b in batches)
+                has_more = batches[-1]["has_more"] if batches else True
+                if (count and seen >= count) or (batches and not has_more):
+                    break
+                if stall >= constants.MAX_STALL_ROUNDS:
+                    logger.warning("[%s] 连续 %d 轮无新增，提前结束", account.account_id, stall)
+                    break
+                before = seen
+                await page.mouse.wheel(0, 2500)
+                await page.wait_for_timeout(1800)
+                rounds += 1
+                seen = sum(len(b["items"]) for b in batches)
+                stall = stall + 1 if seen == before else 0
+            await page.wait_for_timeout(1200)
+
+        merged: dict[str, dict] = {}
+        for batch in batches:
+            for item in batch["items"]:
+                merged.setdefault(item["content_id"], item)
+        items = list(merged.values())
+        has_more = bool(batches and batches[-1]["has_more"])
+        logger.info("[%s] 浏览器拦截 collect 完成：批次 %d，去重 %d 条",
+                    account.account_id, len(batches), len(items))
+        return items, has_more
+
     async def _resolve_sec_uid(self, account: AccountContext, params: dict,
                                cookie_header: str) -> str:
-        """secUid 三级解析：操作参数 → 账号 extra → /favorites SSR 现提取。"""
+        """secUid 三级解析：操作参数 → 账号 extra → common-app-context 现提取。"""
         sec_uid = str((params or {}).get("sec_uid") or "").strip()
         if sec_uid:
             return sec_uid
@@ -246,41 +338,25 @@ class TikTokAdapter(DeclarativeAdapter):
         return extra.get("tiktok") or {}
 
     async def refresh_profile(self, account: AccountContext) -> None:
-        """登录成功后回填主人信息：首页顶栏头像链接取 handle → 个人主页 SSR 取详情。
+        """登录成功后回填主人信息：common-app-context 直读（纯 HTTP，无需浏览器导航）。
 
-        secUid 不落 cookie 且无自信息接口，浏览器会话是唯一可靠提取通道。
+        secUid 不落 cookie 且个人主页 SSR 在登录态下不稳定（实测），
+        webapp 身份的唯一可靠来源是 app-context（SSR 或本接口）。
         """
-        owner: dict = {}
-        async with browser.session(account.profile_path, headless=True,
-                                   proxy=api_client.resolve_proxy()) as ctx:
-            page = ctx.pages[0] if ctx.pages else await ctx.new_page()
-            try:
-                await page.goto(constants.HOMEPAGE, wait_until="domcontentloaded")
-                await page.wait_for_selector('a[href^="/@"]', timeout=15000)
-                handle = await page.evaluate(_HANDLE_JS)
-                if not handle:
-                    logger.info("[%s] 首页未找到本人链接（可能未登录），跳过身份回填",
-                                account.account_id)
-                    return
-                await page.goto(f"{constants.HOMEPAGE}/@{handle}",
-                                wait_until="domcontentloaded")
-                await page.wait_for_timeout(2000)
-                info = await page.evaluate(_USER_INFO_JS)
-            except Exception as exc:
-                logger.warning("[%s] TikTok 身份回填失败：%s", account.account_id, exc)
-                return
-        user = (info or {}).get("user") or {}
-        if not user.get("secUid"):
-            logger.info("[%s] 个人主页未解析到 secUid，跳过身份回填", account.account_id)
+        import json as _json  # 局部导入，避免与函数内 account_manager 流程耦合
+
+        cookie_header = await api_client.profile_cookie_header(account.profile_path)
+        try:
+            me = await asyncio.to_thread(api_client.fetch_app_context, cookie_header)
+        except Exception as exc:
+            logger.warning("[%s] TikTok 身份回填失败：%s", account.account_id, exc)
             return
-        stats = (info or {}).get("stats") or {}
         owner = {
-            "user_id": str(user.get("id") or ""),
-            "unique_id": user.get("uniqueId") or "",
-            "sec_uid": user.get("secUid"),
-            "nickname": user.get("nickname"),
-            "avatar": user.get("avatarLarger"),
-            "follower_count": stats.get("followerCount"),
+            "user_id": me.get("user_id"),
+            "unique_id": me.get("unique_id"),
+            "sec_uid": me.get("sec_uid"),
+            "nickname": me.get("nickname"),
+            "avatar": me.get("avatar"),
         }
         from app.services import account_manager  # 延迟导入避免循环依赖
 
@@ -288,12 +364,12 @@ class TikTokAdapter(DeclarativeAdapter):
         if row is None:
             return
         try:
-            extra = json.loads(row.get("extra") or "{}")
-        except (TypeError, json.JSONDecodeError):
+            extra = _json.loads(row.get("extra") or "{}")
+        except (TypeError, _json.JSONDecodeError):
             extra = {}
         extra["tiktok"] = {"owner": owner}
         await account_manager.update_account(
-            account.account_id, extra=json.dumps(extra, ensure_ascii=False)
+            account.account_id, extra=_json.dumps(extra, ensure_ascii=False)
         )
         logger.info("[%s] 身份信息已回填：%s(@%s)",
                     account.account_id, owner.get("nickname"), owner.get("unique_id"))

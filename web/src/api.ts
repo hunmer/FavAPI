@@ -143,6 +143,7 @@ export function toAccount(row: AccountRow, browserOpen: Set<string> = new Set())
   const xhsOwner = extra.xiaohongshu?.owner || {};
   const dyOwner = extra.douyin?.owner || {};
   const thOwner = extra.threads?.owner || {};
+  const ttOwner = extra.tiktok?.owner || {};
   const folders: BilibiliFolder[] | undefined = Array.isArray(extra.bilibili?.folders)
     ? extra.bilibili.folders.map((f: any) => ({
         id: String(f.media_id ?? ''),
@@ -163,10 +164,11 @@ export function toAccount(row: AccountRow, browserOpen: Set<string> = new Set())
     lastUsedTime: fmtDateTime(row.last_used_at),
     browserProfilePath: row.profile_path || '',
     ownerNickname:
-      biliOwner.name || xhsOwner.nickname || dyOwner.nickname || thOwner.username || extra.nickname,
+      biliOwner.name || xhsOwner.nickname || dyOwner.nickname || thOwner.username || ttOwner.nickname || extra.nickname,
     ownerAvatar:
-      biliOwner.face || xhsOwner.avatar || dyOwner.avatar || thOwner.avatar || extra.avatar,
-    ownerUid: biliOwner.mid || xhsOwner.user_id || dyOwner.uid || thOwner.id || extra.uid,
+      biliOwner.face || xhsOwner.avatar || dyOwner.avatar || thOwner.avatar || ttOwner.avatar || extra.avatar,
+    ownerUid:
+      biliOwner.mid || xhsOwner.user_id || dyOwner.uid || thOwner.id || ttOwner.user_id || extra.uid,
     folders,
     isBrowserOpen: browserOpen.has(row.account_id),
   };
