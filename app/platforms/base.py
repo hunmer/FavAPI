@@ -48,6 +48,48 @@ class ApiOperation:
     danger: bool = False      # 前端弹二次确认
 
 
+@dataclass
+class FetchTarget:
+    """一个可抓取入库的列表目标（收藏 / 喜欢 / 稍后再看…）。
+
+    前端按此渲染卡片 + 弹窗表单，提交 action + params 走 /fetch 任务管线；
+    source 为入库 favorites.source 的来源标记，空串 = 收藏列表。
+    """
+    action: str
+    name: str
+    description: str = ""
+    source: str = ""
+    params: list[ApiOperationParam] = field(default_factory=list)
+
+
+# 抓取目标的通用参数（count / cursor / 收藏日期区间），各平台声明 target 时复用
+PARAM_COUNT = ApiOperationParam(
+    key="count", label="抓取数量 (0 为全部)", type="number", placeholder="默认 20",
+    help="返回条数上限；设为 0 抓取全部（结果以流式方式实时入库）",
+)
+PARAM_CURSOR = ApiOperationParam(
+    key="cursor", label="起始游标 (已抓取条数)", type="number", placeholder="留空从第 1 条开始",
+    help="用于翻页续抓，填上次抓取结果返回的 cursor",
+)
+PARAM_DATE_FROM = ApiOperationParam(
+    key="date_from", label="收藏日期从", type="date",
+    help="可选；平台无收藏时间时按发布时间判定",
+)
+PARAM_DATE_TO = ApiOperationParam(
+    key="date_to", label="收藏日期至", type="date",
+    help="可选，闭区间（含当天）",
+)
+
+# 未声明 fetch_targets 的平台使用默认收藏列表目标（仅通用参数）
+DEFAULT_FETCH_TARGETS = (
+    FetchTarget(
+        action="list_favorites", name="抓取收藏列表",
+        description="抓取当前账号收藏列表并入库",
+        params=[PARAM_COUNT, PARAM_DATE_FROM, PARAM_DATE_TO],
+    ),
+)
+
+
 class BasePlatformAdapter(ABC):
     platform: str = ""
     display_name: str = ""
@@ -61,6 +103,8 @@ class BasePlatformAdapter(ABC):
     api_fetch_implemented: bool = False
     # 平台对外暴露的可执行 API 操作（写操作/管理类）；元数据下发前端渲染卡片+表单
     api_operations: tuple[ApiOperation, ...] = ()
+    # 可抓取入库的列表目标（收藏/喜欢/稍后再看…）；空 = 默认仅收藏列表
+    fetch_targets: tuple[FetchTarget, ...] = ()
 
     @abstractmethod
     async def login(self, account: AccountContext, timeout: float | None = None) -> bool:
@@ -126,6 +170,30 @@ class BasePlatformAdapter(ABC):
         默认未实现；支持的平台在 fetch_favorites 中按 resolve_fetch_method 分发到这里。
         """
         raise NotImplementedError(f"{self.display_name} 未实现 API 请求抓取方式")
+
+    def effective_fetch_targets(self) -> tuple[FetchTarget, ...]:
+        """对外抓取目标（未声明时回落默认收藏列表目标）。"""
+        return self.fetch_targets or DEFAULT_FETCH_TARGETS
+
+    def get_fetch_target(self, action: str) -> FetchTarget | None:
+        for t in self.effective_fetch_targets():
+            if t.action == action:
+                return t
+        return None
+
+    def fetch_source(self, action: str) -> str:
+        """action 对应的入库来源标记（favorites.source；未声明目标时空 = 收藏列表）。"""
+        target = self.get_fetch_target(action)
+        return target.source if target else ""
+
+    async def fetch_by_action(
+        self, action: str, account: AccountContext, params: dict, on_batch=None
+    ) -> FetchResult:
+        """按 action 分发抓取（多列表目标平台覆写：如抖音的喜欢/稍后再看）。
+
+        默认所有 action 走 fetch_favorites；action 合法性由调用方校验。
+        """
+        return await self.fetch_favorites(account, params, on_batch)
 
     def get_api_operation(self, op_id: str) -> ApiOperation | None:
         for op in self.api_operations:

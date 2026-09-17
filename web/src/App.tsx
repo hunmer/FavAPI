@@ -4,7 +4,7 @@ import {
   PlatformId,
   NavTab,
   ScrapedItem,
-  ScrapingFormData,
+  ScrapeRequest,
   TaskRecord,
   ScheduledSync,
 } from './types';
@@ -230,6 +230,9 @@ export function App() {
         const implemented = new Set(infos.filter((i) => i.implemented).map((i) => i.platform));
         PLATFORMS.forEach((p) => {
           p.isSupported = implemented.has(p.id);
+          // 抓取目标卡片（收藏/喜欢/稍后再看…）由后端元数据驱动
+          const info = infos.find((i) => i.platform === p.id);
+          if (info?.fetch_targets?.length) p.fetchTargets = info.fetch_targets;
         });
         // 后端热加载平台（如 threads）不在静态列表中，动态追加
         const known = new Set(PLATFORMS.map((p) => p.id));
@@ -244,6 +247,7 @@ export function App() {
             isSupported: info.implemented,
             tagline: '',
             apiFetch: !!info.api_fetch_implemented,
+            fetchTargets: info.fetch_targets?.length ? info.fetch_targets : undefined,
           });
         }
       } catch {
@@ -433,18 +437,21 @@ export function App() {
     accountName: account.name,
   });
 
-  const handleTriggerScrape = async (formData: ScrapingFormData) => {
+  const handleTriggerScrape = async (req: ScrapeRequest) => {
     const account = selectedAccount;
     if (!account) return;
     const accId = account.id;
+    const targetName =
+      PLATFORMS.find((p) => p.id === account.platform)?.fetchTargets?.find((t) => t.action === req.action)?.name
+      || '收藏';
     markScraping(accId, true);
     setStreamingByAccount((prev) => ({ ...prev, [accId]: [] }));
-    showToast(`已发起针对「${account.name}」的收藏抓取任务`, 'info');
+    showToast(`已发起针对「${account.name}」的${targetName}抓取任务`, 'info');
 
     try {
-      if (formData.isAsync) {
+      if (req.isAsync) {
         // 后台异步：立即返回 task_id，轮询任务状态
-        const res = await api.fetchAsync(account.platform, account.id, formData);
+        const res = await api.fetchAsync(account.platform, account.id, req);
         showToast(`任务已提交（${res.task_id}），可稍后在任务记录查看结果`);
         const poll = window.setInterval(async () => {
           try {
@@ -465,7 +472,7 @@ export function App() {
         }, 3000);
       } else {
         // 同步 SSE 流式：逐批实时展示（写入该账号自己的反馈流）
-        const done = await api.fetchStream(account.platform, account.id, formData, (ev) => {
+        const done = await api.fetchStream(account.platform, account.id, req, (ev) => {
           if (ev.type === 'items' && ev.items) {
             const mapped = ev.items.map((it) => applyStreamItem(it, account, ev.folder));
             setStreamingByAccount((prev) => ({

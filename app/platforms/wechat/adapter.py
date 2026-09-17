@@ -3,7 +3,15 @@ import asyncio
 import json
 from pathlib import Path
 
-from app.platforms.base import BasePlatformAdapter, FetchResult, AccountContext
+from app.platforms.base import (
+    AccountContext,
+    ApiOperationParam,
+    BasePlatformAdapter,
+    FetchResult,
+    FetchTarget,
+    PARAM_COUNT,
+    PARAM_CURSOR,
+)
 from app.platforms.wechat.parser import parse_export
 
 
@@ -12,6 +20,21 @@ class WeChatAdapter(BasePlatformAdapter):
     display_name = "微信收藏"
     home_url = "https://weixin.qq.com/"
     supported_actions = ("list_favorites",)
+    fetch_targets = (
+        FetchTarget(
+            action="list_favorites", name="导入微信收藏",
+            description="解析 WeChatDataAnalysis 导出的 messages.json 并入库",
+            params=[
+                ApiOperationParam(
+                    key="json_path", label="微信收藏 JSON 文件路径", type="text",
+                    required=True,
+                    placeholder="conversations/.../messages.json",
+                    help="请先用 WeChatDataAnalysis 导出；支持弹窗内直接上传 JSON 文件",
+                ),
+                PARAM_COUNT, PARAM_CURSOR,
+            ],
+        ),
+    )
 
     async def login(self, account: AccountContext, timeout=None) -> bool:
         return True

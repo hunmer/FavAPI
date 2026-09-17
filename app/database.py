@@ -70,9 +70,10 @@ CREATE TABLE IF NOT EXISTS favorites (
     content_id      TEXT,
     fav_media_id    TEXT DEFAULT '',    -- 归属收藏夹（Bilibili media_id；抖音等无此概念为空串）
     fav_title       TEXT DEFAULT '',
+    source          TEXT DEFAULT '',    -- 入库来源标记（空 = 收藏列表；如 喜欢列表 / 稍后再看列表）
     collected_at    TEXT,
     fetched_at      TEXT,
-    UNIQUE(account_id, platform, content_id, fav_media_id)
+    UNIQUE(account_id, platform, content_id, fav_media_id, source)
 );
 
 CREATE TABLE IF NOT EXISTS schedules (
@@ -145,13 +146,40 @@ class Database:
                     content_id      TEXT,
                     fav_media_id    TEXT DEFAULT '',
                     fav_title       TEXT DEFAULT '',
+                    source          TEXT DEFAULT '',
                     collected_at    TEXT,
                     fetched_at      TEXT,
-                    UNIQUE(account_id, platform, content_id, fav_media_id)
+                    UNIQUE(account_id, platform, content_id, fav_media_id, source)
                 );
                 INSERT INTO favorites_new (id, account_id, platform, content_id, fav_media_id,
-                                           fav_title, collected_at, fetched_at)
-                  SELECT id, account_id, platform, content_id, '', '', collected_at, fetched_at FROM favorites;
+                                           fav_title, source, collected_at, fetched_at)
+                  SELECT id, account_id, platform, content_id, '', '', '', collected_at, fetched_at FROM favorites;
+                DROP TABLE favorites;
+                ALTER TABLE favorites_new RENAME TO favorites;
+                CREATE INDEX IF NOT EXISTS idx_favorites_account ON favorites(account_id, platform);
+                COMMIT;
+            """)
+        elif "source" not in fav_cols:
+            # 加 source 来源标记并把唯一键扩为含 source：同一视频在收藏列表与
+            # 喜欢/稍后再看列表各存一行；老数据 source='' 即收藏列表
+            await self.conn.executescript("""
+                BEGIN;
+                CREATE TABLE favorites_new (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_id      TEXT,
+                    platform        TEXT,
+                    content_id      TEXT,
+                    fav_media_id    TEXT DEFAULT '',
+                    fav_title       TEXT DEFAULT '',
+                    source          TEXT DEFAULT '',
+                    collected_at    TEXT,
+                    fetched_at      TEXT,
+                    UNIQUE(account_id, platform, content_id, fav_media_id, source)
+                );
+                INSERT INTO favorites_new (id, account_id, platform, content_id, fav_media_id,
+                                           fav_title, source, collected_at, fetched_at)
+                  SELECT id, account_id, platform, content_id, fav_media_id, fav_title, '',
+                         collected_at, fetched_at FROM favorites;
                 DROP TABLE favorites;
                 ALTER TABLE favorites_new RENAME TO favorites;
                 CREATE INDEX IF NOT EXISTS idx_favorites_account ON favorites(account_id, platform);

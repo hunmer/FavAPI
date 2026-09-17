@@ -110,6 +110,7 @@ class FavoriteItem(BaseModel):
     statistics: dict[str, Any] = Field(default_factory=dict)
     fav_media_id: str | None = None  # 归属收藏夹（Bilibili）
     fav_title: str | None = None
+    source: str | None = None  # 入库来源（收藏列表 / 喜欢列表 / 稍后再看列表…；空 = 收藏列表）
     collected_at: str | None = None
     fetched_at: str | None = None
     url: str | None = None

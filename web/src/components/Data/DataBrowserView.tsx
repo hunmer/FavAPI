@@ -59,6 +59,8 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
   );
   const [searchQuery, setSearchQuery] = useState(externalSearchQuery || searchParamsInit().get('q') || '');
   const [selectedFolder, setSelectedFolder] = useState<string>(searchParamsInit().get('folder') || 'all');
+  // 入库来源过滤（收藏列表 / 喜欢列表 / 稍后再看列表…）
+  const [selectedSource, setSelectedSource] = useState<string>(searchParamsInit().get('source') || 'all');
   // 作者过滤器（点击卡片作者名可快捷应用）
   const [selectedAuthor, setSelectedAuthor] = useState<string>(searchParamsInit().get('author') || 'all');
   // 入库日期 / 发布时间过滤（URL 参数：date、date_end、pub_start、pub_end）
@@ -75,10 +77,11 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
     () => searchParamsInit().get('tags')?.split(',').filter(Boolean) ?? []
   );
 
-  // 切换账号：账号过滤收敛收藏夹与作者候选，一并重置
+  // 切换账号：账号过滤收敛收藏夹/来源与作者候选，一并重置
   const handleSelectAccount = (id: string) => {
     setSelectedAccountId(id);
     setSelectedFolder('all');
+    setSelectedSource('all');
     setSelectedAuthor('all');
   };
 
@@ -115,6 +118,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
   const [totalAll, setTotalAll] = useState(0);
   const [accountCounts, setAccountCounts] = useState<Map<string, number>>(new Map());
   const [folderFacets, setFolderFacets] = useState<Array<[string, number]>>([]);
+  const [sourceFacets, setSourceFacets] = useState<Array<[string, number]>>([]);
   const [authorFacets, setAuthorFacets] = useState<Array<[string, number]>>([]);
   // 打标/删除等数据变更后本地自刷新（叠加 App 侧的 onTaggingDone 全局刷新）
   const [reloadFlag, setReloadFlag] = useState(0);
@@ -381,6 +385,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
     // 浏览器后退/前进或外部跳转（如总览日历卡）时从 URL 回填
     setSelectedAccountId(searchParams.get('account') || 'all');
     setSelectedFolder(searchParams.get('folder') || 'all');
+    setSelectedSource(searchParams.get('source') || 'all');
     setSelectedAuthor(searchParams.get('author') || 'all');
     setSelectedDate(searchParams.get('date') || '');
     setSelectedEndDate(searchParams.get('date_end') || '');
@@ -395,6 +400,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
     const next = new URLSearchParams();
     if (selectedAccountId !== 'all') next.set('account', selectedAccountId);
     if (selectedFolder !== 'all') next.set('folder', selectedFolder);
+    if (selectedSource !== 'all') next.set('source', selectedSource);
     if (selectedAuthor !== 'all') next.set('author', selectedAuthor);
     if (selectedDate) next.set('date', selectedDate);
     if (selectedEndDate) next.set('date_end', selectedEndDate);
@@ -404,13 +410,14 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
     if (debouncedQuery.trim()) next.set('q', debouncedQuery.trim());
     if (next.toString() === searchParams.toString()) return;
     setSearchParams(next, { replace: true });
-  }, [selectedAccountId, selectedFolder, selectedAuthor, selectedDate, selectedEndDate, selectedPubDate, selectedPubEndDate, selectedTags, debouncedQuery, searchParams, setSearchParams]);
+  }, [selectedAccountId, selectedFolder, selectedSource, selectedAuthor, selectedDate, selectedEndDate, selectedPubDate, selectedPubEndDate, selectedTags, debouncedQuery, searchParams, setSearchParams]);
 
   // 当前过滤条件（不含分页）：列表查询与「全选所有」共用，useMemo 保持引用稳定避免请求循环
   const filterOpts = useMemo<api.FavoriteListOpts>(
     () => ({
       accountId: selectedAccountId === 'all' ? undefined : selectedAccountId,
       folder: selectedFolder === 'all' ? undefined : selectedFolder,
+      source: selectedSource === 'all' ? undefined : selectedSource,
       author: selectedAuthor === 'all' ? undefined : selectedAuthor,
       dateStart: selectedDate || undefined,
       dateEnd: selectedEndDate || undefined,
@@ -419,7 +426,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
       tags: selectedTags.length ? selectedTags : undefined,
       q: debouncedQuery.trim() || undefined,
     }),
-    [selectedAccountId, selectedFolder, selectedAuthor, selectedDate, selectedEndDate, selectedPubDate, selectedPubEndDate, selectedTags, debouncedQuery]
+    [selectedAccountId, selectedFolder, selectedSource, selectedAuthor, selectedDate, selectedEndDate, selectedPubDate, selectedPubEndDate, selectedTags, debouncedQuery]
   );
 
   // 列表：过滤条件（含分页）变化 → 防抖后向服务端发起查询（连续调整过滤只发最后一次请求）
@@ -463,6 +470,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
         setTotalAll(f.total);
         setAccountCounts(new Map(f.accounts.map((a) => [a.id, a.count])));
         setFolderFacets(f.folders.map((x) => [x.name, x.count] as [string, number]));
+        setSourceFacets((f.sources || []).map((x) => [x.name, x.count] as [string, number]));
         setAuthorFacets(f.authors.map((x) => [x.name, x.count] as [string, number]));
       })
       .catch(() => {
@@ -519,7 +527,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
   // Reset page on filter change
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedAccountId, selectedFolder, selectedAuthor, selectedTags, searchQuery, pageSize, selectedDate, selectedEndDate, selectedPubDate, selectedPubEndDate]);
+  }, [selectedAccountId, selectedFolder, selectedSource, selectedAuthor, selectedTags, searchQuery, pageSize, selectedDate, selectedEndDate, selectedPubDate, selectedPubEndDate]);
 
   // 服务端总数缩小后当前页越界：回退到最后一页
   useEffect(() => {
@@ -531,6 +539,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
     searchQuery.trim() !== '' ||
     selectedAccountId !== 'all' ||
     selectedFolder !== 'all' ||
+    selectedSource !== 'all' ||
     selectedAuthor !== 'all' ||
     selectedDate !== '' ||
     selectedEndDate !== '' ||
@@ -542,6 +551,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
     setSearchQuery('');
     setSelectedAccountId('all');
     setSelectedFolder('all');
+    setSelectedSource('all');
     setSelectedAuthor('all');
     setSelectedTags([]);
     setSelectedPubDate('');
@@ -573,6 +583,9 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
         folderFacets={folderFacets}
         selectedFolder={selectedFolder}
         onSelectFolder={handleSelectFolder}
+        sourceFacets={sourceFacets}
+        selectedSource={selectedSource}
+        onSelectSource={setSelectedSource}
         authorFacets={authorFacets}
         selectedAuthor={selectedAuthor}
         onSelectAuthor={setSelectedAuthor}

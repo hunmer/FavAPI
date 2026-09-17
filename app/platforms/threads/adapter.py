@@ -1,10 +1,6 @@
 """Threads 适配器：登录 / 登录态检查 / 收藏（已保存）列表抓取。
 
-两种执行方式：
-- API 直连（params.method="api"）：profile cookies + curl_cffi 直连 GraphQL，快且不占浏览器；
-- 浏览器模拟（默认）：打开 /saved 拦截 GraphQL 响应 + 滚动加载。
-  首屏数据嵌在页面 HTML 的 Relay preloader 里（无独立 XHR），从导航响应正文提取，
-  修复了原声明式实现漏抓首页的问题。
+API 直连：profile cookies + curl_cffi 直连 GraphQL（浏览器模拟实现已移除，method 入口保留）。
 
 代理：threads.com 在部分网络不可直达，沿用声明式平台的 auto 解析
 （env → Windows 注册表），浏览器会话与直连共用。
@@ -25,7 +21,6 @@ from app.platforms.base import (
 from app.services import browser
 from . import api_client
 from . import constants
-from .parser import parse_embedded_saved, parse_saved_media
 
 logger = logging.getLogger("favapi.threads")
 
@@ -35,15 +30,6 @@ def _split_ids(raw: str) -> list[str]:
     import re
 
     return [t.strip() for t in re.split(r"[\s,，;；]+", raw or "") if t.strip()]
-
-
-def _merge_items(batches: list[dict]) -> list[dict]:
-    """多批响应按 content_id 去重合并（保持首次出现顺序）。"""
-    seen: dict[str, dict] = {}
-    for batch in batches:
-        for item in batch["items"]:
-            seen.setdefault(item["content_id"], item)
-    return list(seen.values())
 
 
 class ThreadsAdapter(BasePlatformAdapter):
@@ -212,9 +198,9 @@ class ThreadsAdapter(BasePlatformAdapter):
     async def fetch_favorites(
         self, account: AccountContext, params: dict, on_batch=None
     ) -> FetchResult:
-        if self.resolve_fetch_method(params) == "api":
-            return await self.fetch_favorites_api(account, params, on_batch)
-        return await self._fetch_favorites_browser(account, params, on_batch)
+        # 浏览器模拟实现已移除，仅保留 API 直连；method 入口保留供未来平台分发
+        self.resolve_fetch_method(params)
+        return await self.fetch_favorites_api(account, params, on_batch)
 
     async def fetch_favorites_api(
         self, account: AccountContext, params: dict, on_batch=None
@@ -244,99 +230,4 @@ class ThreadsAdapter(BasePlatformAdapter):
             cursor=skip + len(window),
             has_more=last_has_more and (not count or len(collected) >= skip + count),
             total=len(collected),
-        )
-
-    async def _fetch_favorites_browser(
-        self, account: AccountContext, params: dict, on_batch=None
-    ) -> FetchResult:
-        """浏览器模拟：首屏从 /saved HTML 的 Relay preloader 提取，滚动触发翻页 XHR 拦截。"""
-        raw_count = params.get("count")
-        if raw_count in (None, ""):
-            count = constants.DEFAULT_COUNT
-        else:
-            count = max(0, min(int(raw_count), constants.MAX_COUNT))  # 0 = 全部
-        skip = max(0, int(params.get("cursor") or 0))
-        logger.info("[%s] 开始抓取收藏：count=%s cursor=%d",
-                    account.account_id, count or "全部", skip)
-
-        batches: list[dict] = []
-
-        async def _feed(parsed: dict, label: str) -> None:
-            if not parsed or not parsed["items"]:
-                return
-            batches.append(parsed)
-            logger.info("捕获 %s 批次 #%d：%d 条，has_more=%s",
-                        label, len(batches), len(parsed["items"]), parsed["has_more"])
-            if on_batch:
-                await on_batch({"page": len(batches), "items": parsed["items"]})
-
-        async def _on_response(response):
-            url = response.url
-            if url.rstrip("/") == constants.FAVORITES_URL.rstrip("/"):
-                # 导航响应正文：内嵌首屏 Relay preloader（无独立 XHR）
-                try:
-                    html = await response.text()
-                except Exception as exc:
-                    logger.warning("读取收藏页正文失败：%s", exc)
-                    return
-                await _feed(parse_embedded_saved(html), "preloader")
-            elif "/graphql/query" in url and constants.SAVED_DOC_ID in (
-                response.request.post_data or ""
-            ):
-                try:
-                    data = await response.json()
-                except Exception as exc:
-                    logger.warning("GraphQL 响应解析失败：%s", exc)
-                    return
-                await _feed(parse_saved_media(data), "graphql")
-
-        async with browser.session(
-            account.profile_path, headless=config.HEADLESS, proxy=api_client.resolve_proxy()
-        ) as ctx:
-            page = ctx.pages[0] if ctx.pages else await ctx.new_page()
-            page.on("response", _on_response)
-            await page.goto(constants.FAVORITES_URL, wait_until="domcontentloaded")
-            await page.wait_for_timeout(constants.WAIT_AFTER_GOTO_MS)
-
-            cookies = await ctx.cookies()
-            if not browser.has_login_cookies(cookies, constants.LOGIN_COOKIE_KEYS):
-                raise LoginExpiredError("Threads 登录态缺失，请重新登录")
-
-            rounds, stall, last_merged = 0, 0, -1
-            while rounds < constants.MAX_SCROLL_ROUNDS:
-                merged = _merge_items(batches)
-                has_more = batches[-1]["has_more"] if batches else True
-                if count and len(merged) >= count + skip:
-                    logger.info("已收集 %d 条（目标 %d），停止滚动", len(merged), count + skip)
-                    break
-                if not has_more:
-                    logger.info("接口提示没有更多数据（共 %d 条），停止滚动", len(merged))
-                    break
-                if stall >= constants.MAX_STALL_ROUNDS:
-                    logger.warning("连续 %d 轮滚动无新增数据（当前 %d 条），提前结束避免空转",
-                                   stall, len(merged))
-                    break
-                await page.mouse.wheel(0, 2500)
-                await page.wait_for_timeout(constants.SCROLL_INTERVAL_MS)
-                rounds += 1
-
-                new_merged = _merge_items(batches)
-                stall = stall + 1 if len(new_merged) == last_merged else 0
-                last_merged = len(new_merged)
-                logger.info("第 %d 轮滚动：批次 %d，去重 %d 条", rounds, len(batches), len(new_merged))
-
-            # 等最后一次滚动触发的响应落地
-            await page.wait_for_timeout(1200)
-
-        merged = _merge_items(batches)
-        window = merged[skip:] if not count else merged[skip: skip + count]
-        last_has_more = bool(batches and batches[-1]["has_more"])
-        logger.info("[%s] 抓取完成：捕获批次 %d，去重 %d 条，返回 [%d:%d] 共 %d 条，has_more=%s",
-                    account.account_id, len(batches), len(merged), skip,
-                    skip + len(window), len(window), last_has_more)
-        return FetchResult(
-            items=window,
-            cursor=skip + len(window),
-            has_more=last_has_more and (not count or len(merged) >= skip + count),
-            total=len(merged),
         )

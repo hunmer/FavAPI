@@ -1,4 +1,4 @@
-import { PlatformId } from '../types';
+import { FetchTargetSpec, PlatformId } from '../types';
 
 export interface PlatformMeta {
   id: PlatformId;
@@ -9,7 +9,23 @@ export interface PlatformMeta {
   isSupported: boolean;
   tagline: string;
   apiFetch?: boolean; // 收藏抓取支持 API 直连方式（后端 adapter.api_fetch_implemented）
+  fetchTargets?: FetchTargetSpec[]; // 可抓取入库的列表目标（后端 /platforms 下发）
 }
+
+/** 后端不可用 / 平台信息未加载时的默认抓取目标（仅收藏列表）。 */
+export const DEFAULT_FETCH_TARGETS: FetchTargetSpec[] = [
+  {
+    action: 'list_favorites',
+    name: '抓取收藏列表',
+    description: '抓取当前账号收藏列表并入库',
+    source: '',
+    params: [
+      { key: 'count', label: '抓取数量 (0 为全部)', type: 'number', required: false, placeholder: '默认 20', help: '返回条数上限；设为 0 抓取全部' },
+      { key: 'date_from', label: '收藏日期从', type: 'date', required: false, placeholder: '', help: '可选；平台无收藏时间时按发布时间判定' },
+      { key: 'date_to', label: '收藏日期至', type: 'date', required: false, placeholder: '', help: '可选，闭区间（含当天）' },
+    ],
+  },
+];
 
 export const PLATFORMS: PlatformMeta[] = [
   {

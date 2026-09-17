@@ -44,8 +44,11 @@ async def upsert_contents(platform: str, account_id: str, items: list[dict]):
         )
 
 
-async def save_fetch_result(account: dict, items: list[dict]) -> dict:
-    """PRD 写入策略：upsert contents → 写 favorites 关系。返回统计。"""
+async def save_fetch_result(account: dict, items: list[dict], source: str = "") -> dict:
+    """PRD 写入策略：upsert contents → 写 favorites 关系。返回统计。
+
+    source 为本次抓取的入库来源标记（favorites.source，空 = 收藏列表）。
+    """
     account_id, platform = account["account_id"], account["platform"]
     before = await db.query_one(
         "SELECT COUNT(*) AS n FROM favorites WHERE account_id = ? AND platform = ?",
@@ -57,12 +60,12 @@ async def save_fetch_result(account: dict, items: list[dict]) -> dict:
     for it in items:
         await db.execute(
             """INSERT OR IGNORE INTO favorites (account_id, platform, content_id,
-                   fav_media_id, fav_title, collected_at, fetched_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                   fav_media_id, fav_title, source, collected_at, fetched_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 account_id, platform, it["content_id"],
                 it.get("fav_media_id") or "", it.get("fav_title") or "",
-                it.get("collected_at"), now,
+                source or "", it.get("collected_at"), now,
             ),
         )
 
@@ -135,13 +138,14 @@ async def list_favorites(
     pub_end: str | None = None,
     tags: list[str] | None = None,
     q: str | None = None,
+    source: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> dict:
     """favorites JOIN contents，按抓取时间倒序；tag 基于 contents.tags JSON 数组精确匹配。
 
     服务端过滤（与前端过滤面板语义一致）：
-    - folder/author 精确匹配，空值占位（'默认收藏夹'/'—'）匹配 NULL 或空串
+    - folder/author/source 精确匹配，空值占位（'默认收藏夹'/'—'/'收藏列表'）匹配 NULL 或空串
     - date_start/date_end 按 fetched_at 前 10 位（YYYY-MM-DD）闭区间比较，可只填一端
     - tags 多标签 OR；q 模糊匹配标题/作者/标签
     """
@@ -161,6 +165,9 @@ async def list_favorites(
         else:
             where.append("f.fav_title = ?")
             params.append(folder)
+    if source and source != "收藏列表":
+        where.append("COALESCE(NULLIF(f.source, ''), '收藏列表') = ?")
+        params.append(source)
     if author:
         if author == "—":
             where.append("(c.author_name IS NULL OR c.author_name = '')")
@@ -203,7 +210,7 @@ async def list_favorites(
     )
     rows = await db.query_all(
         f"""SELECT f.account_id, f.content_id, f.platform, f.fav_media_id, f.fav_title,
-                   f.collected_at, f.fetched_at,
+                   f.source, f.collected_at, f.fetched_at,
                    c.title, c.author_name, c.cover_url, c.duration, c.statistics, c.raw_data,
                    c.tags, c.tagged_at
             FROM favorites f LEFT JOIN contents c
@@ -239,6 +246,7 @@ async def list_favorites(
             "statistics": statistics,
             "fav_media_id": r.get("fav_media_id") or None,
             "fav_title": r.get("fav_title") or None,
+            "source": r.get("source") or None,
             "collected_at": r.get("collected_at"),
             "fetched_at": r.get("fetched_at"),
             "url": source_url or _item_detail_url(r["platform"], r["content_id"], raw),
@@ -261,7 +269,7 @@ async def favorite_facets(account_id: str | None = None, folder: str | None = No
         params.append(account_id)
     where_sql = f"WHERE {' AND '.join(base)}" if base else ""
 
-    total_row, accounts_rows, folder_rows = await asyncio.gather(
+    total_row, accounts_rows, folder_rows, source_rows = await asyncio.gather(
         db.query_one(f"SELECT COUNT(*) AS n FROM favorites f {where_sql}", tuple(params)),
         db.query_all(
             f"SELECT f.account_id AS id, COUNT(*) AS count FROM favorites f {where_sql} GROUP BY f.account_id ORDER BY count DESC",
@@ -269,6 +277,11 @@ async def favorite_facets(account_id: str | None = None, folder: str | None = No
         ),
         db.query_all(
             f"""SELECT COALESCE(NULLIF(f.fav_title, ''), '默认收藏夹') AS name, COUNT(*) AS count
+                FROM favorites f {where_sql} GROUP BY name ORDER BY count DESC""",
+            tuple(params),
+        ),
+        db.query_all(
+            f"""SELECT COALESCE(NULLIF(f.source, ''), '收藏列表') AS name, COUNT(*) AS count
                 FROM favorites f {where_sql} GROUP BY name ORDER BY count DESC""",
             tuple(params),
         ),
@@ -289,6 +302,7 @@ async def favorite_facets(account_id: str | None = None, folder: str | None = No
         "total": (total_row or {}).get("n") or 0,
         "accounts": accounts_rows,
         "folders": folder_rows,
+        "sources": source_rows,
         "authors": author_rows,
     }
 

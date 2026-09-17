@@ -116,6 +116,7 @@ async def list_favorites(
     tag: str | None = None,
     folder: str | None = None,
     author: str | None = None,
+    source: str | None = None,
     date_start: str | None = None,
     date_end: str | None = None,
     pub_start: str | None = None,
@@ -127,7 +128,8 @@ async def list_favorites(
 ):
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
     result = await data_store.list_favorites(
-        account_id, platform, tag, folder, author, date_start, date_end, pub_start, pub_end, tag_list, q, limit, offset
+        account_id, platform, tag, folder, author, date_start, date_end, pub_start, pub_end,
+        tag_list, q, source=source, limit=limit, offset=offset,
     )
     result["items"] = [FavoriteItem(**i).model_dump() for i in result["items"]]
     return result

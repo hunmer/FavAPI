@@ -40,6 +40,17 @@ def load_declarative(directory=None) -> list[str]:
     return loaded
 
 
+def _target_params(params) -> list[dict]:
+    return [
+        {
+            "key": p.key, "label": p.label, "type": p.type,
+            "required": p.required, "placeholder": p.placeholder, "help": p.help,
+            "options": [{"value": v, "label": n} for v, n in p.options],
+        }
+        for p in params
+    ]
+
+
 def _info(adapter: BasePlatformAdapter) -> dict:
     info = {
         "platform": adapter.platform,
@@ -47,20 +58,24 @@ def _info(adapter: BasePlatformAdapter) -> dict:
         "implemented": adapter.implemented,
         "supported_actions": list(adapter.supported_actions),
         "api_fetch_implemented": adapter.api_fetch_implemented,
+        # 可抓取入库的列表目标（收藏/喜欢/稍后再看…），前端渲染卡片 + 弹窗表单
+        "fetch_targets": [
+            {
+                "action": t.action,
+                "name": t.name,
+                "description": t.description,
+                "source": t.source,
+                "params": _target_params(t.params),
+            }
+            for t in adapter.effective_fetch_targets()
+        ],
         "api_operations": [
             {
                 "op_id": op.op_id,
                 "name": op.name,
                 "description": op.description,
                 "danger": op.danger,
-                "params": [
-                    {
-                        "key": p.key, "label": p.label, "type": p.type,
-                        "required": p.required, "placeholder": p.placeholder, "help": p.help,
-                        "options": [{"value": v, "label": n} for v, n in p.options],
-                    }
-                    for p in op.params
-                ],
+                "params": _target_params(op.params),
             }
             for op in adapter.api_operations
         ],

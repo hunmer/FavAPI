@@ -1,8 +1,8 @@
-"""Bilibili 适配器：扫码登录 / 收藏列表抓取（收藏夹公开接口分页请求）。
+"""Bilibili 适配器：扫码登录 / 收藏列表抓取（收藏夹公开接口 API 直连分页）。
 
-与抖音的响应拦截 + 滚动不同，Bilibili 收藏夹有干净的分页接口
-（fav/resource/list 的 pn/ps），无需打开页面点击按钮：
-直接用浏览器上下文发 API 请求，自动携带 profile 登录态与 UA，降低风控概率。
+Bilibili 收藏夹有干净的分页接口（fav/resource/list 的 pn/ps），无需打开页面：
+登录态复用账号浏览器 profile 读 cookies（profile_cookie_header），
+后续请求全部走 curl_cffi 直连（见 api_client.py）。
 """
 import asyncio
 import json
@@ -16,13 +16,18 @@ from app.platforms.base import (
     ApiOperationParam,
     BasePlatformAdapter,
     FetchResult,
+    FetchTarget,
     LoginExpiredError,
+    PARAM_COUNT,
+    PARAM_CURSOR,
+    PARAM_DATE_FROM,
+    PARAM_DATE_TO,
 )
 from app.services import browser
 from app.utils import parse_date_window
 from . import api_client
 from . import constants
-from .parser import extract_mid, parse_folder_list, parse_resource_list
+from .parser import extract_mid, parse_folder_list
 
 logger = logging.getLogger("favapi.bilibili")
 
@@ -33,6 +38,32 @@ class BilibiliAdapter(BasePlatformAdapter):
     home_url = constants.HOME_URL
     implemented = True
     supported_actions = ("list_favorites",)
+    api_fetch_implemented = True  # 浏览器上下文请求实现已移除，仅保留 API 直连
+    fetch_targets = (
+        FetchTarget(
+            action="list_favorites", name="抓取收藏列表",
+            description="API 直连抓取收藏夹并入库（可指定收藏夹 / 目标用户）",
+            params=[
+                PARAM_COUNT, PARAM_CURSOR,
+                ApiOperationParam(
+                    key="url", label="收藏夹主页链接或用户 UID（可选）", type="text",
+                    placeholder="留空则抓当前登录账号",
+                    help="https://space.bilibili.com/{uid}/favlist 或纯数字 UID",
+                ),
+                ApiOperationParam(
+                    key="media_id", label="指定单个收藏夹 media_id（可选）", type="text",
+                    placeholder="例如 10082911",
+                    help="留空遍历全部收藏夹（FolderPicker 点击可带入）",
+                ),
+                ApiOperationParam(
+                    key="interval_sec", label="翻页休眠间隔（秒）", type="number",
+                    placeholder="默认 2",
+                    help="平稳防风控建议 3 秒以上；兼容旧参数 interval_ms",
+                ),
+                PARAM_DATE_FROM, PARAM_DATE_TO,
+            ],
+        ),
+    )
     api_operations = (
         ApiOperation(
             op_id="cancel_favorites",
@@ -235,9 +266,21 @@ class BilibiliAdapter(BasePlatformAdapter):
                 account.account_id, owner.get("name"), owner["mid"], len(folders),
             )
 
+    @staticmethod
+    def _interval_ms(params: dict) -> int:
+        """翻页间隔：新参数 interval_sec（秒）；兼容旧 interval_ms（毫秒）。"""
+        if params.get("interval_sec") not in (None, ""):
+            return max(0, min(round(float(params["interval_sec"]) * 1000), 10000))
+        raw = params.get("interval_ms")
+        if raw in (None, ""):
+            return constants.PAGE_INTERVAL_MS
+        return max(0, min(int(raw), 10000))
+
     async def fetch_favorites(
         self, account: AccountContext, params: dict, on_batch=None
     ) -> FetchResult:
+        """API 直连抓取收藏夹（浏览器上下文请求实现已移除，全部走纯 HTTP）。"""
+        self.resolve_fetch_method(params)  # method 入口保留供未来平台分发
         self.validate_params(params)
         mid = self._target_mid(params)
         raw_count = params.get("count")
@@ -249,16 +292,22 @@ class BilibiliAdapter(BasePlatformAdapter):
         # count=0 表示不设条数上限，翻完所有收藏夹所有页
         target = skip + count if count else None
         media_id = str(params.get("media_id") or "").strip()  # 可选：只抓指定收藏夹
-        raw_interval = params.get("interval_ms")
-        interval_ms = (
-            constants.PAGE_INTERVAL_MS if raw_interval in (None, "")
-            else max(0, min(int(raw_interval), 10000))  # 可选：翻页请求间隔（ms）
-        )
+        interval_ms = self._interval_ms(params)
         logger.info(
-            "[%s] 开始抓取收藏夹：mid=%s count=%s cursor=%d media_id=%s interval=%dms",
+            "[%s] API 直连抓取收藏夹：mid=%s count=%s cursor=%d media_id=%s interval=%dms",
             account.account_id, mid or "当前登录用户", count or "全部", skip,
             media_id or "全部", interval_ms,
         )
+
+        cookie_header = await api_client.profile_cookie_header(account.profile_path)
+        if not mid:
+            mid = api_client._cookie_value(cookie_header, "DedeUserID")
+            if not mid:
+                raise LoginExpiredError(
+                    "未指定目标用户，且账号未登录（cookie 中无 DedeUserID）："
+                    "请先扫码登录，或在参数中传入收藏夹主页 URL / 用户 id"
+                )
+            logger.info("[%s] 未指定用户，默认当前登录用户 mid=%s", account.account_id, mid)
 
         items: list[dict] = []
         seen: set[tuple[str, str]] = set()  # (content_id, media_id)：同一视频收藏在多个夹各记一条
@@ -266,93 +315,71 @@ class BilibiliAdapter(BasePlatformAdapter):
         folders_meta: list[dict] = []
         stopped_early = False
 
-        async with browser.session(account.profile_path, headless=config.HEADLESS) as ctx:
-            if not mid:
-                cookies = await ctx.cookies()
-                mid = next(
-                    (c["value"] for c in cookies if c.get("name") == "DedeUserID" and c.get("value")),
-                    "",
-                )
-                if not mid:
-                    raise LoginExpiredError(
-                        "未指定目标用户，且账号未登录（Bilibili cookie 中无 DedeUserID）："
-                        "请先扫码登录，或在参数中传入收藏夹主页 URL / 用户 id"
-                    )
-                logger.info("[%s] 未指定用户，默认当前登录用户 mid=%s", account.account_id, mid)
-            headers = {"Referer": f"https://space.bilibili.com/{mid}/favlist"}
+        if media_id:
+            targets = [{"media_id": media_id, "title": None, "media_count": None}]
+        else:
+            folder_data = await asyncio.to_thread(
+                api_client.fetch_folder_list_full, cookie_header, mid
+            )
+            owner = folder_data["owner"]
+            folders_meta = folder_data["folders"]
+            targets = folders_meta
+            logger.info(
+                "[%s] 用户 %s 共 %d 个收藏夹：%s",
+                account.account_id, mid, len(targets),
+                ", ".join(f"{f['title']}({f['media_count']})" for f in targets) or "无",
+            )
 
-            if media_id:
-                targets = [{"media_id": media_id, "title": None, "media_count": None}]
-            else:
-                data = await self._api_get(
-                    ctx, constants.FAV_FOLDER_LIST_API, {"up_mid": mid}, headers
+        for folder in targets:
+            pn = 1
+            while True:
+                batch = await asyncio.to_thread(
+                    api_client.fetch_resource_list_page, cookie_header, folder["media_id"], pn
                 )
-                parsed = parse_folder_list(data)
-                owner = parsed["owner"]
-                folders_meta = parsed["folders"]
-                targets = folders_meta
+                if batch["owner"].get("name"):
+                    owner = batch["owner"]  # resource/list 的 upper 信息最全
+                if media_id and not folders_meta:
+                    folders_meta = [batch["favorite"]]
+                if folder["title"] is None:
+                    folder["title"] = batch["favorite"]["title"]
+
+                new_count = 0
+                page_items: list[dict] = []
+                for it in batch["items"]:
+                    key = (it["content_id"], folder["media_id"])
+                    if key not in seen:
+                        seen.add(key)
+                        it["fav_media_id"] = folder["media_id"]
+                        it["fav_title"] = folder["title"] or ""
+                        items.append(it)
+                        page_items.append(it)
+                        new_count += 1
                 logger.info(
-                    "[%s] 用户 %s 共 %d 个收藏夹：%s",
-                    account.account_id, mid, len(targets),
-                    ", ".join(f"{f['title']}({f['media_count']})" for f in targets) or "无",
+                    "[%s] 收藏夹「%s」第 %d 页：%d 条（新增 %d，累计去重 %d），has_more=%s",
+                    account.account_id, folder["title"] or folder["media_id"], pn,
+                    len(batch["items"]), new_count, len(items), batch["has_more"],
                 )
+                if on_batch and page_items:
+                    await on_batch({
+                        "folder": {"media_id": folder["media_id"], "title": folder["title"]},
+                        "page": pn,
+                        "items": page_items,
+                        "total_fetched": len(items),
+                    })
 
-            for folder in targets:
-                pn = 1
-                while True:
-                    data = await self._api_get(
-                        ctx, constants.FAV_RESOURCE_LIST_API,
-                        {
-                            "media_id": folder["media_id"], "pn": pn, "ps": constants.PAGE_SIZE,
-                            "keyword": "", "order": "mtime", "type": 0, "tid": 0, "platform": "web",
-                        },
-                        headers,
-                    )
-                    batch = parse_resource_list(data)
-                    if batch["owner"].get("name"):
-                        owner = batch["owner"]  # resource/list 的 upper 信息最全
-                    if media_id and not folders_meta:
-                        folders_meta = [batch["favorite"]]
-                    if folder["title"] is None:
-                        folder["title"] = batch["favorite"]["title"]
-
-                    new_count = 0
-                    page_items: list[dict] = []
-                    for it in batch["items"]:
-                        key = (it["content_id"], folder["media_id"])
-                        if key not in seen:
-                            seen.add(key)
-                            it["fav_media_id"] = folder["media_id"]
-                            it["fav_title"] = folder["title"] or ""
-                            items.append(it)
-                            page_items.append(it)
-                            new_count += 1
-                    logger.info(
-                        "[%s] 收藏夹「%s」第 %d 页：%d 条（新增 %d，累计去重 %d），has_more=%s",
-                        account.account_id, folder["title"] or folder["media_id"], pn,
-                        len(batch["items"]), new_count, len(items), batch["has_more"],
-                    )
-                    if on_batch and page_items:
-                        await on_batch({
-                            "folder": {"media_id": folder["media_id"], "title": folder["title"]},
-                            "page": pn,
-                            "items": page_items,
-                            "total_fetched": len(items),
-                        })
-
-                    if not batch["has_more"]:
-                        break  # 该收藏夹已到底
-                    if target is not None and len(items) >= target:
-                        stopped_early = True
-                        break  # 已凑够窗口，该夹仍有剩余
-                    if pn >= constants.MAX_PAGES:
-                        logger.warning("单收藏夹翻页达上限 %d 页，提前结束", constants.MAX_PAGES)
-                        stopped_early = True
-                        break
-                    pn += 1
-                    await asyncio.sleep(interval_ms / 1000)
-                if stopped_early:
+                if not batch["has_more"]:
+                    break  # 该收藏夹已到底
+                if target is not None and len(items) >= target:
+                    stopped_early = True
+                    break  # 已凑够窗口，该夹仍有剩余
+                if pn >= constants.MAX_PAGES:
+                    logger.warning("单收藏夹翻页达上限 %d 页，提前结束", constants.MAX_PAGES)
+                    stopped_early = True
                     break
+                pn += 1
+                await asyncio.sleep(interval_ms / 1000)
+            if stopped_early:
+                break
 
         window = items[skip:] if target is None else items[skip:target]
         meta = {"owner": owner, "folders": folders_meta}

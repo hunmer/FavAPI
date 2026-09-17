@@ -139,11 +139,15 @@ async def _run_task(task_id: str, account: dict, action: str, params: dict) -> d
 
     adapter = registry.get_adapter(account["platform"])
     try:
-        result = await adapter.fetch_favorites(account_manager.to_context(account), params or {})
+        result = await adapter.fetch_by_action(
+            action, account_manager.to_context(account), params or {}
+        )
         dt_from, dt_to = _date_window(params or {})
         if dt_from or dt_to:
             result.items = _filter_by_date_window(result.items, dt_from, dt_to)
-        summary = await data_store.save_fetch_result(account, result.items)
+        # 入库来源标记（收藏/喜欢/稍后再看…，由平台 fetch_targets 声明）
+        source = adapter.fetch_source(action)
+        summary = await data_store.save_fetch_result(account, result.items, source=source)
         payload = {
             "task_id": task_id,
             "account_id": account_id,
@@ -212,6 +216,8 @@ async def stream_fetch_events(task_id: str, account: dict, adapter, action: str,
     saved_count = 0
     new_count = 0
     dt_from, dt_to = _date_window(params or {})
+    # 入库来源标记（收藏/喜欢/稍后再看…，由平台 fetch_targets 声明）
+    source = adapter.fetch_source(action)
 
     async def on_batch(batch: dict):
         nonlocal saved_count, new_count
@@ -221,7 +227,7 @@ async def stream_fetch_events(task_id: str, account: dict, adapter, action: str,
         if not fresh:
             return
         seen.update(it["content_id"] for it in fresh)
-        summary = await data_store.save_fetch_result(account, fresh)
+        summary = await data_store.save_fetch_result(account, fresh, source=source)
         saved_count += summary["result_count"]
         new_count += summary["new_favorites"]
         await queue.put({
@@ -235,8 +241,8 @@ async def stream_fetch_events(task_id: str, account: dict, adapter, action: str,
 
     async def _worker():
         try:
-            result = await adapter.fetch_favorites(
-                account_manager.to_context(account), params or {}, on_batch=on_batch
+            result = await adapter.fetch_by_action(
+                action, account_manager.to_context(account), params or {}, on_batch=on_batch
             )
             payload = {
                 "type": "done",

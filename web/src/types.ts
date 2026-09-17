@@ -95,22 +95,33 @@ export interface ScrapedItem {
   tags?: string[];
   notes?: string;
   description?: string;
+  /** 入库来源（收藏列表 / 喜欢列表 / 稍后再看列表…）；空 = 收藏列表 */
+  sourceName?: string;
 }
 
-export interface ScrapingFormData {
-  count: number; // 0 = all
-  startCursor: string;
+/** 抓取目标表单的一个输入项（后端 /platforms.fetch_targets[].params 下发）。 */
+export interface FetchTargetParamSpec {
+  key: string;
+  label: string;
+  type: string; // text | textarea | number | date | select
+  required: boolean;
+  placeholder: string;
+  help: string;
+  options?: Array<{ value: string; label: string }>;
+}
+
+/** 可抓取入库的列表目标（收藏 / 喜欢 / 稍后再看…），前端渲染卡片 + 弹窗表单。 */
+export interface FetchTargetSpec {
+  action: string;
+  name: string;
+  description: string;
+  source: string; // 入库来源标记；空 = 收藏列表
+  params: FetchTargetParamSpec[];
+}
+
+/** 手动抓取请求：目标 action + 后端参数 + 执行模式（替代旧表单模型 ScrapingFormData）。 */
+export interface ScrapeRequest {
+  action: string; // list_favorites / list_likes / list_watchlater…
+  params: Record<string, any>; // key 与 FetchTargetParamSpec.key 对齐，直接传后端
   isAsync: boolean;
-  method?: 'browser' | 'api'; // 抓取执行方式：浏览器模拟 / API 直连（平台需支持）
-  // 收藏日期区间过滤（YYYY-MM-DD，闭区间）；平台无收藏时间字段时以发布时间兜底
-  dateFrom?: string;
-  dateTo?: string;
-  // Bilibili specific
-  folderUrlOrUid?: string;
-  mediaId?: string;
-  pageIntervalSec?: number; // e.g. 1.5 ~ 5.0
-  // Xiaohongshu specific
-  profileUrlOrUid?: string;
-  // WeChat specific
-  jsonPath?: string;
 }

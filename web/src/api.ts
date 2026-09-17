@@ -2,7 +2,7 @@
  * FavAPI 后端 (/api/v1) 接口封装 + 控制台 UI 类型映射。
  * 后端字段（snake_case）在这里统一转换为组件使用的 console 类型（types.ts）。
  */
-import { Account, BilibiliFolder, CookieItem, PlatformId, ScheduledSync, ScrapedItem, ScrapingFormData, TaskRecord } from './types';
+import { Account, BilibiliFolder, CookieItem, FetchTargetSpec, PlatformId, ScheduledSync, ScrapeRequest, ScrapedItem, TaskRecord } from './types';
 
 const BASE = '/api/v1';
 
@@ -62,6 +62,7 @@ export interface FavoriteRow {
   statistics?: Record<string, any>;
   fav_media_id?: string | null;
   fav_title?: string | null;
+  source?: string | null; // 入库来源（空 = 收藏列表）
   collected_at?: string | null;
   fetched_at?: string | null;
   url?: string | null;
@@ -119,6 +120,7 @@ export interface PlatformInfoRow {
   icon_url?: string;
   api_fetch_implemented?: boolean;
   api_operations?: OperationSpec[];
+  fetch_targets?: FetchTargetSpec[];
 }
 
 // ---------- 工具 ----------
@@ -227,6 +229,7 @@ export function toScrapedItem(row: FavoriteRow, accountNameById: Map<string, str
     accountId: row.account_id || '',
     accountName: accountNameById.get(row.account_id || '') || '—',
     tags: row.tags || [],
+    sourceName: row.source || '收藏列表',
   };
 }
 
@@ -484,6 +487,7 @@ export interface FavoriteListOpts {
   platform?: string;
   folder?: string;
   author?: string;
+  source?: string;
   dateStart?: string;
   dateEnd?: string;
   pubStart?: string;
@@ -500,6 +504,7 @@ export async function listFavorites(opts: FavoriteListOpts = {}): Promise<{ tota
   if (opts.platform) p.set('platform', opts.platform);
   if (opts.folder) p.set('folder', opts.folder);
   if (opts.author) p.set('author', opts.author);
+  if (opts.source) p.set('source', opts.source);
   if (opts.dateStart) p.set('date_start', opts.dateStart);
   if (opts.dateEnd) p.set('date_end', opts.dateEnd);
   if (opts.pubStart) p.set('pub_start', opts.pubStart);
@@ -515,6 +520,7 @@ export interface FacetRow {
   total: number;
   accounts: Array<{ id: string; count: number }>;
   folders: Array<{ name: string; count: number }>;
+  sources: Array<{ name: string; count: number }>;
   authors: Array<{ name: string; count: number }>;
 }
 
@@ -527,43 +533,20 @@ export async function favoriteFacets(accountId?: string, folder?: string): Promi
 
 // ---------- 抓取 ----------
 
-/** 把控制台抓取表单转换为后端 FetchRequest.params（各平台字段差异在此抹平）。 */
-export function formToParams(platform: string, form: ScrapingFormData): Record<string, any> {
-  const params: Record<string, any> = {
-    count: form.count ?? 0,
-    cursor: Number(form.startCursor) > 0 ? Number(form.startCursor) : undefined,
-  };
-  if (form.method) params.method = form.method;
-  if (form.dateFrom) params.date_from = form.dateFrom;
-  if (form.dateTo) params.date_to = form.dateTo;
-  if (platform === 'bilibili') {
-    if (form.folderUrlOrUid) params.url = form.folderUrlOrUid;
-    if (form.mediaId) params.media_id = form.mediaId;
-    if (form.pageIntervalSec) params.interval_ms = Math.round(form.pageIntervalSec * 1000);
-  }
-  if (platform === 'xiaohongshu' && form.profileUrlOrUid) {
-    params.url = form.profileUrlOrUid;
-  }
-  if (platform === 'wechat' && form.jsonPath) {
-    params.json_path = form.jsonPath;
-  }
-  return params;
-}
-
 export async function uploadWechatJson(accountId: string, file: File): Promise<{ json_path: string }> {
   const body = new FormData(); body.append('file', file);
   return request<{ json_path: string }>(`/accounts/${accountId}/wechat-import`, { method: 'POST', body });
 }
 
-/** 异步抓取：立即返回 pending 任务，由调用方轮询。 */
-export async function fetchAsync(platform: string, accountId: string, form: ScrapingFormData) {
+/** 异步抓取：立即返回 pending 任务，由调用方轮询。action/params 来自抓取目标卡片表单。 */
+export async function fetchAsync(platform: string, accountId: string, req: ScrapeRequest) {
   return request<{ task_id: string; status: string }>('/fetch', {
     method: 'POST',
     body: JSON.stringify({
       platform,
       account_id: accountId,
-      action: 'list_favorites',
-      params: formToParams(platform, form),
+      action: req.action,
+      params: req.params,
       async_run: true,
     }),
   });
@@ -586,7 +569,7 @@ export interface StreamEvent {
 export async function fetchStream(
   platform: string,
   accountId: string,
-  form: ScrapingFormData,
+  req: ScrapeRequest,
   onEvent: (ev: StreamEvent) => void
 ): Promise<StreamEvent> {
   const res = await fetch(`${BASE}/fetch/stream`, {
@@ -595,8 +578,8 @@ export async function fetchStream(
     body: JSON.stringify({
       platform,
       account_id: accountId,
-      action: 'list_favorites',
-      params: formToParams(platform, form),
+      action: req.action,
+      params: req.params,
       async_run: false,
     }),
   });

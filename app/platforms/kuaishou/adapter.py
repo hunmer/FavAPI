@@ -164,9 +164,9 @@ class KuaishouAdapter(DeclarativeAdapter):
 
     async def fetch_favorites(self, account: AccountContext, params: dict,
                               on_batch=None) -> FetchResult:
-        if self.resolve_fetch_method(params) == "api":
-            return await self.fetch_favorites_api(account, params, on_batch)
-        return await super().fetch_favorites(account, params, on_batch)
+        # 浏览器模拟模式已移除，仅保留 API 直连；method 入口保留供未来平台分发
+        self.resolve_fetch_method(params)
+        return await self.fetch_favorites_api(account, params, on_batch)
 
     async def fetch_favorites_api(self, account: AccountContext, params: dict,
                                   on_batch=None) -> FetchResult:

@@ -7,6 +7,7 @@ import {
   User,
   Clock,
   CalendarDays,
+  Layers,
   Tag,
   Plus,
   CheckCircle2,
@@ -30,7 +31,7 @@ const FilterClearBtn: React.FC<{ onClick: () => void; title: string }> = ({ onCl
   </button>
 );
 
-/** 左侧过滤面板（自 DataBrowserView 抽离）：搜索/账号/收藏夹/作者/入库与发布日期/AI 标签分组 */
+/** 左侧过滤面板（自 DataBrowserView 抽离）：搜索/账号/收藏夹/来源/作者/入库与发布日期/AI 标签分组 */
 export const BrowserFilterPanel: React.FC<{
   accounts: Account[];
   accountCounts: Map<string, number>;
@@ -45,6 +46,9 @@ export const BrowserFilterPanel: React.FC<{
   selectedFolder: string;
   /** 切换收藏夹（同时重置作者过滤） */
   onSelectFolder: (folder: string) => void;
+  sourceFacets: Array<[string, number]>;
+  selectedSource: string;
+  onSelectSource: (source: string) => void;
   authorFacets: Array<[string, number]>;
   selectedAuthor: string;
   onSelectAuthor: (author: string) => void;
@@ -80,6 +84,9 @@ export const BrowserFilterPanel: React.FC<{
   folderFacets,
   selectedFolder,
   onSelectFolder,
+  sourceFacets,
+  selectedSource,
+  onSelectSource,
   authorFacets,
   selectedAuthor,
   onSelectAuthor,
@@ -104,8 +111,9 @@ export const BrowserFilterPanel: React.FC<{
   hasActiveFilters,
   onClearAllFilters,
 }) => {
-  // 收藏夹/作者折叠列表与分组折叠纯 UI 状态，仅面板内使用
+  // 收藏夹/来源/作者折叠列表与分组折叠纯 UI 状态，仅面板内使用
   const [folderListOpen, setFolderListOpen] = useState(false);
+  const [sourceListOpen, setSourceListOpen] = useState(false);
   const [authorListOpen, setAuthorListOpen] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
@@ -217,6 +225,76 @@ export const BrowserFilterPanel: React.FC<{
                       }`}
                     >
                       <Folder className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                      <span className="truncate">
+                        {name} ({count})
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Source selector（入库来源：收藏/喜欢/稍后再看列表，存在非默认来源时显示） */}
+        {sourceFacets.some(([name]) => name !== '收藏列表') && (
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">来源</span>
+              {selectedSource !== 'all' && (
+                <FilterClearBtn title="清除来源过滤" onClick={() => onSelectSource('all')} />
+              )}
+            </div>
+            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setSourceListOpen((v) => !v)}
+                className="w-full px-3 py-2 flex items-center justify-between gap-2 text-xs font-medium text-slate-800 dark:text-slate-200 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+              >
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <Layers
+                    className={`w-3.5 h-3.5 shrink-0 ${selectedSource === 'all' ? 'text-slate-400' : 'text-indigo-500'}`}
+                  />
+                  <span className="truncate">
+                    {selectedSource === 'all' ? '全部来源' : selectedSource}
+                  </span>
+                </span>
+                <ChevronDown
+                  className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform ${sourceListOpen ? 'rotate-180' : ''}`}
+                />
+              </button>
+              {sourceListOpen && (
+                <div className="border-t border-slate-100 dark:border-slate-700 max-h-52 overflow-y-auto bg-white dark:bg-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectSource('all');
+                      setSourceListOpen(false);
+                    }}
+                    className={`w-full px-3 py-2 flex items-center gap-1.5 text-xs cursor-pointer transition-colors ${
+                      selectedSource === 'all'
+                        ? 'bg-violet-50 dark:bg-violet-950 text-violet-700 dark:text-violet-400 font-semibold'
+                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    <Layers className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <span className="truncate">全部来源</span>
+                  </button>
+                  {sourceFacets.map(([name, count]) => (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => {
+                        onSelectSource(name);
+                        setSourceListOpen(false);
+                      }}
+                      className={`w-full px-3 py-2 flex items-center gap-1.5 text-xs cursor-pointer transition-colors ${
+                        selectedSource === name
+                          ? 'bg-violet-50 dark:bg-violet-950 text-violet-700 dark:text-violet-400 font-semibold'
+                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      <Layers className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
                       <span className="truncate">
                         {name} ({count})
                       </span>
@@ -537,6 +615,7 @@ export const BrowserFilterPanel: React.FC<{
             <span>（发布 {selectedPubDate || '…'} ~ {selectedPubEndDate || '…'}）</span>
           )}
           {selectedAuthor !== 'all' && <span>（作者：{selectedAuthor}）</span>}
+          {selectedSource !== 'all' && <span>（来源：{selectedSource}）</span>}
           {selectedTags.length > 0 && <span>（含任一选中标签）</span>}
         </div>
         </div>

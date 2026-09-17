@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Account, TaskRecord, ScrapedItem, ScrapingFormData } from '../../../types';
-import { PLATFORMS } from '../../../data/platforms';
+import { Account, TaskRecord, ScrapedItem, ScrapeRequest } from '../../../types';
+import { DEFAULT_FETCH_TARGETS, PLATFORMS } from '../../../data/platforms';
 import { favoriteFacets } from '../../../api';
 import { Clock, Play } from 'lucide-react';
 import { AccountDetailHeader } from './Header';
@@ -26,7 +26,7 @@ interface AccountDetailProps {
   onFoldersChanged?: () => void;
   recentTasks: TaskRecord[];
   allScrapedItems: ScrapedItem[];
-  onTriggerScrape: (formData: ScrapingFormData) => void;
+  onTriggerScrape: (req: ScrapeRequest) => void;
   isScrapingInProgress: boolean;
   streamingItems: ScrapedItem[];
 }
@@ -149,9 +149,8 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
               <div className="p-6">
                 <ScrapeForm
                   account={account}
-                  platform={platform}
-                  selectedFolderMediaId={selectedFolderMediaId}
-                  onChangeFolderMediaId={setSelectedFolderMediaId}
+                  fetchTargets={platform.fetchTargets?.length ? platform.fetchTargets : DEFAULT_FETCH_TARGETS}
+                  folderMediaId={selectedFolderMediaId}
                   isScrapingInProgress={isScrapingInProgress}
                   onTriggerScrape={onTriggerScrape}
                 />

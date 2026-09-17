@@ -95,10 +95,10 @@ def fetch_resource_list_page(cookie_header: str, media_id: str, pn: int = 1,
     return parse_resource_list(payload.get("data") or {})
 
 
-def fetch_folder_list(cookie_header: str, up_mid: str) -> list[dict]:
+def fetch_folder_list_full(cookie_header: str, up_mid: str) -> dict:
     """拉取用户的收藏夹列表（GET fav/folder/created/list-all，同步阻塞）。
 
-    返回 parse_folder_list 的 folders：[{media_id, title, media_count}]。
+    返回 parse_folder_list 的完整结果 {owner, folders}。
     """
     response = requests.get(
         constants.FAV_FOLDER_LIST_API + "?" + urlencode({"up_mid": up_mid}),
@@ -112,7 +112,12 @@ def fetch_folder_list(cookie_header: str, up_mid: str) -> list[dict]:
             f"folder/list 返回错误 code={payload.get('code')}："
             f"{payload.get('message') or payload.get('msg')}"
         )
-    return parse_folder_list(payload.get("data") or {})["folders"]
+    return parse_folder_list(payload.get("data") or {})
+
+
+def fetch_folder_list(cookie_header: str, up_mid: str) -> list[dict]:
+    """拉取用户的收藏夹列表，返回 parse_folder_list 的 folders：[{media_id, title, media_count}]。"""
+    return fetch_folder_list_full(cookie_header, up_mid)["folders"]
 
 
 def folder_edit(cookie_header: str, media_id: str, title: str, intro: str = "",
