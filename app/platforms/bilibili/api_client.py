@@ -330,6 +330,7 @@ async def cancel_fav_by_window(cookie_header: str, dt_from, dt_to, media_id: str
                     "type": "progress",
                     "folder": folder_titles[folder["media_id"]], "page": pn,
                     "oldest_collected_at": page_lo.isoformat(timespec="seconds") if page_lo else None,
+                    "fetched_this_page": len(items),
                     "matched_this_page": len(pairs), "canceled": 0,
                     "total_fetched": total_fetched,
                 })

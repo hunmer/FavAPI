@@ -29,8 +29,10 @@ import {
 } from 'lucide-react';
 import { ItemDetailModal } from './ItemDetailModal';
 import { DataItemCard } from './DataItemCard';
+import { ItemActionMenu } from './ItemActionMenu';
 import { SiteIcon } from '../SiteIcon';
 import * as api from '../../api';
+import { useDismiss } from '../../hooks/useDismiss';
 import { useSearchParams } from 'react-router-dom';
 
 interface DataBrowserViewProps {
@@ -41,6 +43,8 @@ interface DataBrowserViewProps {
   tagGroups?: api.TagGroupRow[];
   agents: api.AgentConfigRow[];
   onTaggingDone: () => void;
+  /** 卡片菜单动作结果的轻提示（App 侧全局 toast） */
+  showToast?: (message: string, type?: 'success' | 'info' | 'error') => void;
 }
 
 /** 过滤状态初始化：读取当前地址栏查询参数（组件外使用，不依赖 hooks）。 */
@@ -66,6 +70,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
   tagGroups = [],
   agents,
   onTaggingDone,
+  showToast,
 }) => {
   // View mode with memory (localStorage or fallback to grid)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
@@ -131,16 +136,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
   const [tagDeleting, setTagDeleting] = useState(false);
 
   // 点击任意处关闭右键菜单
-  useEffect(() => {
-    if (!ctxMenu) return;
-    const close = () => setCtxMenu(null);
-    window.addEventListener('click', close);
-    window.addEventListener('contextmenu', close);
-    return () => {
-      window.removeEventListener('click', close);
-      window.removeEventListener('contextmenu', close);
-    };
-  }, [ctxMenu]);
+  useDismiss(() => setCtxMenu(null), !!ctxMenu);
 
   const openDeleteConfirm = async (tag: string) => {
     setCtxMenu(null);
@@ -355,6 +351,61 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
       alert(`批量删除失败：${err?.message || '未知错误'}`);
     } finally {
       setItemsDeleting(false);
+    }
+  };
+
+  // ---------- 卡片右键/dots 菜单动作 ----------
+  const openExternal = (item: ScrapedItem) => {
+    if (!item.url) return;
+    window.open(item.url, '_blank', 'noopener,noreferrer');
+  };
+
+  const copyUrl = async (item: ScrapedItem) => {
+    if (!item.url) return;
+    try {
+      await navigator.clipboard.writeText(item.url);
+      showToast?.('已复制链接地址');
+    } catch {
+      showToast?.('复制失败，请手动复制', 'error');
+    }
+  };
+
+  /** 账号打开：用该条收藏所属账号的隔离浏览器（session）打开原站链接 */
+  const openWithAccount = async (item: ScrapedItem) => {
+    if (!item.url) return;
+    try {
+      const res = await api.toggleBrowse(item.accountId, item.url);
+      showToast?.(
+        res.tab
+          ? '已在登录/抓取占用的浏览器中新开标签页'
+          : res.navigated
+            ? '已在打开的账号浏览器中跳转'
+            : '已通过账号隔离浏览器打开'
+      );
+    } catch (err: any) {
+      showToast?.(err?.message || '账号浏览器打开失败', 'error');
+    }
+  };
+
+  // 列表视图行右键菜单
+  const [rowMenu, setRowMenu] = useState<{ x: number; y: number; item: ScrapedItem } | null>(null);
+
+  // 单条删除确认（右键菜单【删除】）
+  const [singleDelete, setSingleDelete] = useState<ScrapedItem | null>(null);
+  const [singleDeleting, setSingleDeleting] = useState(false);
+  const confirmDeleteSingle = async () => {
+    if (!singleDelete || singleDeleting) return;
+    setSingleDeleting(true);
+    try {
+      await api.deleteFavorites([
+        { account_id: singleDelete.accountId, platform: singleDelete.platform, content_id: singleDelete.id },
+      ]);
+      setSingleDelete(null);
+      handleRefresh();
+    } catch (err: any) {
+      alert(`删除失败：${err?.message || '未知错误'}`);
+    } finally {
+      setSingleDeleting(false);
     }
   };
 
@@ -1202,7 +1253,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
       {/* Content Rendering: Empty state / Grid View / List View（内部滚动区） */}
       <div
         id="data-browser-scroll"
-        className={`flex-1 min-h-0 overflow-y-auto transition-opacity ${listLoading ? 'opacity-50' : ''}`}
+        className={`flex-1 min-h-0 overflow-y-auto pb-20 lg:pb-0 transition-opacity ${listLoading ? 'opacity-50' : ''}`}
       >
       {totalCount === 0 ? (
         /* 空数据占位：区分全库为空与筛选无命中 */
@@ -1234,6 +1285,10 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
               onFilterAuthor={(author) =>
                 setSelectedAuthor((prev) => (prev === author ? 'all' : author))
               }
+              onOpenExternal={openExternal}
+              onCopyUrl={copyUrl}
+              onOpenWithAccount={openWithAccount}
+              onDelete={setSingleDelete}
             />
           ))}
         </div>
@@ -1272,6 +1327,10 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
                   <tr
                     key={item.id}
                     onClick={() => (selectionMode ? toggleSelectItem(item) : setActiveItemModal(item))}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setRowMenu({ x: e.clientX, y: e.clientY, item });
+                    }}
                     className={`anim-row-enter cursor-pointer transition-colors ${
                       rowSelected ? 'bg-violet-50/70' : 'hover:bg-slate-50/80'
                     }`}
@@ -1352,9 +1411,9 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
       )}
       </div>
 
-      {/* Pagination Footer（无数据时隐藏；桌面固定于内容区底部，移动端吸底） */}
+      {/* Pagination Footer（无数据时隐藏；sticky 于 main 滚动视口底部，卡片圆角样式，不脱离容器） */}
       {totalCount > 0 && (
-      <div className="sticky bottom-4 lg:static z-20 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-600">
+      <div className="sticky bottom-4 z-20 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-600">
         <div className="flex items-center gap-3">
           <span>
             显示第 <strong className="text-slate-900">{startIndex + 1}</strong> 到{' '}
@@ -1411,6 +1470,20 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
           item={activeItemModal}
           onClose={() => setActiveItemModal(null)}
           onSaveTags={handleSaveTags}
+        />
+      )}
+
+      {/* 列表视图行右键菜单（与卡片菜单同款） */}
+      {rowMenu && (
+        <ItemActionMenu
+          item={rowMenu.item}
+          x={rowMenu.x}
+          y={rowMenu.y}
+          onClose={() => setRowMenu(null)}
+          onOpenExternal={openExternal}
+          onCopyUrl={copyUrl}
+          onOpenWithAccount={openWithAccount}
+          onDelete={setSingleDelete}
         />
       )}
 
@@ -1533,6 +1606,50 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 {itemsDeleting ? '删除中...' : '确认删除'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 单条删除收藏确认（卡片右键菜单【删除】） */}
+      {singleDelete && (
+        <div
+          className="fixed inset-0 z-[70] bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 anim-backdrop-enter"
+          onClick={() => !singleDeleting && setSingleDelete(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="anim-modal-enter bg-white w-full max-w-sm rounded-[28px] p-6 shadow-2xl border border-slate-100 space-y-4"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <h3 className="text-base font-bold text-slate-900">删除收藏</h3>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              确定删除收藏「
+              <strong className="text-slate-900 break-all line-clamp-2">{singleDelete.title}</strong>
+              」吗？删除后将从收藏列表移除（不可恢复），内容元数据保留。
+            </p>
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setSingleDelete(null)}
+                disabled={singleDeleting}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteSingle}
+                disabled={singleDeleting}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                {singleDeleting ? '删除中...' : '确认删除'}
               </button>
             </div>
           </div>

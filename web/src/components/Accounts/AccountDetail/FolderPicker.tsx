@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Account, BilibiliFolder } from '../../../types';
 import { deleteBilibiliFolder, editBilibiliFolder } from '../../../api';
-import { AlertTriangle, FolderHeart, MoreVertical, Pencil, RefreshCw, Trash2 } from 'lucide-react';
+import {
+  AlertTriangle, CheckSquare, FolderHeart, ListChecks, MoreVertical, Pencil, RefreshCw, Square, Trash2,
+} from 'lucide-react';
 
 interface FolderPickerProps {
   account: Account;
@@ -11,10 +13,13 @@ interface FolderPickerProps {
   onFoldersChanged?: () => void;
 }
 
+// 批量删除的请求间隔（防风控）
+const DELETE_INTERVAL_MS = 3000;
+
 /**
  * 收藏夹 Tab 面板：Tab 内展示名下收藏夹列表（点击卡片设为抓取目标），
- * 自建收藏夹卡片右上角 dots 菜单可编辑 / 删除（调 Bilibili folder API），
- * 无收藏夹时仍渲染 Tab 头 + 空占位。
+ * 自建收藏夹卡片右上角 dots 菜单可编辑 / 删除（调 Bilibili folder API）；
+ * 头部右侧多选开关可勾选多个收藏夹批量删除，无收藏夹时仍渲染 Tab 头 + 空占位。
  */
 export const FolderPicker: React.FC<FolderPickerProps> = ({
   account,
@@ -27,10 +32,33 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
   // dots 菜单与编辑/删除弹窗状态
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [editTarget, setEditTarget] = useState<BilibiliFolder | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<BilibiliFolder | null>(null);
+  const [deleteTargets, setDeleteTargets] = useState<BilibiliFolder[] | null>(null);
+  const [deleteProgress, setDeleteProgress] = useState<{ done: number; total: number; current: string } | null>(null);
   const [editForm, setEditForm] = useState({ title: '', intro: '', privacy: '0' });
   const [opBusy, setOpBusy] = useState(false);
   const [opError, setOpError] = useState('');
+
+  // 多选模式与勾选集合（默认收藏夹不可删，不参与勾选）
+  const [multiSelect, setMultiSelect] = useState(false);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+
+  const toggleMultiSelect = () => {
+    setMultiSelect((prev) => !prev);
+    setChecked(new Set());
+    setMenuFor(null);
+  };
+
+  const toggleChecked = (mediaId: string) => {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(mediaId)) {
+        next.delete(mediaId);
+      } else {
+        next.add(mediaId);
+      }
+      return next;
+    });
+  };
 
   const openEdit = (f: BilibiliFolder) => {
     setMenuFor(null);
@@ -65,23 +93,45 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
   };
 
   const submitDelete = async () => {
-    if (!deleteTarget) return;
+    if (!deleteTargets?.length) return;
     setOpBusy(true);
     setOpError('');
-    try {
-      await deleteBilibiliFolder(account.id, deleteTarget.mediaId);
-      setDeleteTarget(null);
+    let deleted = 0;
+    const errors: { folder: BilibiliFolder; message: string }[] = [];
+    for (let i = 0; i < deleteTargets.length; i++) {
+      const f = deleteTargets[i];
+      setDeleteProgress({ done: i, total: deleteTargets.length, current: f.name });
+      try {
+        await deleteBilibiliFolder(account.id, f.mediaId);
+        deleted++;
+      } catch (e) {
+        errors.push({ folder: f, message: e instanceof Error ? e.message : String(e) });
+      }
+      // 非最后一个：间隔防风控（失败的重试也受同样间隔约束）
+      if (i < deleteTargets.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, DELETE_INTERVAL_MS));
+      }
+    }
+    setDeleteProgress(null);
+    setOpBusy(false);
+    if (deleted > 0) {
       onFoldersChanged?.();
-    } catch (e) {
-      setOpError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setOpBusy(false);
+      setChecked(new Set());
+    }
+    if (errors.length) {
+      // 部分失败：弹窗保留失败清单与剩余目标，方便重试
+      setOpError(errors.map((e) => `「${e.folder.name}」：${e.message}`).join('；'));
+      setDeleteTargets((prev) =>
+        prev ? prev.filter((f) => !errors.some((e) => e.folder.mediaId === f.mediaId)) : prev
+      );
+    } else {
+      setDeleteTargets(null);
     }
   };
 
   return (
     <div className="bg-white rounded-[28px] border border-slate-200/80 shadow-2xs overflow-hidden">
-      {/* Tab Header */}
+      {/* Tab Header：右侧多选开关 + 批量删除按钮 */}
       <div className="flex items-center justify-between border-b border-slate-100 px-6 pt-4 pb-1">
         <div className="flex items-center gap-4">
           <span className="pb-3 text-sm font-bold border-b-2 border-slate-900 text-slate-900 flex items-center gap-1.5">
@@ -89,9 +139,41 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
             收藏夹 ({folders.length})
           </span>
         </div>
-        <span className="text-[11px] text-slate-400 hidden sm:inline-block">
-          {folders.length > 0 ? '点击卡片设为抓取目标' : '自动同步自平台接口'}
-        </span>
+        <div className="flex items-center gap-2 pb-2">
+          {folders.length > 0 && (
+            <span className="text-[11px] text-slate-400 hidden sm:inline-block">
+              {multiSelect ? `已选 ${checked.size} 个` : '点击卡片设为抓取目标'}
+            </span>
+          )}
+          {folders.length > 0 && (
+            <button
+              type="button"
+              title={multiSelect ? '退出多选' : '多选管理收藏夹'}
+              onClick={toggleMultiSelect}
+              className={`p-1.5 rounded-lg transition-colors ${
+                multiSelect
+                  ? 'bg-indigo-50 text-indigo-600 ring-1 ring-indigo-200'
+                  : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              <ListChecks className="w-4 h-4" />
+            </button>
+          )}
+          {multiSelect && (
+            <button
+              type="button"
+              title={checked.size ? `删除选中的 ${checked.size} 个收藏夹` : '先勾选要删除的收藏夹'}
+              disabled={!checked.size || opBusy}
+              onClick={() => {
+                setOpError('');
+                setDeleteTargets(folders.filter((f) => checked.has(f.mediaId)));
+              }}
+              className="p-1.5 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-40 disabled:hover:bg-transparent"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tab Content：收藏夹列表网格，或空占位 */}
@@ -100,17 +182,34 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
             {folders.map((f) => {
               const isSelected = selectedMediaId === f.mediaId;
+              const isChecked = checked.has(f.mediaId);
+              const checkable = multiSelect && !f.isDefault;
               return (
                 <div key={f.id} className="relative">
                   <button
                     type="button"
-                    onClick={() => onSelect(f.mediaId)}
+                    onClick={() => {
+                      if (multiSelect) {
+                        if (checkable) toggleChecked(f.mediaId);
+                        return; // 默认夹多选模式不可勾选；多选模式不切换抓取目标
+                      }
+                      onSelect(f.mediaId);
+                    }}
                     className={`w-full p-3 rounded-xl border text-left transition-all ${
-                      isSelected
+                      isChecked
                         ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-500/20 shadow-2xs'
-                        : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-                    } ${!f.isDefault ? 'pr-7' : ''}`}
+                        : isSelected && !multiSelect
+                          ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-500/20 shadow-2xs'
+                          : multiSelect && f.isDefault
+                            ? 'border-slate-100 bg-slate-50/40 cursor-not-allowed opacity-60'
+                            : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                    } ${!f.isDefault && !multiSelect ? 'pr-7' : ''} ${multiSelect ? 'pl-8' : ''}`}
                   >
+                    {multiSelect && (
+                      <span className={`absolute left-2 top-2.5 ${f.isDefault ? 'text-slate-300' : isChecked ? 'text-indigo-600' : 'text-slate-300'}`}>
+                        {isChecked ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                      </span>
+                    )}
                     <div className="flex items-center justify-between text-xs font-bold text-slate-900 mb-1">
                       <span className="truncate">{f.name}</span>
                       {f.isDefault && (
@@ -123,8 +222,8 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
                     </div>
                   </button>
 
-                  {/* 自建收藏夹：右上角 dots 菜单（默认收藏夹不可编辑/删除） */}
-                  {!f.isDefault && (
+                  {/* 自建收藏夹：右上角 dots 菜单（默认收藏夹不可编辑/删除；多选模式下隐藏） */}
+                  {!f.isDefault && !multiSelect && (
                     <button
                       type="button"
                       title="收藏夹操作"
@@ -141,7 +240,7 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
                       <MoreVertical className="w-3.5 h-3.5" />
                     </button>
                   )}
-                  {menuFor === f.mediaId && (
+                  {menuFor === f.mediaId && !multiSelect && (
                     <>
                       {/* 点击菜单外任意处关闭 */}
                       <div className="fixed inset-0 z-10" onClick={() => setMenuFor(null)} />
@@ -158,8 +257,8 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
                           type="button"
                           onClick={() => {
                             setMenuFor(null);
-                            setDeleteTarget(f);
                             setOpError('');
+                            setDeleteTargets([f]);
                           }}
                           className="w-full px-3 py-1.5 text-left text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-1.5"
                         >
@@ -246,25 +345,51 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
         </div>
       )}
 
-      {/* 删除收藏夹确认弹窗 */}
-      {deleteTarget && (
+      {/* 删除收藏夹确认弹窗（单个 dots 菜单 / 多选批量共用） */}
+      {deleteTargets && deleteTargets.length > 0 && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="anim-modal-enter bg-white w-full max-w-sm rounded-2xl p-5 shadow-2xl border border-slate-100">
             <h3 className="text-sm font-bold text-rose-700 mb-2 flex items-center gap-1.5">
               <AlertTriangle className="w-4 h-4" />
-              删除收藏夹
+              {deleteTargets.length === 1 ? '删除收藏夹' : `批量删除 ${deleteTargets.length} 个收藏夹`}
             </h3>
-            <p className="text-xs text-slate-600 leading-relaxed">
-              将删除收藏夹「{deleteTarget.name}」及其中的 {deleteTarget.count} 件收藏，操作不可恢复，确定继续？
-            </p>
+            {deleteTargets.length === 1 ? (
+              <p className="text-xs text-slate-600 leading-relaxed">
+                将删除收藏夹「{deleteTargets[0].name}」及其中的 {deleteTargets[0].count} 件收藏，操作不可恢复，确定继续？
+              </p>
+            ) : (
+              <div className="text-xs text-slate-600 leading-relaxed">
+                <p>
+                  将删除 {deleteTargets.length} 个收藏夹（共{' '}
+                  {deleteTargets.reduce((sum, f) => sum + f.count, 0)} 件收藏），操作不可恢复，确定继续？
+                </p>
+                <p className="mt-1.5 text-[11px] text-slate-400 line-clamp-2">
+                  {deleteTargets.map((f) => f.name).join('、')}
+                </p>
+              </div>
+            )}
+            {deleteProgress && (
+              <div className="mt-3 space-y-1.5">
+                <div className="flex items-center justify-between gap-2 text-[11px] text-slate-500">
+                  <span className="truncate">正在删除「{deleteProgress.current}」，每个间隔 3 秒防风控…</span>
+                  <span className="font-mono shrink-0">{deleteProgress.done + 1}/{deleteProgress.total}</span>
+                </div>
+                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-rose-500 rounded-full transition-all duration-300"
+                    style={{ width: `${((deleteProgress.done + 1) / deleteProgress.total) * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
             {opError && (
-              <p className="mt-3 text-[11px] text-rose-600 bg-rose-50 border border-rose-200 p-2 rounded-lg">{opError}</p>
+              <p className="mt-3 text-[11px] text-rose-600 bg-rose-50 border border-rose-200 p-2 rounded-lg whitespace-pre-wrap">{opError}</p>
             )}
             <div className="flex justify-end gap-2 pt-4">
               <button
                 type="button"
                 disabled={opBusy}
-                onClick={() => setDeleteTarget(null)}
+                onClick={() => setDeleteTargets(null)}
                 className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-xl disabled:opacity-50"
               >
                 取消
@@ -276,7 +401,7 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
                 className="px-5 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs disabled:opacity-50 inline-flex items-center gap-1.5"
               >
                 {opBusy && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
-                确认删除
+                {opBusy ? '删除中...' : '确认删除'}
               </button>
             </div>
           </div>

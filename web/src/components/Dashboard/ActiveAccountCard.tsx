@@ -126,7 +126,7 @@ export const ActiveAccountCard: React.FC<ActiveAccountCardProps> = ({
           ) : (
             <>
               <Play className="w-3.5 h-3.5 fill-current" />
-              增量抓取
+              进入主页
             </>
           )}
         </button>

@@ -271,6 +271,7 @@ export interface OperationStreamEvent {
   ids?: string[];
   // 日期区间管道式取消的进度字段
   oldest_collected_at?: string | null;
+  fetched_this_page?: number;
   matched_this_page?: number;
   canceled?: number;
   result?: Record<string, any>;
@@ -380,8 +381,12 @@ export async function deleteBilibiliFolder(
   });
 }
 
-export async function toggleBrowse(accountId: string) {
-  return request<{ opened?: boolean }>(`/accounts/${accountId}/browse`, { method: 'POST' });
+export async function toggleBrowse(accountId: string, url?: string) {
+  // 带 url 时为【账号打开】语义：已打开则导航到该地址，不执行关闭切换
+  const qs = url ? `?url=${encodeURIComponent(url)}` : '';
+  return request<{ opened?: boolean; navigated?: boolean; tab?: boolean }>(`/accounts/${accountId}/browse${qs}`, {
+    method: 'POST',
+  });
 }
 
 export async function browseStatus(accountId: string): Promise<{ opened: boolean }> {

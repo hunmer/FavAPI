@@ -672,6 +672,7 @@ export function App() {
                   tagStats={tagStats}
                   tagGroups={tagGroups}
                   agents={agents}
+                  showToast={showToast}
                   onTaggingDone={() => {
                     const map = accountNameById();
                     reloadFavorites(map);

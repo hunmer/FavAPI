@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ScrapedItem } from '../../types';
 import { PLATFORMS } from '../../data/mockFavData';
-import { CheckCircle2, ExternalLink, ImageOff, ThumbsUp } from 'lucide-react';
+import { CheckCircle2, ExternalLink, ImageOff, MoreVertical, ThumbsUp } from 'lucide-react';
 import { SiteIcon, usePlatformInfo } from '../SiteIcon';
+import { ItemActionMenu } from './ItemActionMenu';
 
 interface DataItemCardProps {
   item: ScrapedItem;
@@ -14,6 +15,12 @@ interface DataItemCardProps {
   onToggleSelect?: (item: ScrapedItem) => void;
   /** 点击作者名应用/取消作者过滤 */
   onFilterAuthor?: (author: string) => void;
+  /** 卡片右键/dots 菜单动作（由父视图统一处理） */
+  onOpenExternal?: (item: ScrapedItem) => void;
+  onCopyUrl?: (item: ScrapedItem) => void;
+  /** 用该条收藏所属账号的隔离浏览器打开（session 浏览器） */
+  onOpenWithAccount?: (item: ScrapedItem) => void;
+  onDelete?: (item: ScrapedItem) => void;
 }
 
 /** 数据浏览网格视图的封面卡片（自 DataBrowserView 抽离）。 */
@@ -25,15 +32,27 @@ export const DataItemCard: React.FC<DataItemCardProps> = ({
   selected = false,
   onToggleSelect,
   onFilterAuthor,
+  onOpenExternal,
+  onCopyUrl,
+  onOpenWithAccount,
+  onDelete,
 }) => {
   // mock 未收录的平台（如 threads）回退到后端 /platforms 的 display_name
   const platformMeta = PLATFORMS.find((p) => p.id === item.platform);
   const backendInfo = usePlatformInfo(item.platform);
   const platformName = platformMeta?.name || backendInfo?.display_name || item.platform;
 
+  // 右键 / dots 共用的操作菜单（fixed 定位，menu.x/y 为弹出的锚点坐标）
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+
   return (
     <div
       onClick={() => (selectable ? onToggleSelect?.(item) : onSelect(item))}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setMenu({ x: e.clientX, y: e.clientY });
+      }}
       className={`anim-card-enter bg-white rounded-[24px] border shadow-2xs hover:shadow-lg transition-all duration-200 overflow-hidden flex flex-col group cursor-pointer ${
         selected ? 'border-violet-500 ring-2 ring-violet-500/30' : 'border-slate-200/80'
       }`}
@@ -136,18 +155,51 @@ export const DataItemCard: React.FC<DataItemCardProps> = ({
 
           <div className="flex items-center justify-between text-[11px] text-slate-400">
             <span className="truncate">{item.accountName}</span>
-            {item.url ? <a
-              href={item.url}
-              target="_blank"
-              rel="noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-0.5 font-semibold"
-            >
-              原站 <ExternalLink className="w-3 h-3" />
-            </a> : <span className="text-slate-400">无链接</span>}
+            <div className="flex items-center gap-1 shrink-0">
+              {item.url ? (
+                <a
+                  href={item.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-0.5 font-semibold"
+                >
+                  原站 <ExternalLink className="w-3 h-3" />
+                </a>
+              ) : (
+                <span>无链接</span>
+              )}
+              {/* 右下角 dots：弹出与右键一致的操作菜单 */}
+              <button
+                type="button"
+                title="更多操作"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setMenu({ x: rect.right - 160, y: rect.bottom + 4 });
+                }}
+                className="w-6 h-6 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <MoreVertical className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* 右键 / dots 操作菜单 */}
+      {menu && (
+        <ItemActionMenu
+          item={item}
+          x={menu.x}
+          y={menu.y}
+          onClose={() => setMenu(null)}
+          onOpenExternal={onOpenExternal}
+          onCopyUrl={onCopyUrl}
+          onOpenWithAccount={onOpenWithAccount}
+          onDelete={onDelete}
+        />
+      )}
     </div>
   );
 };

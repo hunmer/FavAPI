@@ -384,17 +384,29 @@ async def close_login(account_id: str):
 
 
 @router.post("/{account_id}/browse")
-async def toggle_browser(account_id: str):
-    """打开/关闭手动浏览窗口：不自动关闭（区别于登录窗口），用户关窗或再次调用结束。"""
+async def toggle_browser(account_id: str, url: str | None = None):
+    """打开/关闭手动浏览窗口：不自动关闭（区别于登录窗口），用户关窗或再次调用结束。
+
+    带 url 参数时为【账号打开】语义：已打开则导航到该地址，不执行关闭切换。
+    """
     account = await _get_account_or_404(account_id)
     _require_adapter(account["platform"])
     from app.services import browser
 
-    if browser.is_busy(account.get("profile_path") or "") and not browser.is_manual_open(account_id):
+    profile_path = account.get("profile_path") or ""
+    if browser.is_busy(profile_path) and not browser.is_manual_open(account_id):
+        # 【账号打开】(带 url)：占用会话可见时直接在其窗口内开新 tab，不再整体阻塞
+        if url:
+            tab = browser.open_tab(profile_path, url)
+            if tab:
+                return {"account_id": account_id, **tab}
         raise HTTPException(status_code=409, detail="浏览器正被登录/抓取占用，请稍后再试")
     adapter = registry.get_adapter(account["platform"])
     # 声明式平台可将抓取入口 home_url 与手动浏览官网 homepage 分离。
-    result = await browser.open_manual(account_id, account["profile_path"], getattr(adapter, "homepage", "") or adapter.home_url)
+    start_url = url or getattr(adapter, "homepage", "") or adapter.home_url
+    result = await browser.open_manual(
+        account_id, account["profile_path"], start_url, navigate_if_open=bool(url)
+    )
     return {"account_id": account_id, **result}
 
 

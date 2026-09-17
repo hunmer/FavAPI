@@ -629,6 +629,7 @@ async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progre
                 "type": "progress",
                 "page": page,
                 "oldest_collected_at": page_lo.isoformat(timespec="seconds") if page_lo else None,
+                "fetched_this_page": len(items),
                 "matched_this_page": len(ids),
                 "canceled": canceled_total,
                 "total_fetched": total_fetched,

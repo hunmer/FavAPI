@@ -33,7 +33,6 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
   const [activeOp, setActiveOp] = useState<OperationSpec | null>(null);
   const [opForm, setOpForm] = useState<Record<string, string>>({});
   const [opRunning, setOpRunning] = useState(false);
-  const [opResult, setOpResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [opEvents, setOpEvents] = useState<OperationStreamEvent[]>([]);
   const [showOpDangerConfirm, setShowOpDangerConfirm] = useState(false);
 
@@ -56,7 +55,6 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
     });
     setActiveOp(op);
     setOpForm(loadStoredOpForm(account.id, op));
-    setOpResult(null);
     setOpEvents([]);
     setShowOpDangerConfirm(false);
   };
@@ -69,7 +67,12 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
         // 日期区间管道式取消：带日期位置与累计取消数；ID 列表模式：分批进度
         if (ev.matched_this_page !== undefined) {
           const oldest = ev.oldest_collected_at?.slice(0, 10) || '游标未知';
-          return `第 ${ev.page} 页 · 已翻至 ${oldest} · 本页命中 ${ev.matched_this_page} 条 · 累计取消 ${ev.canceled} 条`;
+          const fetched = ev.fetched_this_page !== undefined ? ` · 抓取 ${ev.fetched_this_page} 条` : '';
+          // 命中的翻页行不需要累计取消；未命中的行用于呈现扫描后分批取消进度
+          if (ev.matched_this_page > 0) {
+            return `第 ${ev.page} 页 · 已翻至 ${oldest}${fetched} · 本页命中 ${ev.matched_this_page} 条`;
+          }
+          return `第 ${ev.page} 页 · 已翻至 ${oldest}${fetched} · 本页命中 0 条 · 累计取消 ${ev.canceled} 条`;
         }
         return `分批进度：第 ${ev.batch_no}/${ev.total_batches} 批完成（累计 ${ev.done} 条）`;
       }
@@ -110,7 +113,6 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
       endpoint: `/api/v1/accounts/${account.id}/operations/${activeOp.op_id}/stream`,
     });
     setOpRunning(true);
-    setOpResult(null);
     setOpEvents([]);
     try {
       localStorage.setItem(opFormStorageKey(account.id, activeOp.op_id), JSON.stringify(opForm));
@@ -126,14 +128,12 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
         elapsedMs: Math.round(performance.now() - startedAt),
         done,
       });
-      setOpResult({ ok: true, text: JSON.stringify(done.result ?? done, null, 2) });
     } catch (e) {
       console.error('[AccountDetail][operation] failed', {
         elapsedMs: Math.round(performance.now() - startedAt),
         error: e,
       });
       setOpEvents((prev) => [...prev, { type: 'error', message: e instanceof Error ? e.message : String(e) }]);
-      setOpResult({ ok: false, text: e instanceof Error ? e.message : String(e) });
     } finally {
       console.debug('[AccountDetail][operation] finished', {
         elapsedMs: Math.round(performance.now() - startedAt),
@@ -285,7 +285,7 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
                 </div>
 
                 {opRunning || opEvents.length > 0 ? (
-                  <div className="rounded-xl border border-slate-200 bg-slate-950 p-3 h-56 md:h-72 overflow-y-auto space-y-1 shrink-0">
+                  <div className="flex-1 min-h-[14rem] md:min-h-[18rem] rounded-xl border border-slate-200 bg-slate-950 p-3 overflow-y-auto space-y-1">
                     <div className="text-[10px] font-mono text-slate-500 uppercase tracking-wider mb-1">
                       实时日志 {opRunning && <span className="animate-pulse">▍</span>}
                     </div>
@@ -301,11 +301,16 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
                         }`}
                       >
                         {ev.type === 'error' ? `✗ ${ev.message}` : describeOpEvent(ev)}
+                        {ev.type === 'done' && ev.result !== undefined && (
+                          <pre className="mt-1 whitespace-pre-wrap break-all text-slate-400">
+                            {JSON.stringify(ev.result, null, 2)}
+                          </pre>
+                        )}
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 h-56 md:h-72 flex flex-col items-center justify-center text-center gap-1.5 shrink-0">
+                  <div className="flex-1 min-h-[14rem] md:min-h-[18rem] rounded-xl border border-dashed border-slate-200 bg-slate-50/60 flex flex-col items-center justify-center text-center gap-1.5">
                     <Terminal className="w-5 h-5 text-slate-300" />
                     <span className="text-[11px] text-slate-400">
                       填写左侧参数并点击「执行」
@@ -313,18 +318,6 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
                       此处将实时显示执行进度与结果
                     </span>
                   </div>
-                )}
-
-                {opResult && (
-                  <pre
-                    className={`text-[11px] font-mono p-3 rounded-xl max-h-40 overflow-auto whitespace-pre-wrap ${
-                      opResult.ok
-                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                        : 'bg-rose-50 text-rose-700 border border-rose-200'
-                    }`}
-                  >
-                    {opResult.text}
-                  </pre>
                 )}
               </div>
             </div>
