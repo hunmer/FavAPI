@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import * as api from '../../api';
 import { DownloadRow } from '../../api';
 import {
@@ -10,11 +10,12 @@ import {
   Loader2,
   Trash2,
   RotateCcw,
-  ExternalLink,
+  FileText,
   HardDriveDownload,
   PauseCircle,
   PlayCircle,
   FolderOpen,
+  X,
 } from 'lucide-react';
 
 const STATUS_META: Record<DownloadRow['status'], { label: string; cls: string }> = {
@@ -26,10 +27,129 @@ const STATUS_META: Record<DownloadRow['status'], { label: string; cls: string }>
   paused: { label: '已暂停', cls: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800' },
 };
 
+/** 下载日志弹窗：读取后端为该任务落盘的 log；任务进行中每 3s 自动刷新 */
+const DownloadLogModal: React.FC<{ row: DownloadRow; onClose: () => void }> = ({ row, onClose }) => {
+  const [log, setLog] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const boxRef = useRef<HTMLPreElement>(null);
+  const live = row.status === 'pending' || row.status === 'running';
+
+  const load = useCallback(async () => {
+    try {
+      setLog((await api.getDownloadLog(row.download_id)).log);
+      setError('');
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }, [row.download_id]);
+
+  useEffect(() => {
+    load();
+    if (!live) return;
+    const timer = setInterval(load, 3000);
+    return () => clearInterval(timer);
+  }, [load, live]);
+
+  // 日志持续追加时自动滚到底部
+  useEffect(() => {
+    if (boxRef.current) boxRef.current.scrollTop = boxRef.current.scrollHeight;
+  }, [log]);
+
+  return (
+    <div
+      id="download-log-backdrop"
+      className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 anim-backdrop-enter"
+      onClick={onClose}
+    >
+      <div
+        id="download-log-modal"
+        onClick={(e) => e.stopPropagation()}
+        className="anim-modal-enter bg-white dark:bg-[#161B26] w-full max-w-3xl rounded-[32px] shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden flex flex-col max-h-[85vh]"
+      >
+        {/* Header */}
+        <div className="p-5 sm:p-6 bg-slate-50 dark:bg-slate-800 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-2xl bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-400 flex items-center justify-center shadow-xs shrink-0">
+              <FileText className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">下载日志</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                {row.title || row.content_id || row.url} • {STATUS_META[row.status].label}
+                {live && ' • 每 3 秒自动刷新'}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-white dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 flex items-center justify-center transition-colors shadow-2xs cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-5 sm:p-6 flex-1 min-h-0 flex flex-col">
+          {error ? (
+            <div className="py-10 flex flex-col items-center gap-3">
+              <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>
+              <button
+                type="button"
+                onClick={load}
+                className="px-4 py-2 bg-slate-900 dark:bg-slate-700 text-white text-xs font-bold rounded-xl cursor-pointer"
+              >
+                重试读取
+              </button>
+            </div>
+          ) : log === null ? (
+            <div className="py-12 flex flex-col items-center gap-3 text-slate-400 dark:text-slate-500">
+              <Loader2 className="w-6 h-6 animate-spin" />
+              <p className="text-xs">正在读取日志...</p>
+            </div>
+          ) : log ? (
+            <pre
+              ref={boxRef}
+              className="flex-1 min-h-0 overflow-auto bg-slate-50 dark:bg-slate-900/60 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 text-[11px] leading-5 font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-all"
+            >
+              {log}
+            </pre>
+          ) : (
+            <div className="py-12 flex flex-col items-center gap-3 text-slate-400 dark:text-slate-500">
+              <FileText className="w-8 h-8 opacity-40" />
+              <p className="text-xs">任务尚未开始，暂无日志</p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 sm:p-5 bg-slate-50 dark:bg-slate-800 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={load}
+            className="px-4 py-2 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-bold inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            刷新
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-5 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 text-white text-xs font-bold rounded-xl shadow-xs cursor-pointer"
+          >
+            关闭
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const DownloadsView: React.FC = () => {
   const [rows, setRows] = useState<DownloadRow[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState('');
+  const [logRow, setLogRow] = useState<DownloadRow | null>(null);
 
   const reload = useCallback(async () => {
     try {
@@ -251,15 +371,14 @@ export const DownloadsView: React.FC = () => {
                             <FolderOpen className="w-3.5 h-3.5" />
                           </button>
                         )}
-                        <a
-                          href={r.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
-                          title="打开原站地址"
+                        <button
+                          type="button"
+                          onClick={() => setLogRow(r)}
+                          className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-sky-600 dark:hover:text-sky-400 transition-colors cursor-pointer"
+                          title="查看下载日志"
                         >
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </a>
+                          <FileText className="w-3.5 h-3.5" />
+                        </button>
                         <button
                           type="button"
                           onClick={() => handleDelete(r)}
@@ -277,6 +396,14 @@ export const DownloadsView: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* 弹窗用最新行数据：状态实时更新，任务结束后自动停止轮询 */}
+      {logRow && (
+        <DownloadLogModal
+          row={rows.find((r) => r.download_id === logRow.download_id) || logRow}
+          onClose={() => setLogRow(null)}
+        />
+      )}
     </div>
   );
 };

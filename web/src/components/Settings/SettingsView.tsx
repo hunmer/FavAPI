@@ -22,7 +22,7 @@ import {
   Maximize2,
   Frame
 } from 'lucide-react';
-import { AgentConfigRow, AgentTestResult, fetchAppSettings, updateAppSettings, uploadAvatar } from '../../api';
+import { AgentConfigRow, AgentTestResult, DownloaderId, ToolchainStatus, fetchAppSettings, fetchToolchain, updateAppSettings, updateToolchain, uploadAvatar } from '../../api';
 
 interface SettingsViewProps {
   onShowToast: (msg: string, type?: 'success' | 'info' | 'error') => void;
@@ -152,6 +152,41 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleExportCSV = () => {
     onShowToast(`已生成 CSV 表格并开始下载`);
+  };
+
+  // ---------- 下载工具链检测（yt-dlp / videodl） ----------
+  // null = 检测中；installed=false 时提示安装命令，更新按钮变「安装」
+  const [toolchain, setToolchain] = useState<Record<DownloaderId, ToolchainStatus | null>>({ 'yt-dlp': null, videodl: null });
+  const [updatingTool, setUpdatingTool] = useState<DownloaderId | null>(null);
+
+  const refreshToolchain = () => {
+    fetchToolchain()
+      .then(setToolchain)
+      .catch(() => onShowToast('下载工具链检测失败，请确认后端服务正常', 'error'));
+  };
+
+  useEffect(() => {
+    refreshToolchain();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleUpdateTool = async (tool: DownloaderId) => {
+    if (updatingTool) return;
+    setUpdatingTool(tool);
+    try {
+      const r = await updateToolchain(tool);
+      onShowToast(
+        r.updated
+          ? `「${tool}」已更新：${r.before ?? '未安装'} → ${r.after ?? '未知'}`
+          : `「${tool}」已是最新版本（${r.after ?? '未知'}）`,
+        'success'
+      );
+      refreshToolchain();
+    } catch (err: any) {
+      onShowToast(`「${tool}」更新失败：${err?.message || '未知错误'}`, 'error');
+    } finally {
+      setUpdatingTool(null);
+    }
   };
 
   // ---------- AI Agent 配置管理 ----------
@@ -519,6 +554,55 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 ))}
               </div>
             </div>
+          </div>
+
+          {/* 下载工具链检测 */}
+          <div className="flex flex-col gap-2.5 pt-4 border-t border-slate-50 dark:border-slate-800/80">
+            {(['yt-dlp', 'videodl'] as const).map((tool) => {
+              const st = toolchain[tool];
+              const busy = updatingTool === tool;
+              return (
+                <div key={tool} className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                    <span className="text-xs font-bold font-mono text-slate-800 dark:text-slate-200">{tool}</span>
+                    {st === null ? (
+                      <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        检测中...
+                      </span>
+                    ) : st.installed ? (
+                      <span className="text-[11px] text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 shrink-0" />
+                        已安装 · {st.version ?? '未知版本'}
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-rose-500 dark:text-rose-400">
+                        未安装（pip install {tool === 'videodl' ? 'videofetch' : 'yt-dlp'}）
+                      </span>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateTool(tool)}
+                    disabled={busy || updatingTool !== null || st === null}
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-transparent dark:border-slate-700 transition-colors flex items-center gap-1.5 shrink-0 disabled:opacity-50 cursor-pointer"
+                  >
+                    {busy ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        更新中...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        {st?.installed ? '检查更新' : '安装'}
+                      </>
+                    )}
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </div>
 

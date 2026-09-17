@@ -867,8 +867,34 @@ export async function revealDownload(id: string) {
   return request(`/downloads/${id}/reveal`, { method: 'POST' });
 }
 
+/** 获取该任务的下载日志（后端每个任务落盘一份 log） */
+export async function getDownloadLog(id: string): Promise<{ download_id: string; log: string }> {
+  return request(`/downloads/${id}/log`);
+}
+
 export async function deleteDownload(id: string) {
   return request(`/downloads/${id}`, { method: 'DELETE' });
+}
+
+// ---------- 下载工具链检测（yt-dlp / videodl） ----------
+
+export interface ToolchainStatus {
+  installed: boolean;
+  version: string | null;
+}
+
+export function fetchToolchain(): Promise<Record<DownloaderId, ToolchainStatus>> {
+  return request('/downloads/toolchain');
+}
+
+/** 检查更新（未安装时等同安装）：pip install --upgrade，返回前后版本 */
+export function updateToolchain(downloader: DownloaderId): Promise<{
+  downloader: DownloaderId;
+  before: string | null;
+  after: string | null;
+  updated: boolean;
+}> {
+  return request(`/downloads/toolchain/${downloader}/update`, { method: 'POST' });
 }
 
 // ---------- 系统设置 / 头像 ----------

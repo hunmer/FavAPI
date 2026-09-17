@@ -1,4 +1,6 @@
-"""下载队列 API：列表 / 入队 / 重试 / 删除（取消）。"""
+"""下载队列 API：列表 / 入队 / 重试 / 删除（取消）/ 日志查看 / 工具链检测。"""
+import asyncio
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -10,12 +12,68 @@ from app.services import download_store, download_worker
 
 router = APIRouter(prefix="/api/v1/downloads", tags=["downloads"])
 
+# downloader -> PyPI 包名（videodl 的发布包名为 videofetch）
+TOOLCHAIN = {"yt-dlp": "yt-dlp", "videodl": "videofetch"}
+
 
 async def _get_or_404(download_id: str) -> dict:
     row = await download_store.get_download(download_id)
     if row is None:
         raise HTTPException(status_code=404, detail=f"下载任务不存在：{download_id}")
     return row
+
+
+async def _run_cmd(args: list[str], timeout: float = 60) -> tuple[int, str]:
+    proc = await asyncio.create_subprocess_exec(
+        *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+    out, _ = await asyncio.wait_for(proc.communicate(), timeout)
+    return proc.returncode, out.decode("utf-8", errors="replace").strip()
+
+
+async def _detect_tool(downloader: str) -> dict:
+    """检测下载器是否安装并取版本：先跑可执行文件 --version，失败用 pip show 兜底。"""
+    base = download_worker._resolve_command(downloader)
+    if base:
+        try:
+            rc, out = await _run_cmd([*base, "--version"], timeout=15)
+        except (OSError, asyncio.TimeoutError):
+            rc, out = 1, ""
+        if rc == 0 and out:
+            return {"installed": True, "version": out.splitlines()[0].strip()}
+    rc, out = await _run_cmd([sys.executable, "-m", "pip", "show", TOOLCHAIN[downloader]])
+    if rc == 0:
+        m = re.search(r"^Version:\s*(\S+)", out, re.M)
+        if m:
+            return {"installed": True, "version": m.group(1)}
+    return {"installed": False, "version": None}
+
+
+@router.get("/toolchain")
+async def get_toolchain():
+    return {name: await _detect_tool(name) for name in TOOLCHAIN}
+
+
+@router.post("/toolchain/{downloader}/update")
+async def update_toolchain(downloader: str):
+    if downloader not in TOOLCHAIN:
+        raise HTTPException(status_code=400, detail=f"不支持的下载器：{downloader}")
+    before = await _detect_tool(downloader)
+    try:
+        rc, out = await _run_cmd(
+            [sys.executable, "-m", "pip", "install", "--upgrade", TOOLCHAIN[downloader]],
+            timeout=600,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=500, detail="更新超时（10 分钟），请检查网络后重试")
+    if rc != 0:
+        raise HTTPException(status_code=500, detail=out[-500:] or "pip 更新失败")
+    after = await _detect_tool(downloader)
+    return {
+        "downloader": downloader,
+        "before": before["version"],
+        "after": after["version"],
+        "updated": before["version"] != after["version"],
+    }
 
 
 @router.get("")
@@ -77,10 +135,18 @@ async def reveal_download(download_id: str):
     return {"revealed": True, "path": str(folder)}
 
 
+@router.get("/{download_id}/log")
+async def get_download_log(download_id: str):
+    """该任务落盘的下载日志（.logs/{download_id}.log），未开始时 log 为空串。"""
+    await _get_or_404(download_id)
+    return {"download_id": download_id, "log": download_worker.read_log(download_id)}
+
+
 @router.delete("/{download_id}")
 async def delete_download(download_id: str):
     row = await _get_or_404(download_id)
     if row["status"] == "running":
         await download_worker.cancel(download_id)
     await download_store.delete_download(download_id)
+    download_worker.delete_log(download_id)
     return {"deleted": download_id}

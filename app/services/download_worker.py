@@ -134,15 +134,39 @@ async def _write_cookies_file(download_id: str, account_id: str | None, platform
     return tmp
 
 
+def _log_file(download_id: str) -> Path:
+    """每个下载任务一份日志：downloads/.logs/{download_id}.log（重试追加，保留历史）。"""
+    return downloads_root() / ".logs" / f"{download_id}.log"
+
+
+def _append_log(download_id: str, text: str):
+    path = _log_file(download_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(f"{text}\n")
+
+
+def read_log(download_id: str) -> str:
+    try:
+        return _log_file(download_id).read_text("utf-8", errors="replace")
+    except FileNotFoundError:
+        return ""
+
+
+def delete_log(download_id: str) -> None:
+    _log_file(download_id).unlink(missing_ok=True)
+
+
 async def _run_one(row: dict):
     download_id, url = row["download_id"], row["url"]
     try:
         await _execute(row)
-    except Exception:
+    except Exception as exc:
         logger.exception("下载任务 %s 执行异常", download_id)
+        _append_log(download_id, f"[{now_iso()}] 内部错误：{exc}")
         await download_store.update_download(
             download_id, status="failed",
-            error_message="内部错误，详见服务日志", finished_at=now_iso(),
+            error_message="内部错误，详见下载日志", finished_at=now_iso(),
         )
 
 
@@ -155,6 +179,7 @@ async def _execute(row: dict):
     if base is None:
         # videodl 的 PyPI 发布包名为 videofetch（github.com/CharlesPikachu/videodl）
         pkg = {"yt-dlp": "yt-dlp", "videodl": "videofetch"}[row["downloader"]]
+        _append_log(download_id, f"[{now_iso()}] 未找到 {row['downloader']} 可执行文件，请先安装：pip install {pkg}")
         await download_store.update_download(
             download_id, status="failed", finished_at=now_iso(),
             error_message=f"未找到 {row['downloader']} 可执行文件，请先安装：pip install {pkg}",
@@ -179,6 +204,10 @@ async def _execute(row: dict):
         cwd = out_dir
 
     logger.info("下载开始 %s：%s", download_id, " ".join(cmd))
+    log_path = _log_file(download_id)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log = log_path.open("a", encoding="utf-8")
+    log.write(f"\n===== [{now_iso()}] 开始下载（{row['downloader']}） {url} =====\n命令：{' '.join(cmd)}\n")
     proc = await asyncio.create_subprocess_exec(
         *cmd, cwd=cwd,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
@@ -195,6 +224,8 @@ async def _execute(row: dict):
                 continue
             tail.append(line)
             tail = tail[-10:]
+            log.write(f"{line}\n")
+            log.flush()
             if loop.time() - last_write >= PROGRESS_WRITE_INTERVAL:
                 await download_store.update_download(download_id, progress=line[-200:])
                 last_write = loop.time()
@@ -203,12 +234,15 @@ async def _execute(row: dict):
         # 暂停/取消：对应操作已写入终态，这里不覆盖
         cur = await download_store.get_download(download_id)
         if cur and cur["status"] in ("canceled", "paused"):
+            action = "取消" if cur["status"] == "canceled" else "暂停"
+            log.write(f"[{now_iso()}] 任务被{action}，进程已终止\n")
             return
         if returncode == 0:
             await download_store.update_download(
                 download_id, status="success", progress="下载完成",
                 output_path=str(out_dir), finished_at=now_iso(),
             )
+            log.write(f"[{now_iso()}] 下载完成，输出目录：{out_dir}\n")
             logger.info("下载完成 %s（%s）", download_id, url)
         else:
             await download_store.update_download(
@@ -216,8 +250,11 @@ async def _execute(row: dict):
                 error_message="\n".join(tail)[-500:] or f"退出码 {returncode}",
                 finished_at=now_iso(),
             )
-            logger.warning("下载失败 %s（退出码 %s）：%s", download_id, returncode, "\n".join(tail))
+            tail_text = "\n".join(tail)
+            log.write(f"[{now_iso()}] 下载失败（退出码 {returncode}），最近输出：\n{tail_text}\n")
+            logger.warning("下载失败 %s（退出码 %s）：%s", download_id, returncode, tail_text)
     finally:
+        log.close()
         _running.pop(download_id, None)
         if cookies_file is not None:
             cookies_file.unlink(missing_ok=True)
