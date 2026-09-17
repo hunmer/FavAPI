@@ -49,7 +49,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-            任务记录 (全局执行历史)
+            任务记录
           </h2>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
             汇聚所有平台的增量抓取、全量归档及健康检查任务，支持 5 秒自动轮询无感刷新。

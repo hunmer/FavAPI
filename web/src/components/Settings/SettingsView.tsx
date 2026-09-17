@@ -22,7 +22,8 @@ import {
   Maximize2,
   Frame
 } from 'lucide-react';
-import { AgentConfigRow, AgentTestResult, DownloaderId, ToolchainStatus, fetchAppSettings, fetchToolchain, updateAppSettings, updateToolchain, uploadAvatar } from '../../api';
+import { AgentConfigRow, AgentTestResult, DownloaderId, ToolchainStatus, fetchAppSettings, fetchToolchain, updateAppSettings, uploadAvatar } from '../../api';
+import { TerminalDialog } from '../TerminalDialog';
 
 interface SettingsViewProps {
   onShowToast: (msg: string, type?: 'success' | 'info' | 'error') => void;
@@ -157,7 +158,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // ---------- 下载工具链检测（yt-dlp / videodl） ----------
   // null = 检测中；installed=false 时提示安装命令，更新按钮变「安装」
   const [toolchain, setToolchain] = useState<Record<DownloaderId, ToolchainStatus | null>>({ 'yt-dlp': null, videodl: null });
-  const [updatingTool, setUpdatingTool] = useState<DownloaderId | null>(null);
+  // 非 null 时打开终端对话框并开始流式安装/更新
+  const [terminalTool, setTerminalTool] = useState<DownloaderId | null>(null);
 
   const refreshToolchain = () => {
     fetchToolchain()
@@ -169,25 +171,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     refreshToolchain();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const handleUpdateTool = async (tool: DownloaderId) => {
-    if (updatingTool) return;
-    setUpdatingTool(tool);
-    try {
-      const r = await updateToolchain(tool);
-      onShowToast(
-        r.updated
-          ? `「${tool}」已更新：${r.before ?? '未安装'} → ${r.after ?? '未知'}`
-          : `「${tool}」已是最新版本（${r.after ?? '未知'}）`,
-        'success'
-      );
-      refreshToolchain();
-    } catch (err: any) {
-      onShowToast(`「${tool}」更新失败：${err?.message || '未知错误'}`, 'error');
-    } finally {
-      setUpdatingTool(null);
-    }
-  };
 
   // ---------- AI Agent 配置管理 ----------
   const emptyAgentForm = { name: '', base_url: '', api_key: '', model_id: '' };
@@ -560,7 +543,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div className="flex flex-col gap-2.5 pt-4 border-t border-slate-50 dark:border-slate-800/80">
             {(['yt-dlp', 'videodl'] as const).map((tool) => {
               const st = toolchain[tool];
-              const busy = updatingTool === tool;
               return (
                 <div key={tool} className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 min-w-0 flex-wrap">
@@ -584,21 +566,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => handleUpdateTool(tool)}
-                    disabled={busy || updatingTool !== null || st === null}
+                    onClick={() => setTerminalTool(tool)}
+                    disabled={terminalTool !== null || st === null}
                     className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-transparent dark:border-slate-700 transition-colors flex items-center gap-1.5 shrink-0 disabled:opacity-50 cursor-pointer"
                   >
-                    {busy ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        更新中...
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw className="w-3.5 h-3.5" />
-                        {st?.installed ? '检查更新' : '安装'}
-                      </>
-                    )}
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    {st?.installed ? '检查更新' : '安装'}
                   </button>
                 </div>
               );
@@ -793,6 +766,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* 下载工具链安装/更新终端（流式输出） */}
+      <TerminalDialog
+        downloader={terminalTool}
+        onClose={() => setTerminalTool(null)}
+        onFinished={refreshToolchain}
+      />
     </div>
   );
 };

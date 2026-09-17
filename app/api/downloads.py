@@ -1,11 +1,13 @@
 """下载队列 API：列表 / 入队 / 重试 / 删除（取消）/ 日志查看 / 工具链检测。"""
 import asyncio
+import json
 import re
 import subprocess
 import sys
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 
 from app.models import DownloadCreate, DownloadOut
 from app.services import download_store, download_worker
@@ -55,25 +57,49 @@ async def get_toolchain():
 
 @router.post("/toolchain/{downloader}/update")
 async def update_toolchain(downloader: str):
+    """SSE 流式执行 pip install --upgrade：line 事件逐行推送输出，done/error 结束。
+
+    pip 进度条用 \\r 重绘同一行，行内取最后一段避免刷屏。
+    """
     if downloader not in TOOLCHAIN:
         raise HTTPException(status_code=400, detail=f"不支持的下载器：{downloader}")
-    before = await _detect_tool(downloader)
-    try:
-        rc, out = await _run_cmd(
-            [sys.executable, "-m", "pip", "install", "--upgrade", TOOLCHAIN[downloader]],
-            timeout=600,
+
+    def sse_msg(payload: dict) -> str:
+        return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+    async def sse():
+        before = await _detect_tool(downloader)
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, "-m", "pip", "install", "--upgrade", TOOLCHAIN[downloader],
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
         )
-    except asyncio.TimeoutError:
-        raise HTTPException(status_code=500, detail="更新超时（10 分钟），请检查网络后重试")
-    if rc != 0:
-        raise HTTPException(status_code=500, detail=out[-500:] or "pip 更新失败")
-    after = await _detect_tool(downloader)
-    return {
-        "downloader": downloader,
-        "before": before["version"],
-        "after": after["version"],
-        "updated": before["version"] != after["version"],
-    }
+        try:
+            assert proc.stdout is not None
+            async for raw in proc.stdout:
+                # 进度条 \r 重绘：只保留重绘后的最新内容
+                line = raw.decode("utf-8", errors="replace").rstrip().split("\r")[-1].strip()
+                if line:
+                    yield sse_msg({"type": "line", "text": line})
+            returncode = await proc.wait()
+            if returncode != 0:
+                yield sse_msg({"type": "error", "detail": f"pip 异常退出（退出码 {returncode}），详见上方输出"})
+                return
+            after = await _detect_tool(downloader)
+            yield sse_msg({
+                "type": "done",
+                "before": before["version"],
+                "after": after["version"],
+                "updated": before["version"] != after["version"],
+            })
+        except asyncio.CancelledError:
+            proc.kill()  # 客户端断开（关闭对话框）时终止 pip，避免孤儿进程
+            raise
+
+    return StreamingResponse(
+        sse(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.get("")

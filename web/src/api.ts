@@ -887,14 +887,53 @@ export function fetchToolchain(): Promise<Record<DownloaderId, ToolchainStatus>>
   return request('/downloads/toolchain');
 }
 
-/** 检查更新（未安装时等同安装）：pip install --upgrade，返回前后版本 */
-export function updateToolchain(downloader: DownloaderId): Promise<{
-  downloader: DownloaderId;
-  before: string | null;
-  after: string | null;
-  updated: boolean;
-}> {
-  return request(`/downloads/toolchain/${downloader}/update`, { method: 'POST' });
+export type ToolchainUpdateEvent =
+  | { type: 'line'; text: string }
+  | { type: 'done'; before: string | null; after: string | null; updated: boolean }
+  | { type: 'error'; detail: string };
+
+/** 检查更新（未安装时等同安装）：SSE 逐行推送 pip 输出，结束返回 done/error 载荷。 */
+export async function updateToolchainStream(
+  downloader: DownloaderId,
+  onEvent: (ev: ToolchainUpdateEvent) => void,
+  signal?: AbortSignal
+): Promise<ToolchainUpdateEvent | null> {
+  const res = await fetch(`${BASE}/downloads/toolchain/${downloader}/update`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+    signal,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as any).detail || res.statusText);
+  }
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let final: ToolchainUpdateEvent | null = null;
+
+  while (true) {
+    const { value, done: finished } = await reader.read();
+    if (finished) break;
+    buffer += decoder.decode(value, { stream: true });
+    let idx: number;
+    while ((idx = buffer.indexOf('\n\n')) >= 0) {
+      const chunk = buffer.slice(0, idx).trim();
+      buffer = buffer.slice(idx + 2);
+      if (!chunk.startsWith('data:')) continue;
+      let ev: ToolchainUpdateEvent;
+      try {
+        ev = JSON.parse(chunk.slice(5).trim());
+      } catch {
+        continue;
+      }
+      if (ev.type === 'error') throw new Error(ev.detail || '更新失败');
+      onEvent(ev);
+      if (ev.type === 'done') final = ev;
+    }
+  }
+  return final;
 }
 
 // ---------- 系统设置 / 头像 ----------
