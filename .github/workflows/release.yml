@@ -84,8 +84,19 @@ jobs:
             dist/FavAPI-*.zip
           if-no-files-found: error
 
+  # 单独的 release job 串行上传，避免多平台并发写同一 Release 产生竞争
+  release:
+    name: Upload to GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
       - name: Upload to GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: |
