@@ -14,8 +14,9 @@ from app.services import download_store, download_worker
 
 router = APIRouter(prefix="/api/v1/downloads", tags=["downloads"])
 
-# downloader -> PyPI 包名（videodl 的发布包名为 videofetch）
-TOOLCHAIN = {"yt-dlp": "yt-dlp", "videodl": "videofetch"}
+# downloader -> PyPI 包名（videodl 的发布包名为 videofetch；aria2c 二进制为系统安装，
+# pip 层面只管理其 RPC 客户端 aria2p）
+TOOLCHAIN = {"yt-dlp": "yt-dlp", "videodl": "videofetch", "aria2c": "aria2p"}
 
 
 async def _get_or_404(download_id: str) -> dict:
@@ -42,6 +43,9 @@ async def _detect_tool(downloader: str) -> dict:
             rc, out = 1, ""
         if rc == 0 and out:
             return {"installed": True, "version": out.splitlines()[0].strip()}
+    if downloader == "aria2c":
+        # aria2c 为系统安装的二进制，pip 层无对应包（aria2p 仅是 RPC 客户端），不做 pip 兜底
+        return {"installed": False, "version": None}
     rc, out = await _run_cmd([sys.executable, "-m", "pip", "show", TOOLCHAIN[downloader]])
     if rc == 0:
         m = re.search(r"^Version:\s*(\S+)", out, re.M)

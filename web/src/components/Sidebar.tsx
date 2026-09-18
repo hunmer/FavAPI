@@ -28,6 +28,8 @@ interface SidebarProps {
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
   avatarUrl?: string | null;
+  /** 全屏铺满模式：视口 ≥xl 时侧边栏展开显示文字标签 */
+  fullPage?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -37,6 +39,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   theme,
   onToggleTheme,
   avatarUrl,
+  fullPage = false,
 }) => {
   const navItems: { id: NavTab; label: string; icon: React.ElementType }[] = [
     { id: 'dashboard', label: '总览看板', icon: LayoutDashboard },
@@ -49,30 +52,46 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   return (
-    <aside className="w-[76px] bg-[#14161C] text-slate-300 flex flex-col justify-between items-center py-6 px-3 shrink-0 border-r border-slate-800/80 transition-all select-none">
+    <aside
+      className={`w-[76px] ${
+        fullPage ? 'xl:w-[236px] xl:px-5' : ''
+      } bg-[#14161C] text-slate-300 flex flex-col justify-between items-center py-6 px-3 shrink-0 border-r border-slate-800/80 transition-all duration-200 select-none`}
+    >
       {/* Top Brand Logo & Navigation */}
-      <div className="flex flex-col items-center gap-7 w-full">
+      <div className={`flex flex-col items-center gap-7 w-full ${fullPage ? 'xl:items-start' : ''}`}>
         {/* Brand Logo (Circular Icon) */}
-        <div 
-          onClick={() => onTabChange('dashboard')}
-          className="w-12 h-12 rounded-full bg-gradient-to-tr from-sky-500 via-indigo-600 to-purple-500 flex items-center justify-center shadow-lg shadow-sky-500/25 cursor-pointer hover:scale-105 active:scale-95 transition-all duration-200 group"
-          title="FavAPI Web Console — 点击返回总览"
-        >
-          <Sparkles className="w-5 h-5 text-white group-hover:rotate-12 transition-transform duration-300" />
+        <div className={`flex items-center gap-3 w-full justify-center ${fullPage ? 'xl:justify-start' : ''}`}>
+          <div
+            onClick={() => onTabChange('dashboard')}
+            className="w-12 h-12 rounded-full bg-gradient-to-tr from-sky-500 via-indigo-600 to-purple-500 flex items-center justify-center shadow-lg shadow-sky-500/25 cursor-pointer hover:scale-105 active:scale-95 transition-all duration-200 group shrink-0"
+            title="FavAPI Web Console — 点击返回总览"
+          >
+            <Sparkles className="w-5 h-5 text-white group-hover:rotate-12 transition-transform duration-300" />
+          </div>
+          {fullPage && (
+            <span className="hidden xl:block text-[15px] font-bold text-white tracking-wide whitespace-nowrap">
+              FavAPI
+            </span>
+          )}
         </div>
 
         {/* Navigation Items (Circular Icon Buttons) */}
-        <nav className="flex flex-col items-center gap-3.5 w-full">
+        <nav className={`flex flex-col items-center gap-3.5 w-full ${fullPage ? 'xl:items-stretch' : ''}`}>
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
             return (
-              <div key={item.id} className="relative flex items-center justify-center w-full">
+              <div
+                key={item.id}
+                className={`relative flex items-center justify-center w-full ${fullPage ? 'xl:justify-start' : ''}`}
+              >
                 {/* Active side indicator bar：layoutId 让指示条随 tab 切换平滑滑动 */}
                 {isActive && (
                   <motion.div
                     layoutId="sidebar-indicator"
-                    className="absolute -left-3 w-1.5 h-6 bg-sky-500 rounded-r-full shadow-sm shadow-sky-500/50"
+                    className={`absolute -left-3 w-1.5 h-6 bg-sky-500 rounded-r-full shadow-sm shadow-sky-500/50 ${
+                      fullPage ? 'xl:-left-5' : ''
+                    }`}
                     transition={{ duration: 0.25, ease: EASE_SNAPPY }}
                   />
                 )}
@@ -82,7 +101,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   onClick={() => onTabChange(item.id)}
                   aria-label={item.label}
                   title={item.label}
-                  className={`relative w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 cursor-pointer ${
+                  className={`relative w-12 h-12 rounded-full flex items-center justify-center gap-3 transition-all duration-200 cursor-pointer ${
+                    fullPage ? 'xl:w-full xl:rounded-2xl xl:justify-start xl:px-3.5' : ''
+                  } ${
                     isActive
                       ? 'text-slate-900 scale-105'
                       : 'bg-slate-800/40 text-slate-400 hover:text-white hover:bg-slate-800/80 hover:scale-105'
@@ -92,11 +113,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {isActive && (
                     <motion.span
                       layoutId="sidebar-pill"
-                      className="absolute inset-0 rounded-full bg-white shadow-md shadow-black/20 ring-2 ring-white/20"
+                      className={`absolute inset-0 rounded-full bg-white shadow-md shadow-black/20 ring-2 ring-white/20 ${
+                        fullPage ? 'xl:rounded-2xl' : ''
+                      }`}
                       transition={{ duration: 0.3, ease: EASE_SNAPPY }}
                     />
                   )}
                   <Icon className="relative z-10 w-5 h-5 shrink-0" />
+                  {fullPage && (
+                    <span
+                      className={`relative z-10 hidden xl:block text-xs font-semibold whitespace-nowrap ${
+                        isActive ? 'text-slate-900' : ''
+                      }`}
+                    >
+                      {item.label}
+                    </span>
+                  )}
                   {/* 下载队列进行中数量 badge */}
                   {item.id === 'downloads' && downloadsActive > 0 && (
                     <span className="absolute -top-0.5 -right-0.5 z-20 min-w-[18px] h-[18px] px-1 rounded-full bg-sky-500 text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-[#14161C]">
@@ -111,7 +143,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Bottom: Theme Toggle & User Avatar */}
-      <div className="flex flex-col items-center gap-3.5 pt-5 border-t border-slate-800/80 w-full">
+      <div
+        className={`flex flex-col items-center gap-3.5 pt-5 border-t border-slate-800/80 w-full ${
+          fullPage ? 'xl:items-start' : ''
+        }`}
+      >
         {/* Dark/Light Mode Toggle Button */}
         <button
           onClick={onToggleTheme}

@@ -6,25 +6,30 @@ export interface DownloadConfirmModalProps {
   /** 单条传标题，批量传数量（描述行文案由此拼接） */
   singleTitle?: string;
   count: number;
+  /** 全部条目的平台都提供下载直链解析时为 true：显示「平台下载」且默认选中 */
+  platformDownload?: boolean;
   confirming: boolean;
   /** 确认入队；downloader 为用户所选下载器 */
   onConfirm: (downloader: DownloaderId) => void;
   onClose: () => void;
 }
 
-/** 下载确认弹窗（单条/批量共用）：选 yt-dlp / videodl 后加入下载队列。 */
+/** 下载确认弹窗（单条/批量共用）：选平台下载(aria2c) / yt-dlp / videodl 后加入下载队列。 */
 export const DownloadConfirmModal: React.FC<DownloadConfirmModalProps> = ({
   singleTitle,
   count,
+  platformDownload = false,
   confirming,
   onConfirm,
   onClose,
 }) => {
-  const [downloader, setDownloader] = useState<DownloaderId>('yt-dlp');
+  const [downloader, setDownloader] = useState<DownloaderId>(
+    platformDownload ? 'aria2c' : 'yt-dlp',
+  );
 
   useEffect(() => {
-    setDownloader('yt-dlp');
-  }, [count, singleTitle]);
+    setDownloader(platformDownload ? 'aria2c' : 'yt-dlp');
+  }, [count, singleTitle, platformDownload]);
 
   return (
     <div
@@ -58,6 +63,7 @@ export const DownloadConfirmModal: React.FC<DownloadConfirmModalProps> = ({
             className="px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-400 cursor-pointer disabled:opacity-60"
             title="选择下载器"
           >
+            {platformDownload && <option value="aria2c">平台下载 (aria2c)</option>}
             <option value="yt-dlp">yt-dlp</option>
             <option value="videodl">videodl</option>
           </select>

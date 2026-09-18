@@ -157,7 +157,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   // ---------- 下载工具链检测（yt-dlp / videodl） ----------
   // null = 检测中；installed=false 时提示安装命令，更新按钮变「安装」
-  const [toolchain, setToolchain] = useState<Record<DownloaderId, ToolchainStatus | null>>({ 'yt-dlp': null, videodl: null });
+  const [toolchain, setToolchain] = useState<Record<DownloaderId, ToolchainStatus | null>>({ 'yt-dlp': null, videodl: null, aria2c: null });
   // 非 null 时打开终端对话框并开始流式安装/更新
   const [terminalTool, setTerminalTool] = useState<DownloaderId | null>(null);
 
@@ -557,7 +557,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
           {/* 下载工具链检测 */}
           <div className="flex flex-col gap-2.5 pt-4 border-t border-slate-50 dark:border-slate-800/80">
-            {(['yt-dlp', 'videodl'] as const).map((tool) => {
+            {(['yt-dlp', 'videodl', 'aria2c'] as const).map((tool) => {
               const st = toolchain[tool];
               return (
                 <div key={tool} className="flex items-center justify-between gap-3">
@@ -575,7 +575,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       </span>
                     ) : (
                       <span className="text-[11px] text-rose-500 dark:text-rose-400">
-                        未安装（pip install {tool === 'videodl' ? 'videofetch' : 'yt-dlp'}）
+                        未安装（pip install {tool === 'videodl' ? 'videofetch' : tool === 'aria2c' ? 'aria2p' : 'yt-dlp'}
+                        {tool === 'aria2c' ? '，另需系统安装 aria2c（winget install aria2.aria2）' : ''}）
                       </span>
                     )}
                   </div>

@@ -6,7 +6,7 @@ from fastapi import FastAPI
 
 from app.api import accounts, agents, ai_tag, downloads, fetch, queries, schedules, settings, tags
 from app.database import db
-from app.services import download_worker, scheduler
+from app.services import aria2_service, download_worker, scheduler
 from app.web.router import mount_web
 
 # 让 favapi.* 调试日志输出到 stderr（procm 会同时采集 stdout/stderr）
@@ -20,6 +20,7 @@ async def lifespan(app: FastAPI):
     await download_worker.start()
     yield
     await download_worker.stop()
+    await aria2_service.shutdown()
     await scheduler.stop()
     await db.close()
 

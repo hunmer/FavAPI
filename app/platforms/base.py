@@ -105,6 +105,9 @@ class BasePlatformAdapter(ABC):
     api_operations: tuple[ApiOperation, ...] = ()
     # 可抓取入库的列表目标（收藏/喜欢/稍后再看…）；空 = 默认仅收藏列表
     fetch_targets: tuple[FetchTarget, ...] = ()
+    # 是否提供「平台下载」能力（按视频 ID 解析直链，配合 aria2c 下载）；
+    # 支持的平台覆写为 True 并实现 resolve_download_urls
+    download_api_implemented: bool = False
 
     @abstractmethod
     async def login(self, account: AccountContext, timeout: float | None = None) -> bool:
@@ -217,3 +220,11 @@ class BasePlatformAdapter(ABC):
 
         实现方自行写入账号 extra；失败不抛出（调用方已兜底，仅影响展示）。
         """
+
+    async def resolve_download_urls(self, account: AccountContext, content_id: str) -> list[dict]:
+        """按视频 ID 解析可下载直链列表（可选实现，供 aria2c 平台下载）。
+
+        返回 [{"url": 直链, "label": 清晰度描述, "ext": 扩展名, "size": 字节数}]，
+        首个元素视为推荐地址；未实现的平台抛 NotImplementedError。
+        """
+        raise NotImplementedError(f"{self.display_name} 未实现下载直链解析")

@@ -3,7 +3,7 @@ from app.database import db
 from app.services.data_store import _CONTENT_URL_TEMPLATES
 from app.utils import new_id, now_iso
 
-DOWNLOADERS = ("yt-dlp", "videodl")
+DOWNLOADERS = ("yt-dlp", "videodl", "aria2c")
 
 
 def content_url(platform: str, content_id: str) -> str:

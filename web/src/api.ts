@@ -121,6 +121,8 @@ export interface PlatformInfoRow {
   api_fetch_implemented?: boolean;
   api_operations?: OperationSpec[];
   fetch_targets?: FetchTargetSpec[];
+  /** 是否提供「平台下载」（按视频 ID 解析直链 → aria2c） */
+  download_api_implemented?: boolean;
 }
 
 // ---------- 工具 ----------
@@ -256,6 +258,16 @@ export function toSchedule(row: ScheduleRow, accountNameById: Map<string, string
 export async function listPlatforms(): Promise<PlatformInfoRow[]> {
   const data = await request<{ platforms: PlatformInfoRow[] }>('/platforms');
   return data.platforms;
+}
+
+/** 提供「平台下载」能力的平台集合（模块级缓存，失败回落空集合 = 全部不可平台下载）。 */
+export async function fetchPlatformDownloadSet(): Promise<Set<string>> {
+  try {
+    const platforms = await listPlatforms();
+    return new Set(platforms.filter((p) => p.download_api_implemented).map((p) => p.platform));
+  } catch {
+    return new Set();
+  }
 }
 
 /** 执行平台 API 操作（写操作/管理类，同步返回结果）。 */
@@ -802,7 +814,7 @@ export async function tagStream(
 
 // ---------- 下载队列 ----------
 
-export type DownloaderId = 'yt-dlp' | 'videodl';
+export type DownloaderId = 'yt-dlp' | 'videodl' | 'aria2c';
 
 export interface DownloadRow {
   download_id: string;

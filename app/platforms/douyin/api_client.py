@@ -20,7 +20,13 @@ from curl_cffi import requests
 
 from app.services import browser
 from . import constants
-from .parser import parse_history, parse_like_list, parse_listcollection, parse_watchlater
+from .parser import (
+    parse_download_links,
+    parse_history,
+    parse_like_list,
+    parse_listcollection,
+    parse_watchlater,
+)
 from ..base import LoginExpiredError
 
 logger = logging.getLogger("favapi.douyin.api")
@@ -275,6 +281,36 @@ def cancel_digg_page(cookie_header: str, aweme_ids: list[str]) -> dict:
             f"message={data.get('status_msg') or data.get('message') or ''}"
         )
     return data
+
+
+def fetch_aweme_detail(cookie_header: str, aweme_id: str) -> dict:
+    """按 aweme_id 拉取视频详情并解析可下载直链（同步阻塞，异步侧 to_thread 调用）。
+
+    返回 {"aweme_id", "links": [{url, label, ext, width, height, size}]}；
+    读接口无 JS 签名强校验，curl_cffi 直连即可（与列表接口同模式）。
+    """
+    params = {**_QUERY_PARAMS, "aweme_id": aweme_id}
+    url = constants.AWEME_DETAIL_URL + "?" + urlencode(params)
+    logger.info("fetch_aweme_detail 请求：aweme_id=%s", aweme_id)
+    response = requests.get(
+        url,
+        headers={**_HEADERS, "cookie": cookie_header,
+                 "referer": f"https://www.douyin.com/video/{aweme_id}"},
+        impersonate="chrome",
+        timeout=20,
+    )
+    response.raise_for_status()
+    data = response.json()
+    status = data.get("status_code")
+    if status != 0:
+        raise RuntimeError(
+            f"aweme/detail 返回错误 status_code={status} "
+            f"message={data.get('status_msg') or data.get('message') or ''}"
+        )
+    links = parse_download_links(data)
+    if not links:
+        raise RuntimeError("详情响应无可下载直链（视频可能已删除、私密或为图文）")
+    return {"aweme_id": aweme_id, "links": links}
 
 
 def fetch_like_page(cookie_header: str, sec_user_id: str, max_cursor: int = 0,
@@ -542,6 +578,70 @@ async def cancel_digg_multi_via_browser(profile_path: str, aweme_ids: list[str],
     return {"total": len(aweme_ids), "batches": len(batches), "canceled": canceled_total}
 
 
+async def cancel_digg_by_window(profile_path: str, cookie_header: str, sec_user_id: str,
+                                dt_from, dt_to, on_progress=None) -> dict:
+    """完整扫描喜欢(点赞)列表，按条目时间（parser 的 collected_at，兜底视频发布时间）
+    过滤后批量取消点赞（取消走浏览器页面通道）。
+
+    喜欢列表按点赞时间倒序而非视频发布时间，无法用分页 cursor 提前停止；
+    与取消收藏同策略：遍历到接口结束收集命中 ID，再统一分批取消。
+    """
+    from app.utils import filter_by_date_window
+
+    cursor = 0
+    page = 0
+    total_fetched = 0
+    matched_ids: list[str] = []
+    matched_seen: set[str] = set()
+    while True:
+        batch = await asyncio.to_thread(
+            fetch_like_page, cookie_header, sec_user_id, cursor, constants.API_PAGE_COUNT
+        )
+        page += 1
+        items = batch["items"]
+        total_fetched += len(items)
+        matched = filter_by_date_window(items, dt_from, dt_to)
+        ids = [it["content_id"] for it in matched if it.get("content_id")]
+        for content_id in ids:
+            if content_id not in matched_seen:
+                matched_seen.add(content_id)
+                matched_ids.append(content_id)
+
+        if on_progress:
+            await on_progress({
+                "type": "progress",
+                "page": page,
+                "fetched_this_page": len(items),
+                "matched_this_page": len(ids),
+                "canceled": 0,
+                "total_fetched": total_fetched,
+            })
+
+        if not batch["has_more"] or not batch["cursor"]:
+            break
+        cursor = batch["cursor"]
+        await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
+
+    async def _cancel_progress(info: dict):
+        if on_progress:
+            await on_progress({
+                "type": "progress",
+                "page": page,
+                "matched_this_page": 0,
+                "canceled": info.get("done", 0),
+                "total_fetched": total_fetched,
+            })
+
+    result = await cancel_digg_multi_via_browser(
+        profile_path, matched_ids, on_progress=_cancel_progress)
+    return {
+        "matched": len(matched_ids),
+        "canceled": result.get("canceled", 0),
+        "pages": page,
+        "total_fetched": total_fetched,
+    }
+
+
 async def _cancel_collect_batch_with_retry(cookie_header: str, aweme_ids: list[str]) -> int:
     """取消一批收藏；status_code=5 时退避重试，避免风控瞬时失败中断整项任务。"""
     # 抖音对小于整批的请求偶发返回成功但实际不生效，逐 ID 请求可避免该情况。
@@ -593,13 +693,12 @@ async def _cancel_collect_single_with_retry(cookie_header: str, aweme_id: str) -
             await asyncio.sleep(constants.CANCEL_COLLECT_INTERVAL_SEC * (2 ** attempt))
 
 
-async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progress=None,
-                                    time_mode: str = "collected") -> dict:
+async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progress=None) -> dict:
     """完整扫描收藏列表，按视频上传时间（parser 的 collected_at）过滤并取消。
 
     抖音收藏列表接口不提供真实的加入收藏时间，不能使用分页 cursor 提前停止；
     必须遍历到接口结束，再用条目中的 collected_at（当前由视频 create_time 填充）
-    匹配日期区间。time_mode 保留用于兼容旧请求，两种模式都使用该条目时间。
+    匹配日期区间。
     """
     from app.utils import filter_by_date_window
 
@@ -667,7 +766,6 @@ async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progre
         "pages": page,
         "stopped_early": False,
         "total_fetched": total_fetched,
-        "time_mode": time_mode,
     }
 
 

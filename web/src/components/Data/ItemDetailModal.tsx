@@ -20,11 +20,23 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose,
   const [downloader, setDownloader] = useState<DownloaderId>('yt-dlp');
   const [adding, setAdding] = useState(false);
   const [added, setAdded] = useState(false);
+  // 该条目平台是否支持「平台下载」（解析直链 → aria2c），支持时默认选中
+  const [platformDownload, setPlatformDownload] = useState(false);
   useEffect(() => {
+    let stale = false;
+    api.fetchPlatformDownloadSet().then((set) => {
+      if (!stale) setPlatformDownload(set.has(item.platform));
+    });
     setDownloader('yt-dlp');
     setAdding(false);
     setAdded(false);
-  }, [item.id]);
+    return () => {
+      stale = true;
+    };
+  }, [item.id, item.platform]);
+  useEffect(() => {
+    setDownloader(platformDownload ? 'aria2c' : 'yt-dlp');
+  }, [platformDownload]);
 
   const addDownload = async () => {
     if (adding) return;
@@ -248,6 +260,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose,
                 className="px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-400 cursor-pointer disabled:opacity-60"
                 title="选择下载器"
               >
+                {platformDownload && <option value="aria2c">平台下载 (aria2c)</option>}
                 <option value="yt-dlp">yt-dlp</option>
                 <option value="videodl">videodl</option>
               </select>

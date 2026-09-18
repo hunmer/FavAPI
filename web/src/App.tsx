@@ -649,6 +649,7 @@ export function App() {
           theme={theme}
           onToggleTheme={toggleTheme}
           avatarUrl={avatarUrl}
+          fullPage={fullPage}
         />
 
         {/* Right Main Container */}

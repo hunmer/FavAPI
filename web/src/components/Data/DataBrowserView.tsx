@@ -299,6 +299,11 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
   /** 下载视频：弹窗选下载器后入队（单条/批量共用），进度在「下载队列」页查看 */
   const [downloadConfirm, setDownloadConfirm] = useState<{ items: ScrapedItem[] } | null>(null);
   const [downloadSubmitting, setDownloadSubmitting] = useState(false);
+  // 提供「平台下载」能力的平台集合（决定弹窗是否显示平台下载选项并默认选中）
+  const [platformDownloadSet, setPlatformDownloadSet] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    api.fetchPlatformDownloadSet().then(setPlatformDownloadSet);
+  }, []);
 
   const downloadItem = (item: ScrapedItem) => {
     if (!item.url) {
@@ -707,6 +712,10 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
         <DownloadConfirmModal
           count={downloadConfirm.items.length}
           singleTitle={downloadConfirm.items.length === 1 ? downloadConfirm.items[0].title : undefined}
+          platformDownload={
+            downloadConfirm.items.length > 0 &&
+            downloadConfirm.items.every((i) => platformDownloadSet.has(i.platform))
+          }
           confirming={downloadSubmitting}
           onConfirm={confirmDownload}
           onClose={() => !downloadSubmitting && setDownloadConfirm(null)}

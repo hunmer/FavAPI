@@ -87,6 +87,42 @@ def parse_like_list(data: dict) -> dict:
     return _parse_aweme_page(data)
 
 
+def parse_download_links(data: dict) -> list[dict]:
+    """aweme/detail 响应 → 可下载直链列表（首项为推荐地址）。
+
+    依次收 play_addr（默认画质）与 bit_rate 各档（多码率），按 URL 去重；
+    老版地址带 playwm（带水印标记），统一替换为 play 以取无水源。
+    """
+    aweme = data.get("aweme_detail") or {}
+    if not aweme.get("aweme_id"):
+        return []
+    video = aweme.get("video") or {}
+    links: list[dict] = []
+    seen: set[str] = set()
+
+    def _push(play_addr: dict, label: str) -> None:
+        width = _as_int((play_addr or {}).get("width")) or 0
+        height = _as_int((play_addr or {}).get("height")) or 0
+        size = _as_int((play_addr or {}).get("data_size")) or 0
+        if height:
+            label = f"{label} {height}p"
+        for raw in (play_addr or {}).get("url_list") or []:
+            url = str(raw or "").replace("playwm", "play")
+            if not url.startswith("http") or url in seen:
+                continue
+            seen.add(url)
+            links.append({
+                "url": url, "label": label, "ext": "mp4",
+                "width": width, "height": height, "size": size,
+            })
+
+    _push(video.get("play_addr"), "默认画质")
+    for br in video.get("bit_rate") or []:
+        gear = str(br.get("gear_name") or "").rstrip("_0") or "多码率"
+        _push(br.get("play_addr"), gear)
+    return links
+
+
 def parse_history(data: dict) -> dict:
     """观看历史 /aweme/v1/web/history/read/ 响应 → {items, cursor, has_more, total}。
 

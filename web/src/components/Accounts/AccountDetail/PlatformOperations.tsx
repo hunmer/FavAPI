@@ -213,7 +213,7 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
       {/* API Operation Execute Modal（左：表单 / 右：执行结果） */}
       {activeOp && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="relative anim-modal-enter bg-white dark:bg-[#161B26] w-full max-w-3xl rounded-[28px] p-6 shadow-2xl border border-slate-100 dark:border-slate-800 h-[85vh] flex flex-col overflow-hidden">
+          <div className="relative anim-modal-enter bg-white dark:bg-[#161B26] w-full max-w-3xl rounded-[28px] p-6 shadow-2xl border border-slate-100 dark:border-slate-800 max-h-[85vh] flex flex-col overflow-hidden">
             <button
               type="button"
               disabled={opRunning}

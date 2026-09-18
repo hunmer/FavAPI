@@ -9,3 +9,4 @@ curl_cffi
 xhshow
 yt-dlp
 pywebview
+aria2p

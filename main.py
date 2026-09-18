@@ -3,6 +3,73 @@ import os
 import sys
 import threading
 import time
+import atexit
+from pathlib import Path
+
+
+_single_instance_handle = None
+_single_instance_lock_file = None
+
+
+def _acquire_single_instance() -> bool:
+    """确保生产窗口模式只运行一个 FavAPI 进程。
+
+    pywebview/打包程序可能被外部启动器重复拉起；使用命名 Mutex 可在
+    启动服务和创建窗口前直接拦截重复实例，避免出现多个原生窗口。
+    """
+    global _single_instance_handle, _single_instance_lock_file
+
+    if os.name != "nt":
+        # Unix: flock 是进程级锁，进程崩溃时由内核自动释放，不会留下死锁。
+        import fcntl
+
+        lock_path = Path(config.DATA_DIR) / ".favapi-single-instance.lock"
+        try:
+            lock_path.parent.mkdir(parents=True, exist_ok=True)
+            lock_file = lock_path.open("a+")
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            lock_file.close()
+            print("[FavAPI] 已有实例运行，退出重复启动", file=sys.stderr)
+            return False
+        except OSError as exc:
+            if "lock_file" in locals():
+                lock_file.close()
+            print(f"[FavAPI] 无法创建单实例锁（{exc}），继续启动", file=sys.stderr)
+            return True
+
+        _single_instance_lock_file = lock_file
+
+        def _release_unix_lock():
+            try:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            finally:
+                lock_file.close()
+
+        atexit.register(_release_unix_lock)
+        return True
+
+    import ctypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_bool, ctypes.c_wchar_p]
+    kernel32.CreateMutexW.restype = ctypes.c_void_p
+    kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+    kernel32.CloseHandle.restype = ctypes.c_bool
+    handle = kernel32.CreateMutexW(None, False, "Local\FavAPI.SingleInstance")
+    if not handle:
+        print("[FavAPI] 无法创建单实例锁，继续启动", file=sys.stderr)
+        return True
+
+    _single_instance_handle = handle
+    if ctypes.get_last_error() == 183:  # ERROR_ALREADY_EXISTS
+        print("[FavAPI] 已有实例运行，退出重复启动", file=sys.stderr)
+        kernel32.CloseHandle(handle)
+        _single_instance_handle = None
+        return False
+
+    atexit.register(lambda: kernel32.CloseHandle(handle))
+    return True
 
 # Windows 下 stderr 默认 GBK，会导致日志中文在 procm 等采集端乱码
 for _stream in (sys.stdout, sys.stderr):
@@ -55,6 +122,9 @@ def _open_window():
 
 
 if __name__ == "__main__":
+    if not _acquire_single_instance():
+        raise SystemExit(0)
+
     use_window = (
         os.environ.get("FAVAPI_NO_WINDOW") != "1"
         and (getattr(sys, "frozen", False) or os.environ.get("FAVAPI_WINDOW") == "1")

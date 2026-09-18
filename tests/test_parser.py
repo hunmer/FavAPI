@@ -77,6 +77,63 @@ def test_parse_listcollection_empty():
     assert parsed["items"] == [] and parsed["has_more"] is False and parsed["total"] == 0
 
 
+def _detail(aweme_id="7665364150679587323"):
+    return {
+        "status_code": 0,
+        "aweme_detail": {
+            "aweme_id": aweme_id,
+            "video": {
+                "play_addr": {
+                    "url_list": [
+                        "https://www.douyin.com/aweme/v1/playwm/?video_id=v0d00fg10000",
+                        "https://v26-web.douyinvod.com/video/tos/playwm/cn/tos/video.mp4",
+                    ],
+                    "width": 1080, "height": 1920, "data_size": 10485760,
+                },
+                "bit_rate": [
+                    {
+                        "gear_name": "adapt_1080_0",
+                        "data_size": 8388608,
+                        "play_addr": {
+                            "url_list": ["https://v26-web.douyinvod.com/video/tos/playwm/cn/tos/video.mp4"],
+                            "width": 1080, "height": 1920,
+                        },
+                    },
+                    {
+                        "gear_name": "normal_720_0",
+                        "play_addr": {
+                            "url_list": ["https://v26-web.douyinvod.com/video/tos/720.mp4"],
+                            "width": 720, "height": 1280,
+                        },
+                    },
+                ],
+            },
+        },
+    }
+
+
+def test_parse_download_links():
+    from app.platforms.douyin.parser import parse_download_links
+
+    links = parse_download_links(_detail())
+    # playwm 统一替换为 play；默认画质 + bit_rate 各档；重复 URL 去重
+    assert [l["url"] for l in links] == [
+        "https://www.douyin.com/aweme/v1/play/?video_id=v0d00fg10000",
+        "https://v26-web.douyinvod.com/video/tos/play/cn/tos/video.mp4",
+        "https://v26-web.douyinvod.com/video/tos/720.mp4",
+    ]
+    assert links[0]["label"] == "默认画质 1920p"
+    assert links[0]["size"] == 10485760 and links[0]["ext"] == "mp4"
+    assert links[0]["height"] == 1920
+
+
+def test_parse_download_links_empty():
+    from app.platforms.douyin.parser import parse_download_links
+
+    assert parse_download_links({}) == []
+    assert parse_download_links({"aweme_detail": {}}) == []
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failed = 0

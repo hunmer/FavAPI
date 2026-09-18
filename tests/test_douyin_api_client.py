@@ -10,6 +10,70 @@ def _cursor(value: str) -> int:
     return int(datetime.fromisoformat(value).timestamp() * 1_000_000)
 
 
+class CancelDiggWindowTest(unittest.TestCase):
+    def test_scans_like_list_then_cancels_matched(self):
+        responses = iter([
+            {"items": [{"content_id": "digg-1", "collected_at": "2025-06-01T00:00:00+08:00"},
+                       {"content_id": "skip-1", "collected_at": "2026-08-01T00:00:00+08:00"}],
+             "cursor": 111, "has_more": True},
+            {"items": [{"content_id": "digg-2", "collected_at": "2025-05-01T00:00:00+08:00"}],
+             "cursor": 0, "has_more": False},
+        ])
+        fetch_calls = []
+
+        def fake_fetch_like_page(cookie_header, sec_user_id, cursor=0, count=20):
+            fetch_calls.append((sec_user_id, cursor, count))
+            return next(responses)
+
+        async def fake_cancel_digg_multi(profile_path, aweme_ids, on_progress=None):
+            return {"total": len(aweme_ids), "batches": 1, "canceled": len(aweme_ids)}
+
+        with (
+            patch.object(api_client, "fetch_like_page", fake_fetch_like_page),
+            patch.object(api_client, "cancel_digg_multi_via_browser", fake_cancel_digg_multi),
+            patch.object(api_client.constants, "API_PAGE_INTERVAL_SEC", 0),
+        ):
+            result = asyncio.run(api_client.cancel_digg_by_window(
+                "profile", "cookie", "sec-uid",
+                datetime.fromisoformat("2021-01-01T00:00:00+08:00"),
+                datetime.fromisoformat("2026-01-01T00:00:00+08:00"),
+            ))
+
+        self.assertEqual(fetch_calls, [("sec-uid", 0, 20), ("sec-uid", 111, 20)])
+        self.assertEqual(result["matched"], 2)
+        self.assertEqual(result["canceled"], 2)
+        self.assertEqual(result["pages"], 2)
+
+    def test_no_match_skips_cancel(self):
+        responses = iter([
+            {"items": [{"content_id": "skip-1", "collected_at": "2026-08-01T00:00:00+08:00"}],
+             "cursor": 0, "has_more": False},
+        ])
+        canceled_calls = []
+
+        async def fake_cancel_digg_multi(profile_path, aweme_ids, on_progress=None):
+            canceled_calls.append(list(aweme_ids))
+            return {"total": 0, "batches": 0, "canceled": 0}
+
+        with (
+            patch.object(
+                api_client, "fetch_like_page",
+                lambda *args, **kwargs: next(responses),
+            ),
+            patch.object(api_client, "cancel_digg_multi_via_browser", fake_cancel_digg_multi),
+            patch.object(api_client.constants, "API_PAGE_INTERVAL_SEC", 0),
+        ):
+            result = asyncio.run(api_client.cancel_digg_by_window(
+                "profile", "cookie", "sec-uid",
+                datetime.fromisoformat("2021-01-01T00:00:00+08:00"),
+                datetime.fromisoformat("2026-01-01T00:00:00+08:00"),
+            ))
+
+        self.assertEqual(canceled_calls, [[]])
+        self.assertEqual(result["matched"], 0)
+        self.assertEqual(result["canceled"], 0)
+
+
 class CancelCollectWindowTest(unittest.TestCase):
     def test_retries_status_code_5(self):
         attempts = []
@@ -127,7 +191,6 @@ class CancelCollectWindowTest(unittest.TestCase):
                 "cookie",
                 datetime.fromisoformat("2021-01-01T00:00:00+08:00"),
                 datetime.fromisoformat("2026-01-01T23:59:59+08:00"),
-                time_mode="collected",
             ))
 
         self.assertEqual(calls, [(0, 20), (cursor_new, 20)])

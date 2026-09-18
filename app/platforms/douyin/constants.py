@@ -38,6 +38,9 @@ CANCEL_DIGG_RETRIES = 3         # status_code=5（限流/风控）时的重试�
 # 当前登录用户资料接口（个人主页加载时页面自身会调用，拦截复用；签名由页面 JS 完成）
 PROFILE_SELF_API = "/aweme/v1/web/user/profile/self"
 
+# 视频详情接口（按 aweme_id 解析播放直链；GET 读接口，可 curl_cffi 直连）
+AWEME_DETAIL_URL = "https://www.douyin.com/aweme/v1/web/aweme/detail/"
+
 # 判定已登录的 cookie（任一存在且非空即视为登录）
 LOGIN_COOKIE_KEYS = ("sessionid", "sessionid_ss")
 

@@ -58,6 +58,8 @@ def _info(adapter: BasePlatformAdapter) -> dict:
         "implemented": adapter.implemented,
         "supported_actions": list(adapter.supported_actions),
         "api_fetch_implemented": adapter.api_fetch_implemented,
+        # 是否提供「平台下载」（按视频 ID 解析直链交给 aria2c）；前端下载弹窗据此默认平台下载
+        "download_api_implemented": adapter.download_api_implemented,
         # 可抓取入库的列表目标（收藏/喜欢/稍后再看…），前端渲染卡片 + 弹窗表单
         "fetch_targets": [
             {

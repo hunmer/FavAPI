@@ -42,6 +42,7 @@ class DouyinAdapter(BasePlatformAdapter):
     implemented = True
     supported_actions = ("list_favorites", "list_likes", "list_watchlater")
     api_fetch_implemented = True  # 浏览器模拟实现已移除，各列表仅保留 API 直连
+    download_api_implemented = True  # 支持按 aweme_id 解析下载直链（平台下载 → aria2c）
     # 可抓取入库的列表目标（source 为 favorites 来源标记；空 = 收藏列表）
     fetch_targets = (
         FetchTarget(
@@ -107,13 +108,17 @@ class DouyinAdapter(BasePlatformAdapter):
                     key="date_to", label="按日期区间：至", type="date",
                     help="闭区间（含当天）",
                 ),
+            ),
+        ),
+        ApiOperation(
+            op_id="resolve_download_urls",
+            name="解析下载直链",
+            description="按视频 ID 调详情接口返回可下载直链列表（只读，供平台下载/aria2c 使用）",
+            params=(
                 ApiOperationParam(
-                    key="time_mode", label="日期判定方式", type="select",
-                    options=(
-                        ("collected", "按视频上传时间（推荐）"),
-                        ("published", "按视频上传时间（兼容旧参数）"),
-                    ),
-                    help="抖音不提供真实加入收藏时间，当前统一使用视频自身 create_time",
+                    key="aweme_id", label="视频 ID", type="text", required=True,
+                    placeholder="例如：7665364150679587323",
+                    help="纯数字 aweme_id",
                 ),
             ),
         ),
@@ -180,13 +185,25 @@ class DouyinAdapter(BasePlatformAdapter):
         ApiOperation(
             op_id="cancel_digg_multi",
             name="批量取消点赞",
-            description="按 ID 列表批量取消点赞（操作不可恢复，浏览器页面通道执行）",
+            description="完整扫描喜欢(点赞)列表，按视频上传时间批量取消点赞（操作不可恢复，浏览器页面通道执行）",
             danger=True,
             params=(
                 ApiOperationParam(
-                    key="aweme_ids", label="视频 ID 列表", type="textarea", required=True,
+                    key="aweme_ids", label="视频 ID 列表", type="textarea",
                     placeholder="ID 之间用逗号或换行分隔，例如：\n7686197461799665984\n7686125901436145833",
-                    help="要取消点赞的视频 aweme_id 列表",
+                    help="与日期区间二选一；填写日期区间时忽略本项",
+                ),
+                ApiOperationParam(
+                    key="date_from", label="按日期区间：从", type="date",
+                    help="填日期区间时会完整扫描喜欢列表，无需手填 ID",
+                ),
+                ApiOperationParam(
+                    key="date_to", label="按日期区间：至", type="date",
+                    help="闭区间（含当天）",
+                ),
+                ApiOperationParam(
+                    key="sec_user_id", label="sec_user_id（可选）", type="text",
+                    help="默认从登录态自动提取；提取失败时手动填写（喜欢页 URL 中可见）",
                 ),
             ),
         ),
@@ -199,6 +216,11 @@ class DouyinAdapter(BasePlatformAdapter):
             return await self._op_list_favorites(account, params, on_event)
         if op_id == "cancel_collect_multi":
             return await self._op_cancel_collect(account, params, on_event)
+        if op_id == "resolve_download_urls":
+            aweme_id = str((params or {}).get("aweme_id") or "").strip()
+            if not aweme_id.isdigit():
+                raise ValueError("请填写视频 ID（纯数字 aweme_id）")
+            return await self.resolve_download_urls(account, aweme_id)
         if op_id == "list_likes":
             return await self._op_list_likes(account, params, on_event)
         if op_id == "list_history":
@@ -296,19 +318,42 @@ class DouyinAdapter(BasePlatformAdapter):
         return {"aweme_id": aweme_id, "is_digg": data.get("is_digg")}
 
     async def _op_cancel_digg(self, account: AccountContext, params: dict, on_event=None) -> dict:
-        """按 ID 列表批量取消点赞（浏览器页面 fetch 通道）。"""
+        """批量取消点赞：视频 ID 列表 / 日期区间二选一（日期优先，浏览器页面通道）。
+
+        日期区间模式先完整扫描喜欢(点赞)列表收集命中 ID，再统一取消。
+        """
         raw = str((params or {}).get("aweme_ids") or "")
         aweme_ids = [t.strip() for t in re.split(r"[\s,，;；]+", raw) if t.strip()]
-        if not aweme_ids:
-            raise ValueError("请填写要取消点赞的视频 ID 列表")
+        dt_from, dt_to = parse_date_window(params or {})
+        if not aweme_ids and not (dt_from or dt_to):
+            raise ValueError("请填写视频 ID 列表或日期区间（二选一）")
         if any(not t.isdigit() for t in aweme_ids):
             raise ValueError("aweme_ids 含非数字 ID，请检查输入")
+
+        async def _progress(info: dict):
+            if on_event:
+                await on_event(info)
+
+        if dt_from or dt_to:
+            cookie_header = await api_client.profile_cookie_header(account.profile_path)
+            sec_uid = str((params or {}).get("sec_user_id") or "").strip() or api_client.self_sec_uid(cookie_header)
+            if not sec_uid:
+                raise ValueError("无法从登录态提取 sec_user_id，请在参数中手动填写（喜欢页 URL 中可见）")
+            logger.info("[%s] 按日期区间取消点赞（先扫描后取消）：%s ~ %s",
+                        account.account_id, dt_from, dt_to)
+            result = await api_client.cancel_digg_by_window(
+                account.profile_path, cookie_header, sec_uid, dt_from, dt_to, on_progress=_progress
+            )
+            if result["canceled"] == 0:
+                result["note"] = "该日期区间内没有匹配的点赞，未执行取消"
+            logger.info("[%s] 批量取消点赞完成：%s", account.account_id, result)
+            return result
 
         async def _batch_progress(info: dict):
             if on_event:
                 await on_event({"type": "progress", **info})
 
-        logger.info("[%s] 批量取消点赞：%d 条", account.account_id, len(aweme_ids))
+        logger.info("[%s] 批量取消点赞（按 ID 列表）：%d 条", account.account_id, len(aweme_ids))
         result = await api_client.cancel_digg_multi_via_browser(
             account.profile_path, aweme_ids, on_progress=_batch_progress)
         result["matched"] = len(aweme_ids)
@@ -372,13 +417,10 @@ class DouyinAdapter(BasePlatformAdapter):
 
         cookie_header = await api_client.profile_cookie_header(account.profile_path)
         if dt_from or dt_to:
-            time_mode = str((params or {}).get("time_mode") or "collected").lower()
-            if time_mode not in ("collected", "published"):
-                raise ValueError("time_mode 仅支持 collected / published")
-            logger.info("[%s] 按日期区间取消收藏（%s，边拉边取消）：%s ~ %s",
-                        account.account_id, time_mode, dt_from, dt_to)
+            logger.info("[%s] 按日期区间取消收藏（边拉边取消）：%s ~ %s",
+                        account.account_id, dt_from, dt_to)
             result = await api_client.cancel_collect_by_window(
-                cookie_header, dt_from, dt_to, on_progress=_progress, time_mode=time_mode
+                cookie_header, dt_from, dt_to, on_progress=_progress
             )
             if result["canceled"] == 0:
                 result["note"] = "该日期区间内没有匹配的收藏，未执行取消"
@@ -395,6 +437,27 @@ class DouyinAdapter(BasePlatformAdapter):
         result["matched"] = len(aweme_ids)
         logger.info("[%s] 批量取消收藏完成：%s", account.account_id, result)
         return result
+
+    async def resolve_download_urls(self, account: AccountContext, content_id: str) -> list[dict]:
+        """按 aweme_id 调详情接口返回可下载直链列表（首项为推荐画质）。
+
+        每个链接附 headers（UA / Referer）：抖音 CDN 直链下载时需与页面请求一致，
+        交给 aria2c 时作为请求头注入。
+        """
+        if not str(content_id).isdigit():
+            raise ValueError("douyin 下载解析需要纯数字 aweme_id")
+        aweme_id = str(content_id)
+        headers = {
+            "user-agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                           "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"),
+            "referer": f"https://www.douyin.com/video/{aweme_id}",
+        }
+        cookie_header = await api_client.profile_cookie_header(account.profile_path)
+        logger.info("[%s] 解析下载直链：aweme_id=%s", account.account_id, aweme_id)
+        result = await asyncio.to_thread(api_client.fetch_aweme_detail, cookie_header, aweme_id)
+        for link in result["links"]:
+            link["headers"] = headers
+        return result["links"]
 
     async def login(self, account: AccountContext, timeout: float | None = None) -> bool:
         """打开有头浏览器等待扫码；检测到 sessionid 即成功。"""
