@@ -21,9 +21,10 @@ import {
   Save,
   Maximize2,
   Frame,
-  ImageDown
+  ImageDown,
+  RotateCcw
 } from 'lucide-react';
-import { AgentConfigRow, AgentTestResult, backfillCovers, clearDownloadLogs, DownloaderId, DOWNLOAD_QUALITIES, ToolchainStatus, fetchAppSettings, fetchToolchain, qualityLabel, updateAppSettings, uploadAvatar } from '../../api';
+import { AgentConfigRow, AgentTestResult, backfillCovers, clearAllFavorites, clearDownloadLogs, CoverStatus, DownloaderId, DOWNLOAD_QUALITIES, ToolchainStatus, fetchAppSettings, fetchCoverStatus, fetchToolchain, qualityLabel, updateAppSettings, uploadAvatar } from '../../api';
 import { TerminalDialog } from '../TerminalDialog';
 
 interface SettingsViewProps {
@@ -208,8 +209,37 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   };
 
+  // ---------- 重置收藏夹 ----------
+  const [resettingFavs, setResettingFavs] = useState(false);
+
+  const handleResetFavorites = async () => {
+    if (!window.confirm(`确定重置收藏夹？将删除本地库全部 ${totalItemsCount} 条收藏及对应内容记录（含 AI 标签），平台云端收藏不受影响，该操作不可恢复。`)) return;
+    setResettingFavs(true);
+    try {
+      const { deleted, contents_deleted } = await clearAllFavorites();
+      onShowToast(`已重置收藏夹，删除 ${deleted} 条收藏关系与 ${contents_deleted} 条内容记录`, 'success');
+    } catch (err: any) {
+      onShowToast(`重置失败：${err?.message || '未知错误'}`, 'error');
+    } finally {
+      setResettingFavs(false);
+    }
+  };
+
   // ---------- 封面图本地化补齐 ----------
   const [coverChecking, setCoverChecking] = useState(false);
+  const [coverStatus, setCoverStatus] = useState<CoverStatus | null>(null);
+
+  const refreshCoverStatus = () => {
+    fetchCoverStatus().then(setCoverStatus).catch(() => {});
+  };
+
+  // 设置页挂载期间轮询进度（本地 COUNT 查询，开销可忽略）
+  useEffect(() => {
+    refreshCoverStatus();
+    const timer = window.setInterval(refreshCoverStatus, 3000);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleCoverBackfill = async () => {
     if (coverChecking) return;
@@ -225,6 +255,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       onShowToast(`封面补齐失败：${err?.message || '未知错误'}`, 'error');
     } finally {
       setCoverChecking(false);
+      refreshCoverStatus();
     }
   };
 
@@ -727,20 +758,54 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
 
           {/* 封面图本地化补齐 */}
-          <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-50 dark:border-slate-800/80">
-            <div>
-              <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">封面图本地化补齐</div>
-              <div className="text-[11px] text-slate-400">检查封面本地缓存状态并更新到数据库，缺失的由后台队列自动下载，避免图片链接过期</div>
+          <div className="flex flex-col gap-2.5 pt-4 border-t border-slate-50 dark:border-slate-800/80">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">封面图本地化补齐</div>
+                <div className="text-[11px] text-slate-400">检查封面本地缓存状态并更新到数据库，缺失的由后台队列自动下载，避免图片链接过期</div>
+              </div>
+              <button
+                type="button"
+                onClick={handleCoverBackfill}
+                disabled={coverChecking}
+                className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 border border-sky-100 dark:border-sky-900 hover:bg-sky-100 dark:hover:bg-sky-900/40 transition-colors flex items-center gap-1.5 shrink-0 disabled:opacity-50 cursor-pointer"
+              >
+                {coverChecking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImageDown className="w-3.5 h-3.5" />}
+                {coverChecking ? '检查中...' : '检查并补齐封面'}
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={handleCoverBackfill}
-              disabled={coverChecking}
-              className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 border border-sky-100 dark:border-sky-900 hover:bg-sky-100 dark:hover:bg-sky-900/40 transition-colors flex items-center gap-1.5 shrink-0 disabled:opacity-50 cursor-pointer"
-            >
-              {coverChecking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImageDown className="w-3.5 h-3.5" />}
-              {coverChecking ? '检查中...' : '检查并补齐封面'}
-            </button>
+
+            {coverStatus && coverStatus.total > 0 && (
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between gap-3 text-[11px]">
+                  <span className="text-slate-500 dark:text-slate-400">
+                    已本地化{' '}
+                    <span className="font-bold text-sky-600 dark:text-sky-400">{coverStatus.localized}</span> / {coverStatus.total}
+                  </span>
+                  {coverStatus.missing > 0 ? (
+                    coverStatus.queue_size > 0 ? (
+                      <span className="flex items-center gap-1 text-slate-400 min-w-0 shrink-0">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        后台下载中，队列剩余 {coverStatus.queue_size} 张
+                      </span>
+                    ) : (
+                      <span className="text-slate-400 shrink-0">待补齐 {coverStatus.missing} 张（点击按钮重新检查）</span>
+                    )
+                  ) : (
+                    <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 shrink-0">
+                      <CheckCircle2 className="w-3 h-3" />
+                      全部封面已本地化
+                    </span>
+                  )}
+                </div>
+                <div className="h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-sky-500 transition-all duration-500"
+                    style={{ width: `${Math.min(100, (coverStatus.localized / coverStatus.total) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -927,6 +992,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             >
               <Download className="w-3.5 h-3.5 text-slate-600 dark:text-slate-400" />
               导出 CSV 表格
+            </button>
+          </div>
+
+          {/* 重置收藏夹 */}
+          <div className="flex items-center justify-between gap-3 pt-2 border-t border-slate-50 dark:border-slate-800/80">
+            <div>
+              <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">重置收藏夹</div>
+              <div className="text-[11px] text-slate-400">清空本地库全部 {totalItemsCount} 条收藏及对应内容记录（云端不受影响，可重新抓取恢复）</div>
+            </div>
+            <button
+              type="button"
+              onClick={handleResetFavorites}
+              disabled={resettingFavs}
+              className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-900 hover:bg-rose-100 dark:hover:bg-rose-900/40 transition-colors flex items-center gap-1.5 shrink-0 disabled:opacity-50 cursor-pointer"
+            >
+              {resettingFavs ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+              {resettingFavs ? '重置中...' : '重置收藏夹'}
             </button>
           </div>
         </div>

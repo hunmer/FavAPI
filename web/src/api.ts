@@ -706,16 +706,26 @@ export async function listTags(limit = 100): Promise<{ tags: TagStatRow[]; group
 
 // ---------- 收藏批量删除 ----------
 
-/** 批量删除收藏关系（favorites 行），contents 主表保留。 */
+/** 批量/单个删除收藏关系，并联动清理不再被引用的内容主表行（contents）。 */
+export interface DeleteFavoritesResult {
+  deleted: number;
+  contents_deleted: number;
+}
+
 export async function deleteFavorites(
   items: Array<{ account_id: string; platform: string; content_id: string }>
-): Promise<{ deleted: number }> {
+): Promise<DeleteFavoritesResult> {
   return request('/favorites/batch-delete', { method: 'POST', body: JSON.stringify({ items }) });
 }
 
-/** 按账号一键清空本地库全部收藏关系（contents 主表保留）。 */
-export async function clearFavorites(accountId: string): Promise<{ deleted: number }> {
+/** 按账号一键清空本地库全部收藏关系，联动清理孤儿 contents。 */
+export async function clearFavorites(accountId: string): Promise<DeleteFavoritesResult> {
   return request(`/favorites?account_id=${encodeURIComponent(accountId)}`, { method: 'DELETE' });
+}
+
+/** 重置收藏夹：清空本地库全部账号的收藏关系与 contents（云端不受影响）。 */
+export async function clearAllFavorites(): Promise<DeleteFavoritesResult> {
+  return request('/favorites', { method: 'DELETE' });
 }
 
 // ---------- 标签管理 ----------
@@ -723,6 +733,7 @@ export async function clearFavorites(accountId: string): Promise<{ deleted: numb
 export interface TagDeleteResult {
   contents_updated: number;
   favorites_deleted: number;
+  contents_deleted: number;
 }
 
 /** 删除标签；deleteFavorites=true 时一并删除含该标签的收藏关系。 */
@@ -906,6 +917,18 @@ export interface CoverBackfillResult {
 /** 核对封面本地化状态入库，并把缺失封面提交后台队列补齐（防远程链接过期）。 */
 export async function backfillCovers(): Promise<CoverBackfillResult> {
   return request('/covers/backfill', { method: 'POST' });
+}
+
+export interface CoverStatus {
+  total: number;      // 有封面链接的内容总数
+  localized: number;  // 已本地化数
+  missing: number;    // 缺失数
+  queue_size: number; // 队列剩余（含执行中）
+}
+
+/** 封面本地化进度（设置页轮询）。 */
+export async function fetchCoverStatus(): Promise<CoverStatus> {
+  return request('/covers/status');
 }
 
 // ---------- 下载工具链检测（yt-dlp / videodl） ----------

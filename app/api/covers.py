@@ -37,3 +37,9 @@ async def get_cover(platform: str, content_id: str):
 async def backfill_covers():
     """核对封面本地化状态入库，缺失的提交后台队列补齐。"""
     return await cover_worker.backfill()
+
+
+@router.get("/status")
+async def cover_status():
+    """封面本地化进度（设置页轮询展示）。"""
+    return await cover_worker.status()

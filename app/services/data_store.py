@@ -99,8 +99,31 @@ async def save_fetch_result(account: dict, items: list[dict], source: str = "") 
     }
 
 
-async def delete_favorites(refs: list[dict]) -> int:
-    """批量删除收藏关系行（contents 主表保留，与标签删除行为一致）。
+async def purge_orphan_contents(ids: list[str] | None = None) -> int:
+    """清理不再被任何收藏关系引用的 contents 行。
+
+    ids 为空列表时直接返回；限定 ids 时只在这些内容中清理（仍被其他账号/
+    收藏夹/来源引用的保留）；ids=None 时全库清理（favorites 已清空的场景，
+    等价于清空全部 contents）。分块提交规避 SQLite 变量数上限。
+    """
+    orphan_sql = """DELETE FROM contents WHERE {}NOT EXISTS
+        (SELECT 1 FROM favorites f WHERE f.content_id = contents.content_id)"""
+    if ids is None:
+        cur = await db.execute(orphan_sql.format(""))
+        return cur.rowcount or 0
+    total = 0
+    for i in range(0, len(ids), 500):
+        chunk = ids[i : i + 500]
+        ph = ", ".join("?" for _ in chunk)
+        cur = await db.execute(
+            orphan_sql.format(f"content_id IN ({ph}) AND "), tuple(chunk)
+        )
+        total += cur.rowcount or 0
+    return total
+
+
+async def delete_favorites(refs: list[dict]) -> dict:
+    """批量删除收藏关系行，并联动清理不再被引用的 contents 行。
 
     refs: [{account_id, platform, content_id}]，按三元组精确删除。
     executemany 一次提交（全选数千条时避免逐条往返）。
@@ -110,13 +133,26 @@ async def delete_favorites(refs: list[dict]) -> int:
         "DELETE FROM favorites WHERE account_id = ? AND platform = ? AND content_id = ?",
         rows,
     )
-    return cur.rowcount or 0
+    contents_deleted = await purge_orphan_contents([r[2] for r in rows])
+    return {"deleted": cur.rowcount or 0, "contents_deleted": contents_deleted}
 
 
-async def clear_favorites(account_id: str) -> int:
-    """按账号一键清空全部收藏关系行（contents 主表保留）。"""
-    cur = await db.execute("DELETE FROM favorites WHERE account_id = ?", (account_id,))
-    return cur.rowcount or 0
+async def clear_favorites(account_id: str | None = None) -> dict:
+    """一键清空收藏关系行并联动清理 contents（account_id 为空时清空全部账号）。"""
+    if account_id:
+        affected = [
+            r["content_id"]
+            for r in await db.query_all(
+                "SELECT DISTINCT content_id FROM favorites WHERE account_id = ?", (account_id,)
+            )
+        ]
+        cur = await db.execute("DELETE FROM favorites WHERE account_id = ?", (account_id,))
+        contents_deleted = await purge_orphan_contents(affected)
+    else:
+        cur = await db.execute("DELETE FROM favorites")
+        # favorites 已全部清空，全库清理即清空全部 contents
+        contents_deleted = await purge_orphan_contents()
+    return {"deleted": cur.rowcount or 0, "contents_deleted": contents_deleted}
 
 
 _CONTENT_URL_TEMPLATES = {

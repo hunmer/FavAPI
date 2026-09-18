@@ -66,10 +66,8 @@ async def tag_usage(tag: str) -> int:
 
 
 async def delete_tag(tag: str, delete_favorites: bool = False) -> dict:
-    """从所有内容的 tags 中移除该标签；delete_favorites=true 时一并删除相关收藏关系。
-
-    contents 主表保留（与账号删除的既有行为一致），仅清 favorites 关系行。
-    """
+    """从所有内容的 tags 中移除该标签；delete_favorites=true 时一并删除相关收藏关系，
+    并联动清理不再被引用的 contents 行。"""
     rows = await db.query_all(
         """SELECT content_id, tags FROM contents c
            WHERE EXISTS (SELECT 1 FROM json_each(c.tags) WHERE json_each.value = ?)""",
@@ -87,11 +85,15 @@ async def delete_tag(tag: str, delete_favorites: bool = False) -> dict:
             (json.dumps(tags, ensure_ascii=False), now, r["content_id"]),
         )
     favorites_deleted = 0
+    contents_deleted = 0
     if delete_favorites and rows:
         ids = [r["content_id"] for r in rows]
         ph = ", ".join("?" for _ in ids)
         cur = await db.execute(f"DELETE FROM favorites WHERE content_id IN ({ph})", tuple(ids))
         favorites_deleted = cur.rowcount
+        # 联动清理不再被引用的 contents 行（延迟导入避免与 data_store 循环依赖）
+        from app.services import data_store
+        contents_deleted = await data_store.purge_orphan_contents(ids)
     # 分组中同步移除该标签
     for g in await list_groups():
         if tag in g["tags"]:
@@ -100,7 +102,7 @@ async def delete_tag(tag: str, delete_favorites: bool = False) -> dict:
                 "UPDATE tag_groups SET tags = ? WHERE group_name = ?",
                 (json.dumps(remaining, ensure_ascii=False), g["group"]),
             )
-    return {"contents_updated": len(rows), "favorites_deleted": favorites_deleted}
+    return {"contents_updated": len(rows), "favorites_deleted": favorites_deleted, "contents_deleted": contents_deleted}
 
 
 # ---------- 手动打标 ----------

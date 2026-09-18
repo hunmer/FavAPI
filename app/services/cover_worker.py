@@ -116,6 +116,20 @@ def queue_size() -> int:
     return _queue.qsize() if _queue is not None else 0
 
 
+async def status() -> dict:
+    """封面本地化进度：总数 / 已本地化 / 缺失 / 队列剩余。"""
+    total_row, done_row = await asyncio.gather(
+        db.query_one("SELECT COUNT(*) AS n FROM contents"
+                     " WHERE cover_url IS NOT NULL AND cover_url != ''"),
+        db.query_one("SELECT COUNT(*) AS n FROM contents"
+                     " WHERE cover_file IS NOT NULL AND cover_file != ''"),
+    )
+    total = (total_row or {}).get("n") or 0
+    localized = (done_row or {}).get("n") or 0
+    return {"total": total, "localized": localized,
+            "missing": max(total - localized, 0), "queue_size": queue_size()}
+
+
 async def _run_worker():
     while True:
         platform, content_id, url = await _queue.get()

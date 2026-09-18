@@ -13,6 +13,33 @@ import { useAiTagging } from './useAiTagging';
 import * as api from '../../api';
 import { useSearchParams } from 'react-router-dom';
 
+/** 过滤条件记忆：离开数据页后再进入，自动恢复上次过滤（localStorage 持久化） */
+const FILTERS_STORAGE_KEY = 'favapi_data_filters';
+
+/** 记忆的过滤条件（字段名与 URL 查询参数一致，便于统一读写） */
+interface SavedFilters {
+  account: string;
+  folder: string;
+  source: string;
+  author: string;
+  date: string;
+  date_end: string;
+  pub_start: string;
+  pub_end: string;
+  tags: string[];
+  q: string;
+}
+
+/** 读取记忆的过滤条件；无记忆或 JSON 损坏返回 null（按无记忆处理） */
+const readSavedFilters = (): Partial<SavedFilters> | null => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(FILTERS_STORAGE_KEY) || 'null');
+    return raw && typeof raw === 'object' ? raw : null;
+  } catch {
+    return null;
+  }
+};
+
 interface DataBrowserViewProps {
   accounts: Account[];
   initialAccountId?: string;
@@ -54,27 +81,35 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
   /** 过滤状态初始化：读取当前地址栏查询参数（组件外使用，不依赖 hooks）。 */
   const searchParamsInit = () => new URLSearchParams(window.location.search);
 
+  const urlInit = searchParamsInit();
+  const savedFilters = readSavedFilters();
+  // 恢复优先级：URL 参数（外部跳转显式意图）> localStorage 记忆 > prop/默认
+  const initFilter = (urlKey: keyof SavedFilters, fallback = ''): string =>
+    (urlInit.get(urlKey) as string) || (savedFilters?.[urlKey] as string) || fallback;
+
   const [selectedAccountId, setSelectedAccountId] = useState<string>(
-    searchParamsInit().get('account') || initialAccountId || 'all'
+    urlInit.get('account') || savedFilters?.account || initialAccountId || 'all'
   );
-  const [searchQuery, setSearchQuery] = useState(externalSearchQuery || searchParamsInit().get('q') || '');
-  const [selectedFolder, setSelectedFolder] = useState<string>(searchParamsInit().get('folder') || 'all');
+  const initialQuery = externalSearchQuery || urlInit.get('q') || savedFilters?.q || '';
+  const [searchQuery, setSearchQuery] = useState(initialQuery);
+  const [selectedFolder, setSelectedFolder] = useState<string>(initFilter('folder', 'all'));
   // 入库来源过滤（收藏列表 / 喜欢列表 / 稍后再看列表…）
-  const [selectedSource, setSelectedSource] = useState<string>(searchParamsInit().get('source') || 'all');
+  const [selectedSource, setSelectedSource] = useState<string>(initFilter('source', 'all'));
   // 作者过滤器（点击卡片作者名可快捷应用）
-  const [selectedAuthor, setSelectedAuthor] = useState<string>(searchParamsInit().get('author') || 'all');
+  const [selectedAuthor, setSelectedAuthor] = useState<string>(initFilter('author', 'all'));
   // 入库日期 / 发布时间过滤（URL 参数：date、date_end、pub_start、pub_end）
-  const [selectedDate, setSelectedDate] = useState<string>(searchParamsInit().get('date') || '');
-  const [selectedEndDate, setSelectedEndDate] = useState<string>(searchParamsInit().get('date_end') || '');
+  const [selectedDate, setSelectedDate] = useState<string>(initFilter('date'));
+  const [selectedEndDate, setSelectedEndDate] = useState<string>(initFilter('date_end'));
   const handleDateFilterChange = (start: string, end: string) => {
     setSelectedDate(start);
     setSelectedEndDate(end);
   };
-  const [selectedPubDate, setSelectedPubDate] = useState<string>(searchParamsInit().get('pub_start') || '');
-  const [selectedPubEndDate, setSelectedPubEndDate] = useState<string>(searchParamsInit().get('pub_end') || '');
+  const [selectedPubDate, setSelectedPubDate] = useState<string>(initFilter('pub_start'));
+  const [selectedPubEndDate, setSelectedPubEndDate] = useState<string>(initFilter('pub_end'));
   // 多选标签过滤（OR：含任一选中标签即匹配）
   const [selectedTags, setSelectedTags] = useState<string[]>(
-    () => searchParamsInit().get('tags')?.split(',').filter(Boolean) ?? []
+    () => urlInit.get('tags')?.split(',').filter(Boolean)
+      ?? (Array.isArray(savedFilters?.tags) ? savedFilters.tags : [])
   );
 
   // 切换账号：账号过滤收敛收藏夹/来源与作者候选，一并重置
@@ -97,8 +132,11 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
     );
   };
 
+  // 外部全局搜索词变化时同步（挂载时为空则跳过，避免覆盖记忆恢复的搜索词）
+  const extSearchPrev = React.useRef(externalSearchQuery);
   useEffect(() => {
-    if (externalSearchQuery !== undefined) {
+    if (extSearchPrev.current !== externalSearchQuery) {
+      extSearchPrev.current = externalSearchQuery;
       setSearchQuery(externalSearchQuery);
     }
   }, [externalSearchQuery]);
@@ -378,7 +416,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
 
   // ---------- 服务端查询 ----------
   // 搜索防抖：输入停顿后再触发查询
-  const [debouncedQuery, setDebouncedQuery] = useState(externalSearchQuery || '');
+  const [debouncedQuery, setDebouncedQuery] = useState(initialQuery);
   useEffect(() => {
     const t = window.setTimeout(() => setDebouncedQuery(searchQuery), 300);
     return () => window.clearTimeout(t);
@@ -406,8 +444,20 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
     setSearchQuery(searchParams.get('q') || '');
   }, [searchParams]);
 
-  // 过滤状态 → URL（replace 不产生历史；q 用防抖值避免每键写 URL）
+  // 过滤状态 → URL + localStorage 记忆（replace 不产生历史；q 用防抖值避免每键写 URL）
   useEffect(() => {
+    localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify({
+      account: selectedAccountId,
+      folder: selectedFolder,
+      source: selectedSource,
+      author: selectedAuthor,
+      date: selectedDate,
+      date_end: selectedEndDate,
+      pub_start: selectedPubDate,
+      pub_end: selectedPubEndDate,
+      tags: selectedTags,
+      q: debouncedQuery.trim(),
+    }));
     const next = new URLSearchParams();
     if (selectedAccountId !== 'all') next.set('account', selectedAccountId);
     if (selectedFolder !== 'all') next.set('folder', selectedFolder);

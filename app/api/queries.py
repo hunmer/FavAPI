@@ -147,16 +147,14 @@ class FavoritesBatchDelete(BaseModel):
 
 @router.post("/favorites/batch-delete")
 async def batch_delete_favorites(body: FavoritesBatchDelete):
-    """批量删除收藏关系（favorites 行），contents 主表保留。"""
-    deleted = await data_store.delete_favorites([i.model_dump() for i in body.items])
-    return {"deleted": deleted}
+    """批量删除收藏关系，并联动清理不再被引用的 contents 行。"""
+    return await data_store.delete_favorites([i.model_dump() for i in body.items])
 
 
 @router.delete("/favorites")
-async def clear_favorites(account_id: str = Query(min_length=1)):
-    """按账号一键清空全部收藏关系（favorites 行），contents 主表保留。"""
-    deleted = await data_store.clear_favorites(account_id)
-    return {"deleted": deleted}
+async def clear_favorites(account_id: str | None = Query(None, min_length=1)):
+    """一键清空收藏关系（传 account_id 只清该账号，不传清空全部账号），联动清理孤儿 contents。"""
+    return await data_store.clear_favorites(account_id)
 
 
 

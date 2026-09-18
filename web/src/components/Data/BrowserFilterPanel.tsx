@@ -620,19 +620,18 @@ export const BrowserFilterPanel: React.FC<{
         </div>
         </div>
 
-        {/* 清空全部过滤（面板底部固定，不随过滤项滚动） */}
-        {totalAll > 0 && hasActiveFilters && (
-          <div className="p-3 border-t border-slate-100 dark:border-slate-800">
-            <button
-              type="button"
-              onClick={onClearAllFilters}
-              className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-rose-200 hover:bg-rose-50 dark:hover:bg-rose-950 text-slate-500 dark:text-slate-400 hover:text-rose-600 text-xs font-bold shadow-2xs inline-flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
-            >
-              <X className="w-3.5 h-3.5" />
-              清空全部过滤
-            </button>
-          </div>
-        )}
+        {/* 清空全部过滤（常驻面板底部固定，不随过滤项滚动；无激活过滤时禁用） */}
+        <div className="p-3 border-t border-slate-100 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={onClearAllFilters}
+            disabled={!hasActiveFilters}
+            className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-rose-200 hover:bg-rose-50 dark:hover:bg-rose-950 text-slate-500 dark:text-slate-400 hover:text-rose-600 text-xs font-bold shadow-2xs inline-flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
+          >
+            <X className="w-3.5 h-3.5" />
+            清空全部过滤
+          </button>
+        </div>
       </div>
     </aside>
   );
