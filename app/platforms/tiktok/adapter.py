@@ -1,9 +1,9 @@
 """TikTok 适配器：声明式浏览器抓取 + API 直连。
 
 浏览器模式（登录 / 滚动拦截）完全复用 DeclarativeAdapter（platforms/tiktok/
-platform.json）；本类在其上叠加 API 直连能力：fetch_favorites 按
-params.method 分发，并提供 get_profile / list_favorites / list_likes
-三个 API 操作。
+platform.json）；本类在其上叠加 API 直连能力：收藏 / 喜欢两个抓取目标
+（fetch_by_action 分发）+ get_profile / list_favorites / list_likes /
+resolve_download_urls 四个 API 操作。
 
 secUid 两个列表接口都要求入参且不落 cookie：登录成功后 refresh_profile
 从浏览器会话提取（头像链接 → 个人主页 SSR 数据）回填账号 extra，运行期
@@ -21,6 +21,11 @@ from app.platforms.base import (
     ApiOperation,
     ApiOperationParam,
     FetchResult,
+    FetchTarget,
+    PARAM_COUNT,
+    PARAM_CURSOR,
+    PARAM_DATE_FROM,
+    PARAM_DATE_TO,
 )
 from app.platforms.declarative import DeclarativeAdapter
 from app.services import browser
@@ -36,6 +41,26 @@ _ITEM_URL_PATTERN = re.compile(r"(?:video|photo)/(\d{6,})")
 class TikTokAdapter(DeclarativeAdapter):
     api_fetch_implemented = True  # 收藏列表支持 API 直连（params.method="api"）
     download_api_implemented = True  # 支持按帖子 ID/链接解析下载直链（平台下载 → aria2c）
+    # 可抓取入库的列表目标（source 为 favorites 来源标记；空 = 收藏列表）
+    fetch_targets = (
+        FetchTarget(
+            action="list_favorites", name="抓取收藏列表",
+            description="API 直连抓取当前账号收藏列表并入库（需活跃登录态）",
+            params=[PARAM_COUNT, PARAM_CURSOR, PARAM_DATE_FROM, PARAM_DATE_TO],
+        ),
+        FetchTarget(
+            action="list_likes", name="抓取喜欢列表", source="喜欢列表",
+            description="API 直连抓取当前账号喜欢（点赞）帖子并入库；"
+                        "私密点赞（TikTok 默认设置）接口只返回空列表，需先在平台设为公开点赞",
+            params=[
+                PARAM_COUNT, PARAM_CURSOR,
+                ApiOperationParam(
+                    key="sec_uid", label="secUid（可选）", type="text",
+                    help="默认自动提取；提取失败时手动填写（个人主页源码中可见）",
+                ),
+            ],
+        ),
+    )
     api_operations = (
         ApiOperation(
             op_id="get_profile",
@@ -132,6 +157,45 @@ class TikTokAdapter(DeclarativeAdapter):
             count=(count + skip) if count else 0, on_batch=on_batch)
         window = collected[skip:] if not count else collected[skip: skip + count]
         logger.info("[%s] API 直连抓取完成：共 %d 条，返回 [%d:%d] %d 条",
+                    account.account_id, len(collected), skip, skip + len(window),
+                    len(window))
+        return FetchResult(
+            items=window,
+            cursor=skip + len(window),
+            has_more=last_has_more and (not count or len(collected) >= skip + count),
+            total=len(collected),
+        )
+
+    async def fetch_by_action(
+        self, action: str, account: AccountContext, params: dict, on_batch=None
+    ) -> FetchResult:
+        if action == "list_likes":
+            return await self._fetch_likes(account, params, on_batch)
+        return await self.fetch_favorites(account, params, on_batch)
+
+    async def _fetch_likes(self, account: AccountContext, params: dict,
+                           on_batch=None) -> FetchResult:
+        """喜欢(点赞)列表抓取入库（API 直连 favorite/item_list，source=喜欢列表）。
+
+        cursor 语义与收藏一致（已抓取条数偏移）；接口翻页用服务端毫秒时间戳游标。
+        私密点赞（默认设置）接口返回空列表非报错，target 描述已提示。
+        """
+        raw_count = params.get("count")
+        if raw_count in (None, ""):
+            count = constants.DEFAULT_COUNT
+        else:
+            count = max(0, min(int(raw_count), constants.MAX_COUNT))  # 0 = 全部
+        skip = max(0, int(params.get("cursor") or 0))
+        logger.info("[%s] API 直连抓取喜欢列表：count=%s cursor=%d",
+                    account.account_id, count or "全部", skip)
+
+        cookie_header = await api_client.profile_cookie_header(account.profile_path)
+        sec_uid = await self._resolve_sec_uid(account, params, cookie_header)
+        collected, last_has_more = await api_client.fetch_favorite(
+            cookie_header, sec_uid,
+            count=(count + skip) if count else 0, on_batch=on_batch)
+        window = collected[skip:] if not count else collected[skip: skip + count]
+        logger.info("[%s] 喜欢列表抓取完成：共 %d 条，返回 [%d:%d] %d 条",
                     account.account_id, len(collected), skip, skip + len(window),
                     len(window))
         return FetchResult(

@@ -5,7 +5,7 @@
   "homepage": "https://www.tiktok.com",
   "login_cookies": ["sessionid"],
   "proxy": "auto",
-  "supported_actions": ["list_favorites"],
+  "supported_actions": ["list_favorites", "list_likes"],
   "capture": {
     "url_contains": "/api/user/collect/item_list/",
     "page_url": "https://www.tiktok.com/favorites",
