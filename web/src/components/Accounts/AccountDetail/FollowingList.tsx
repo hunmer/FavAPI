@@ -10,9 +10,10 @@ interface FollowingListProps {
 }
 
 /**
- * 账号详情「关注列表」Tab（douyin）：点击拉取当前账号的关注博主，
- * 行内可直接添加为特别关注（添加后按钮变实心红心，分组管理去「特别关注」页）。
- * 拉取需读取浏览器 profile（起一次无头 Chromium 读 cookie），按需手动触发不自动加载。
+ * 账号详情「关注列表」Tab（支持特别关注体系的平台，按账号 platform 分发）：
+ * 点击拉取当前账号的关注博主，行内可直接添加为特别关注（添加后按钮变实心红心，
+ * 分组管理去「特别关注」页）。拉取需读取浏览器 profile（起一次无头 Chromium 读
+ * cookie），按需手动触发不自动加载。
  */
 export const FollowingList: React.FC<FollowingListProps> = ({ account }) => {
   const [loading, setLoading] = useState(false);
@@ -51,6 +52,7 @@ export const FollowingList: React.FC<FollowingListProps> = ({ account }) => {
     try {
       await api.addFollowAuthor({
         sec_uid: u.sec_uid,
+        platform: account.platform,
         account_id: account.id,
         uid: u.uid,
         nickname: u.nickname || '',
@@ -103,7 +105,7 @@ export const FollowingList: React.FC<FollowingListProps> = ({ account }) => {
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="搜索昵称 / 抖音号"
+                placeholder="搜索昵称 / ID"
                 className="w-48 pl-8 pr-3 py-1.5 rounded-xl text-xs bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 outline-none border-0"
               />
             </div>
@@ -174,7 +176,7 @@ export const FollowingList: React.FC<FollowingListProps> = ({ account }) => {
                     {f.nickname || '未知博主'}
                     {f.is_top && (
                       <span className="ml-1.5 px-1 py-px rounded text-[9px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 align-middle">
-                        置顶
+                        特别
                       </span>
                     )}
                   </p>

@@ -108,6 +108,9 @@ class BasePlatformAdapter(ABC):
     # 是否提供「平台下载」能力（按视频 ID 解析直链，配合 aria2c 下载）；
     # 支持的平台覆写为 True 并实现 resolve_download_urls
     download_api_implemented: bool = False
+    # 是否支持特别关注（follows）体系（关注列表拉取 / 博主主页作品 / 作品播放 / 一键同步）；
+    # 支持的平台覆写为 True 并实现下列 follows_* 方法，follows API 层按博主 platform 分发
+    follows_api_implemented: bool = False
 
     @abstractmethod
     async def login(self, account: AccountContext, timeout: float | None = None) -> bool:
@@ -231,3 +234,49 @@ class BasePlatformAdapter(ABC):
         未实现的平台抛 NotImplementedError。
         """
         raise NotImplementedError(f"{self.display_name} 未实现下载直链解析")
+
+    # ---------- 特别关注（follows）体系能力（可选实现） ----------
+
+    async def follows_profile_cookie(self, account: AccountContext) -> str:
+        """取账号登录 cookie 头（follows 各接口共用；失效抛 LoginExpiredError）。"""
+        raise NotImplementedError(f"{self.display_name} 未实现特别关注能力")
+
+    def follows_self_uid(self, cookie_header: str) -> str:
+        """从登录态提取当前账号的博主主键（douyin: sec_uid；bilibili: mid）。空串 = 提取失败。"""
+        raise NotImplementedError(f"{self.display_name} 未实现特别关注能力")
+
+    def follows_validate_uid(self, sec_uid: str) -> None:
+        """校验博主主键格式（可选覆写）；不合法抛 ValueError，由 follows API 层转 400。"""
+
+    async def follows_fetch_following(self, cookie_header: str, self_uid: str,
+                                      count: int = 0, on_batch=None) -> tuple[list[dict], bool]:
+        """拉取关注列表（count 0 = 全部）→ (followings, has_more)。
+
+        条目统一精简结构 {sec_uid, uid, unique_id, nickname, signature,
+        avatar_url, follower_count, aweme_count, is_top}（平台缺失字段置 None/空）。
+        """
+        raise NotImplementedError(f"{self.display_name} 未实现特别关注能力")
+
+    async def follows_fetch_posts_page(self, cookie_header: str, sec_uid: str,
+                                       cursor: int = 0, count: int = 18) -> dict:
+        """拉取一页博主主页作品 → {items, cursor, has_more}。
+
+        cursor 语义：0 = 首页，响应 cursor 供下次翻页，末页返回 0（无更多）；
+        items 为通用 content 行（parser 输出，直接入库/展示）。
+        """
+        raise NotImplementedError(f"{self.display_name} 未实现特别关注能力")
+
+    async def follows_play_info(self, cookie_header: str, content_id: str) -> dict:
+        """作品播放信息 → PlayerModal 统一结构：
+        {aweme_id, desc, create_time(epoch 秒), duration, statistics,
+         author:{nickname, sec_uid}, video_urls, images, music_url}。
+        """
+        raise NotImplementedError(f"{self.display_name} 未实现特别关注能力")
+
+    async def sync_author_posts(self, account: AccountContext, author_row: dict,
+                                cookie_header: str, count: int) -> list[dict]:
+        """拉取单博主最新 count 条作品（通用 content 行），并回填 last_synced_at / 身份字段。
+
+        不负责入库：follows /sync 路由与 follow_sync 抓取目标（task 体系统一入库）共用本方法。
+        """
+        raise NotImplementedError(f"{self.display_name} 未实现特别关注能力")

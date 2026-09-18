@@ -43,6 +43,7 @@ class DouyinAdapter(BasePlatformAdapter):
     supported_actions = ("list_favorites", "list_likes", "list_watchlater", "follow_sync")
     api_fetch_implemented = True  # 浏览器模拟实现已移除，各列表仅保留 API 直连
     download_api_implemented = True  # 支持按 aweme_id 解析下载直链（平台下载 → aria2c）
+    follows_api_implemented = True  # 特别关注体系：关注列表 / 博主主页作品 / 播放 / 一键同步
     # 可抓取入库的列表目标（source 为 favorites 来源标记；空 = 收藏列表）
     fetch_targets = (
         FetchTarget(
@@ -360,6 +361,34 @@ class DouyinAdapter(BasePlatformAdapter):
             "note": "仅展示前 100 位摘要" if len(followings) > 100 else "",
         }
 
+    # ---------- 特别关注（follows）体系：api_client 薄委托 ----------
+
+    async def follows_profile_cookie(self, account: AccountContext) -> str:
+        return await api_client.profile_cookie_header(account.profile_path)
+
+    def follows_self_uid(self, cookie_header: str) -> str:
+        return api_client.self_sec_uid(cookie_header) or ""
+
+    def follows_validate_uid(self, sec_uid: str) -> None:
+        if not sec_uid.startswith("MS4"):
+            raise ValueError("sec_uid 格式不正确（应以 MS4 开头）")
+
+    async def follows_fetch_following(self, cookie_header: str, self_uid: str,
+                                      count: int = 0, on_batch=None) -> tuple[list[dict], bool]:
+        # parse_following_list 输出即统一精简结构，直接透传
+        return await api_client.fetch_following(cookie_header, self_uid, count, on_batch=on_batch)
+
+    async def follows_fetch_posts_page(self, cookie_header: str, sec_uid: str,
+                                       cursor: int = 0, count: int = 18) -> dict:
+        return await asyncio.to_thread(
+            api_client.fetch_post_page, cookie_header, sec_uid, cursor, max(1, min(count, 50))
+        )
+
+    async def follows_play_info(self, cookie_header: str, content_id: str) -> dict:
+        if not content_id.isdigit():
+            raise ValueError("作品 ID 需为纯数字 aweme_id")
+        return await asyncio.to_thread(api_client.fetch_aweme_play_info, cookie_header, content_id)
+
     async def sync_author_posts(self, account: AccountContext, author_row: dict,
                                 cookie_header: str, count: int) -> list[dict]:
         """拉取单博主最新 count 条作品（精确截断），并回填 uid/昵称/头像/last_synced_at。
@@ -419,7 +448,11 @@ class DouyinAdapter(BasePlatformAdapter):
         raw_count = str((params or {}).get("count") or "").strip()
         count = min(max(int(raw_count), 1), 50) if raw_count.isdigit() else 10  # 0/缺省 = 10 条
         cookie_header = await api_client.profile_cookie_header(account.profile_path)
-        authors = await db.query_all("SELECT * FROM follow_authors ORDER BY created_at")
+        # 特别关注博主已多平台：follow_sync 目标只同步本平台博主（其余平台走各自 adapter）
+        authors = await db.query_all(
+            "SELECT * FROM follow_authors WHERE platform = ? ORDER BY created_at",
+            (self.platform,),
+        )
         logger.info("[%s] 同步特别关注：%d 位博主，每位最新 %d 条",
                     account.account_id, len(authors), count)
         collected: list[dict] = []

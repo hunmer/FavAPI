@@ -1,7 +1,11 @@
-"""特别关注（follows）API：关注列表拉取 / 博主管理与分组 / 作品同步 / 播放与已读。"""
+"""特别关注（follows）API：关注列表拉取 / 博主管理与分组 / 作品同步 / 播放与已读。
+
+平台无关：各路由按账号/博主的 platform 经 registry 分发到 adapter 的
+follows_* 能力方法（见 platforms/base.py；douyin / bilibili 已实现），
+新平台接入只需实现 adapter 方法 + 覆写 follows_api_implemented。
+"""
 import asyncio
 import logging
-from urllib.parse import urlparse
 
 from curl_cffi import requests as curl_requests
 from fastapi import APIRouter, HTTPException, Request
@@ -11,7 +15,6 @@ from pydantic import BaseModel, Field
 from app.database import db
 from app.platforms.base import LoginExpiredError
 from app.platforms import registry
-from app.platforms.douyin import api_client as douyin_api
 from app.services import account_manager
 from app.services import data_store
 from app.services import follow_store
@@ -20,6 +23,7 @@ from app.services.follow_store import (
     avatar_local_path,
     download_avatar,
     is_allowed_media_url,
+    media_referer,
 )
 from app.services.task_executor import friendly_error
 from app.utils import now_iso
@@ -62,6 +66,14 @@ class FollowSyncBody(BaseModel):
 
 # ---------- 公共 ----------
 
+def _adapter_or_400(platform: str):
+    """取支持特别关注体系的平台 adapter；未注册/不支持抛 400。"""
+    adapter = registry.get_adapter(platform)
+    if adapter is None or not adapter.follows_api_implemented:
+        raise HTTPException(status_code=400, detail=f"平台「{platform}」暂不支持特别关注体系")
+    return adapter
+
+
 async def _get_account_or_404(account_id: str) -> dict:
     account = await account_manager.get_account(account_id)
     if account is None:
@@ -71,19 +83,23 @@ async def _get_account_or_404(account_id: str) -> dict:
     return account
 
 
-async def _douyin_cookie(account_id: str) -> str:
-    """取账号 profile cookie；登录失效时标记 expired 并抛 409。"""
+async def _account_cookie(account_id: str) -> tuple[dict, str]:
+    """取账号与其登录 cookie（按账号 platform 分发 adapter）。
+
+    登录失效时标记 expired 并抛 409；返回 (account, cookie_header)。
+    """
     account = await _get_account_or_404(account_id)
-    if registry.get_adapter("douyin") is None:
-        raise HTTPException(status_code=400, detail="抖音平台未注册")
+    adapter = _adapter_or_400(account["platform"])
     from app.services import browser
 
     await browser.close_manual(account_id)
     try:
-        return await douyin_api.profile_cookie_header(account["profile_path"])
+        cookie_header = await adapter.follows_profile_cookie(
+            account_manager.to_context(account))
     except LoginExpiredError as exc:
         await account_manager.update_account(account_id, status="expired")
         raise HTTPException(status_code=409, detail=str(exc))
+    return account, cookie_header
 
 
 # ---------- 博主管理 ----------
@@ -118,9 +134,13 @@ async def list_follow_authors():
 
 @router.post("/authors", status_code=201)
 async def add_follow_author(body: FollowAuthorCreate):
+    platform = body.platform or "douyin"
+    adapter = _adapter_or_400(platform)
     sec_uid = body.sec_uid.strip()
-    if not sec_uid.startswith("MS4"):
-        raise HTTPException(status_code=400, detail="sec_uid 格式不正确（应以 MS4 开头）")
+    try:
+        adapter.follows_validate_uid(sec_uid)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     if body.account_id:
         await _get_account_or_404(body.account_id)
     existing = await db.query_one(
@@ -132,14 +152,14 @@ async def add_follow_author(body: FollowAuthorCreate):
         """INSERT INTO follow_authors (sec_uid, platform, account_id, uid, nickname,
                unique_id, avatar_url, signature, follower_count, group_name, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (sec_uid, body.platform, body.account_id, body.uid, body.nickname,
+        (sec_uid, platform, body.account_id, body.uid, body.nickname,
          body.unique_id, body.avatar_url, body.signature, body.follower_count,
          body.group_name, now_iso()),
     )
     # 头像立即本地化（失败静默：avatar 路由读取时还会按库中 URL 兜底重试）
     if body.avatar_url:
         await asyncio.to_thread(download_avatar, sec_uid, body.avatar_url)
-    return {"sec_uid": sec_uid, "status": "added"}
+    return {"sec_uid": sec_uid, "platform": platform, "status": "added"}
 
 
 @router.patch("/authors/{sec_uid}")
@@ -195,25 +215,29 @@ async def follow_author_avatar(sec_uid: str):
 
 @router.get("/following/{account_id}")
 async def fetch_following(account_id: str, count: int = 0):
-    """实时拉取账号的关注列表（douyin，只读；count 0 = 全部）。
+    """实时拉取账号的关注列表（按账号 platform 分发，只读；count 0 = 全部）。
 
-    sec_user_id 从登录态 cookie 自动提取；返回精简博主字段供前端选择添加。
+    当前账号博主主键（douyin sec_uid / bilibili mid）从登录态自动提取；
+    返回统一精简博主字段供前端选择添加。
     """
     count = max(0, min(count, 500))
-    cookie_header = await _douyin_cookie(account_id)
-    sec_uid = douyin_api.self_sec_uid(cookie_header)
-    if not sec_uid:
+    account, cookie_header = await _account_cookie(account_id)
+    adapter = _adapter_or_400(account["platform"])
+    self_uid = adapter.follows_self_uid(cookie_header)
+    if not self_uid:
         raise HTTPException(
             status_code=400,
-            detail="无法从登录态提取 sec_user_id，请重新登录抖音账号后再试",
+            detail=f"无法从登录态提取账号身份，请重新登录{adapter.display_name}账号后再试",
         )
     try:
-        followings, has_more = await douyin_api.fetch_following(cookie_header, sec_uid, count)
+        followings, has_more = await adapter.follows_fetch_following(
+            cookie_header, self_uid, count)
     except Exception as exc:
         logger.exception("拉取关注列表失败：%s", account_id)
         raise HTTPException(status_code=502, detail=friendly_error(exc))
     return {
         "account_id": account_id,
+        "platform": account["platform"],
         "total": len(followings),
         "has_more": has_more,
         "followings": followings,
@@ -224,17 +248,26 @@ async def fetch_following(account_id: str, count: int = 0):
 
 @router.get("/authors/{sec_uid}/posts")
 async def author_posts(sec_uid: str, cursor: int = 0, count: int = 18, account_id: str = ""):
-    """实时拉取博主发布作品（一页，max_cursor 游标），附已读状态。"""
+    """实时拉取博主主页作品（一页；cursor 0 = 首页，末页返回 0），附已读状态。"""
     author = await db.query_one(
         "SELECT * FROM follow_authors WHERE sec_uid = ?", (sec_uid,)
     )
+    adapter = _adapter_or_400((author or {}).get("platform") or "douyin")
     use_account = account_id or (author or {}).get("account_id") or ""
     if not use_account:
-        raise HTTPException(status_code=400, detail="请指定用于浏览的抖音账号（account_id）")
-    cookie_header = await _douyin_cookie(use_account)
+        raise HTTPException(
+            status_code=400,
+            detail=f"请指定用于浏览的{adapter.display_name}账号（account_id）",
+        )
+    account, cookie_header = await _account_cookie(use_account)
+    if author and account["platform"] != (author.get("platform") or "douyin"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"浏览账号平台 {account['platform']} 与博主平台 {author.get('platform')} 不一致",
+        )
     try:
-        batch = await asyncio.to_thread(
-            douyin_api.fetch_post_page, cookie_header, sec_uid, cursor, max(1, min(count, 50))
+        batch = await adapter.follows_fetch_posts_page(
+            cookie_header, sec_uid, max(0, cursor), max(1, min(count, 50))
         )
     except Exception as exc:
         logger.exception("拉取博主作品失败：%s", sec_uid)
@@ -255,15 +288,15 @@ async def author_posts(sec_uid: str, cursor: int = 0, count: int = 18, account_i
             "title": it.get("title"),
             "cover_url": it.get("cover_url"),
             "duration": it.get("duration"),
-            "published_at": it.get("collected_at"),  # parse_aweme 以 create_time 兜底
+            "published_at": it.get("collected_at"),  # 投稿列表 collected_at 即发布时间
             "read": it["content_id"] in read_set,
         }
         for it in batch["items"] if it.get("content_id")
     ]
     return {
         "sec_uid": sec_uid,
-        "author": {k: author[k] for k in ("nickname", "avatar_url", "signature", "group_name",
-                                          "follower_count", "last_synced_at")} if author else None,
+        "author": {k: author[k] for k in ("platform", "nickname", "avatar_url", "signature",
+                                          "group_name", "follower_count", "last_synced_at")} if author else None,
         "items": items,
         "cursor": batch["cursor"],
         "has_more": batch["has_more"],
@@ -274,12 +307,16 @@ async def author_posts(sec_uid: str, cursor: int = 0, count: int = 18, account_i
 
 @router.get("/aweme/{aweme_id}")
 async def aweme_play_info(aweme_id: str, account_id: str):
-    """按作品 ID 拉取播放信息（视频直链 / 图文原图 / 作者 / 统计）。"""
-    if not aweme_id.isdigit():
-        raise HTTPException(status_code=400, detail="作品 ID 需为纯数字 aweme_id")
-    cookie_header = await _douyin_cookie(account_id)
+    """按作品 ID 拉取播放信息（视频直链 / 图文原图 / 作者 / 统计）。
+
+    aweme_id 泛指平台作品 ID（douyin 数字 aweme_id / bilibili BV 号），按账号平台分发。
+    """
+    account, cookie_header = await _account_cookie(account_id)
+    adapter = _adapter_or_400(account["platform"])
     try:
-        info = await asyncio.to_thread(douyin_api.fetch_aweme_play_info, cookie_header, aweme_id)
+        info = await adapter.follows_play_info(cookie_header, aweme_id.strip())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         logger.exception("拉取作品播放信息失败：%s", aweme_id)
         raise HTTPException(status_code=502, detail=friendly_error(exc))
@@ -305,32 +342,34 @@ async def unmark_read(content_id: str):
 
 # ---------- 一键同步最新作品 ----------
 
-@router.post("/sync")
-async def sync_follow_posts(body: FollowSyncBody):
-    """逐特别关注博主拉取最新作品入库（source=特别关注），并刷新 last_synced_at。"""
-    if body.sec_uids:
-        ph = ",".join("?" * len(body.sec_uids))
-        authors = await db.query_all(
-            f"SELECT * FROM follow_authors WHERE sec_uid IN ({ph})", tuple(body.sec_uids)
+async def _select_sync_authors(sec_uids: list[str]) -> list[dict]:
+    if sec_uids:
+        ph = ",".join("?" * len(sec_uids))
+        return await db.query_all(
+            f"SELECT * FROM follow_authors WHERE sec_uid IN ({ph})", tuple(sec_uids)
         )
-    else:
-        authors = await db.query_all("SELECT * FROM follow_authors ORDER BY created_at")
-    if not authors:
-        raise HTTPException(status_code=400, detail="特别关注列表为空，请先添加博主")
+    return await db.query_all("SELECT * FROM follow_authors ORDER BY created_at")
 
-    count = max(1, min(body.count, 50))
-    adapter = registry.get_adapter("douyin")
+
+async def _sync_authors_impl(authors: list[dict], count: int, account_id: str = "",
+                             on_event=None) -> list[dict]:
+    """逐博主按其 platform 分发同步最新作品入库；on_event 逐博主回调进度（/sync 与 SSE 流式共用）。"""
     results = []
     for a in authors:
-        account_id = body.account_id or a["account_id"] or ""
+        platform = a["platform"] or "douyin"
+        use_account = account_id or a["account_id"] or ""
         try:
-            account = await _get_account_or_404(account_id) if account_id else None
+            adapter = registry.get_adapter(platform)
+            if adapter is None or not adapter.follows_api_implemented:
+                raise ValueError(f"平台「{platform}」暂不支持特别关注同步")
+            account = await _get_account_or_404(use_account) if use_account else None
             if account is None:
                 raise ValueError("博主未绑定可用账号，请先在添加时选择账号")
-            cookie_header = await douyin_api.profile_cookie_header(account["profile_path"])
-            items = await adapter.sync_author_posts(
-                account_manager.to_context(account), a, cookie_header, count
-            )
+            if account["platform"] != platform:
+                raise ValueError(f"账号平台 {account['platform']} 与博主平台 {platform} 不一致")
+            ctx = account_manager.to_context(account)
+            cookie_header = await adapter.follows_profile_cookie(ctx)
+            items = await adapter.sync_author_posts(ctx, a, cookie_header, count)
             stats = await data_store.save_fetch_result(account, items, source=SOURCE_SPECIAL)
             results.append({
                 "sec_uid": a["sec_uid"], "nickname": a["nickname"],
@@ -338,37 +377,123 @@ async def sync_follow_posts(body: FollowSyncBody):
                 "new": stats["new_favorites"],
             })
         except LoginExpiredError as exc:
-            if account_id:
-                await account_manager.update_account(account_id, status="expired")
+            if use_account:
+                await account_manager.update_account(use_account, status="expired")
             results.append({
                 "sec_uid": a["sec_uid"], "nickname": a["nickname"],
                 "status": "failed", "detail": str(exc),
+            })
+        except HTTPException as exc:
+            results.append({
+                "sec_uid": a["sec_uid"], "nickname": a["nickname"],
+                "status": "failed", "detail": str(exc.detail),
             })
         except Exception as exc:
             results.append({
                 "sec_uid": a["sec_uid"], "nickname": a["nickname"],
                 "status": "failed", "detail": friendly_error(exc),
             })
+        if on_event:
+            await on_event(results[-1], len(results), len(authors))
         await asyncio.sleep(1)  # 逐博主节流防风控
+    return results
 
+
+@router.post("/sync")
+async def sync_follow_posts(body: FollowSyncBody):
+    """逐特别关注博主拉取最新作品入库（source=特别关注），并刷新 last_synced_at。"""
+    authors = await _select_sync_authors(body.sec_uids)
+    if not authors:
+        raise HTTPException(status_code=400, detail="特别关注列表为空，请先添加博主")
+    results = await _sync_authors_impl(
+        authors, max(1, min(body.count, 50)), body.account_id
+    )
     ok = sum(1 for r in results if r["status"] == "ok")
     new_total = sum(r.get("new", 0) for r in results if r["status"] == "ok")
     return {"total": len(results), "ok": ok, "new": new_total, "results": results}
+
+
+@router.post("/sync/stream")
+async def sync_follow_posts_stream(body: FollowSyncBody):
+    """SSE 流式一键同步：逐博主推 progress，结束推 done（Header 按钮实时进度用）。
+
+    事件格式 data: {"type": "progress"|"done"|"error", ...}；客户端断开时后台执行自动取消。
+    """
+    import json
+
+    from fastapi.responses import StreamingResponse
+
+    authors = await _select_sync_authors(body.sec_uids)
+    if not authors:
+        raise HTTPException(status_code=400, detail="特别关注列表为空，请先添加博主")
+
+    queue: asyncio.Queue = asyncio.Queue()
+    results_holder: list[dict] = []  # 逐博主累计（progress 事件里算 ok/new 汇总用）
+
+    async def _run():
+        try:
+            async def _on_event(result: dict, done_n: int, total_n: int):
+                results_holder.append(result)
+                ok = sum(1 for r in results_holder if r["status"] == "ok")
+                new_n = sum(r.get("new", 0) for r in results_holder if r["status"] == "ok")
+                await queue.put({
+                    "type": "progress",
+                    "done": done_n, "total": total_n,
+                    "nickname": result.get("nickname"),
+                    "status": result.get("status"),
+                    "fetched": result.get("fetched", 0),
+                    "new": new_n, "ok": ok,
+                })
+
+            results = await _sync_authors_impl(
+                authors, max(1, min(body.count, 50)), body.account_id, on_event=_on_event
+            )
+            ok = sum(1 for r in results if r["status"] == "ok")
+            new_total = sum(r.get("new", 0) for r in results if r["status"] == "ok")
+            await queue.put({"type": "done", "total": len(results), "ok": ok, "new": new_total,
+                             "results": results})
+        except Exception as exc:
+            logger.exception("流式同步失败")
+            await queue.put({"type": "error", "message": friendly_error(exc)})
+        finally:
+            await queue.put(None)
+
+    task = asyncio.create_task(_run())
+
+    async def sse():
+        try:
+            while True:
+                evt = await queue.get()
+                if evt is None:
+                    break
+                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+        finally:
+            if not task.done():  # 客户端断开 → 取消后台执行
+                task.cancel()
+
+    return StreamingResponse(
+        sse(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 # ---------- 媒体代理 ----------
 
 @router.get("/media")
 def proxy_media(url: str, request: Request):
-    """抖音 CDN 媒体流式代理（带 UA/Referer），供前端 <video>/<img> 播放。
+    """平台 CDN 媒体流式代理（带 UA，抖音系另带 referer），供前端 <video>/<img> 播放。
 
-    浏览器直连抖音 CDN 会因 referer/UA 被拒，统一走本代理；
+    浏览器直连各平台 CDN 会因 referer/UA 被拒，统一走本代理；
     Range 头透传以支持视频进度拖动。同步 def：FastAPI 自动放线程池，不阻塞事件循环。
     """
     if not is_allowed_media_url(url):
         raise HTTPException(status_code=403, detail="不允许的媒体域名")
 
-    headers = {"user-agent": MEDIA_UA, "referer": "https://www.douyin.com/"}
+    headers = {"user-agent": MEDIA_UA}
+    referer = media_referer(url)
+    if referer:
+        headers["referer"] = referer
     range_header = request.headers.get("range")
     if range_header:
         headers["range"] = range_header

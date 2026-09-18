@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Account, BilibiliFolder } from '../../../types';
 import { deleteBilibiliFolder, editBilibiliFolder, syncBilibiliFolders } from '../../../api';
+import { PLATFORMS } from '../../../data/platforms';
 import {
   AlertTriangle, CheckSquare, FolderHeart, ListChecks, MoreVertical, Pencil, RefreshCw, Square, Trash2, UserPlus,
 } from 'lucide-react';
@@ -165,7 +166,7 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
             <FolderHeart className="w-4 h-4 text-indigo-600" />
             收藏夹 ({folders.length})
           </button>
-          {account.platform === 'douyin' && (
+          {PLATFORMS.find((p) => p.id === account.platform)?.followsApi && (
             <button
               type="button"
               onClick={() => setListTab('following')}

@@ -34,12 +34,15 @@ interface HeaderProps {
   activeTab: NavTab;
   onOpenCreateAccount: () => void;
   runningFetch?: RunningFetchInfo | null;
+  /** 页面专属操作区（注入右侧控制区；如特别关注页的一键更新按钮），不传则不渲染 */
+  actions?: React.ReactNode;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   activeTab,
   onOpenCreateAccount,
   runningFetch,
+  actions,
 }) => {
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
@@ -151,8 +154,11 @@ export const Header: React.FC<HeaderProps> = ({
         </p>
       </div>
 
-      {/* Right Controls: Auto-refresh, Add Account, Notification, Avatar */}
+      {/* Right Controls: Auto-refresh, Page Actions, Add Account, Notification, Avatar */}
       <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 justify-self-end">
+        {/* 页面专属操作（如特别关注页的一键更新），每个页面各自注入 */}
+        {actions}
+
         {/* 抓取进度指示：仅有任务运行时展示 */}
         {runningFetch && runningFetch.count > 0 && (
           <div

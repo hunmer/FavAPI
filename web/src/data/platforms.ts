@@ -9,6 +9,7 @@ export interface PlatformMeta {
   isSupported: boolean;
   tagline: string;
   apiFetch?: boolean; // 收藏抓取支持 API 直连方式（后端 adapter.api_fetch_implemented）
+  followsApi?: boolean; // 支持特别关注体系（关注列表 / 博主主页作品 / 一键同步）
   fetchTargets?: FetchTargetSpec[]; // 可抓取入库的列表目标（后端 /platforms 下发）
 }
 
@@ -36,6 +37,7 @@ export const PLATFORMS: PlatformMeta[] = [
     badgeBg: 'bg-[#EBF7FD] text-[#00AEEC] border-[#B9E6FA]',
     isSupported: true,
     tagline: '支持多收藏夹全量与增量同步、反风控间隔调节',
+    followsApi: true,
   },
   {
     id: 'xiaohongshu',
@@ -56,6 +58,7 @@ export const PLATFORMS: PlatformMeta[] = [
     isSupported: true,
     tagline: '支持个人合集与点赞/收藏短视频多维度解析',
     apiFetch: true,
+    followsApi: true,
   },
   {
     id: 'kuaishou',

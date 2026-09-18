@@ -1175,6 +1175,67 @@ export function syncFollowPosts(body: { account_id?: string; sec_uids?: string[]
   return request('/follows/sync', { method: 'POST', body: JSON.stringify(body) });
 }
 
+export interface FollowSyncProgress {
+  type: 'progress';
+  done: number;
+  total: number;
+  nickname?: string | null;
+  status: 'ok' | 'failed';
+  fetched: number;
+  new: number;   // 累计新增
+  ok: number;    // 累计成功博主数
+}
+
+/** SSE 流式一键同步：逐博主推送进度，结束推 done（Header 按钮实时进度用）。 */
+export async function syncFollowPostsStream(
+  body: { account_id?: string; sec_uids?: string[]; count?: number },
+  onEvent: (ev: FollowSyncProgress) => void,
+  signal?: AbortSignal
+): Promise<FollowSyncResult> {
+  const res = await fetch(`${BASE}/follows/sync/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as any).detail || res.statusText);
+  }
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let doneResult: FollowSyncResult | null = null;
+  while (true) {
+    const { value, done: finished } = await reader.read();
+    if (finished) break;
+    buffer += decoder.decode(value, { stream: true });
+    let idx: number;
+    while ((idx = buffer.indexOf('\n\n')) >= 0) {
+      const chunk = buffer.slice(0, idx).trim();
+      buffer = buffer.slice(idx + 2);
+      if (!chunk.startsWith('data:')) continue;
+      let ev: any;
+      try {
+        ev = JSON.parse(chunk.slice(5).trim());
+      } catch {
+        continue;
+      }
+      if (ev.type === 'error') throw new Error(ev.message || '同步失败');
+      if (ev.type === 'progress') onEvent(ev as FollowSyncProgress);
+      if (ev.type === 'done') {
+        doneResult = {
+          total: ev.total, ok: ev.ok, new: ev.new,
+          results: (ev.results || []).map((r: any) => ({
+            ...r, status: r.status as 'ok' | 'failed',
+          })),
+        };
+      }
+    }
+  }
+  return doneResult || { total: 0, ok: 0, new: 0, results: [] };
+}
+
 /** 抖音 CDN 媒体经后端代理播放（浏览器直连会被 referer/UA 拦截）。 */
 export const mediaUrl = (url: string) => `${BASE}/follows/media?url=${encodeURIComponent(url)}`;
 

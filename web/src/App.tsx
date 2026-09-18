@@ -20,11 +20,13 @@ import { QRCodeLoginModal } from './components/Accounts/QRCodeLoginModal';
 import { CookiesModal } from './components/Accounts/CookiesModal';
 import { TasksView } from './components/Tasks/TasksView';
 import { DataBrowserView } from './components/Data/DataBrowserView';
+import { FollowsSyncButton } from './components/Follows/FollowsSyncButton';
 import { FollowsView } from './components/Follows/FollowsView';
 import { ScheduleView } from './components/Schedule/ScheduleView';
 import { DownloadsView } from './components/Downloads/DownloadsView';
+import { NewDownloadModal } from './components/Downloads/NewDownloadModal';
 import { SettingsView } from './components/Settings/SettingsView';
-import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Download as DownloadIcon, Info } from 'lucide-react';
 import { DevInspector } from './components/DevInspector';
 import { AnimatePresence, motion } from 'motion/react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -82,6 +84,10 @@ export function App() {
   const [downloadsActive, setDownloadsActive] = useState(0);
   /** 批量身份刷新进度（正在刷新的账号 + 序号）；null = 未在批量刷新 */
   const [profileRefresh, setProfileRefresh] = useState<api.ProfileRefreshProgress | null>(null);
+  /** 特别关注一键更新完成信号（Header 按钮 → FollowsView 刷新未读数） */
+  const [followsSyncTick, setFollowsSyncTick] = useState(0);
+  /** 下载页 Header「新建下载」弹窗 */
+  const [newDownloadOpen, setNewDownloadOpen] = useState(false);
 
   // 选中账号 ↔ URL ?account= 同步：UI 操作时 push 写入（后退键可退回列表），
   // 浏览器 POP 导航（后退/前进/手动改 hash/刷新）时以 URL 为准反推选中态
@@ -671,6 +677,23 @@ export function App() {
             activeTab={activeTab}
             onOpenCreateAccount={() => setIsCreateModalOpen(true)}
             runningFetch={runningFetch}
+            // 页面专属操作：特别关注页注入一键更新；下载页注入新建下载
+            actions={
+              activeTab === 'follows' ? (
+                <FollowsSyncButton
+                  showToast={showToast}
+                  onDone={() => setFollowsSyncTick((t) => t + 1)}
+                />
+              ) : activeTab === 'downloads' ? (
+                <button
+                  onClick={() => setNewDownloadOpen(true)}
+                  className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-all bg-sky-50 dark:bg-sky-950/50 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800 hover:bg-sky-100 dark:hover:bg-sky-950 active:scale-95 cursor-pointer"
+                >
+                  <DownloadIcon className="w-3.5 h-3.5 shrink-0" />
+                  <span className="hidden sm:inline whitespace-nowrap">新建下载</span>
+                </button>
+              ) : undefined
+            }
           />
 
           <main className="flex-1 overflow-y-auto">
@@ -759,7 +782,7 @@ export function App() {
 
             {/* View 3.5: 特别关注博主 */}
             {activeTab === 'follows' && (
-              <FollowsView accounts={accounts} showToast={showToast} />
+              <FollowsView accounts={accounts} showToast={showToast} syncTick={followsSyncTick} />
             )}
 
             {/* View 4: 同步任务 */}
@@ -842,6 +865,15 @@ export function App() {
         <CookiesModal
           account={cookiesModalAccount}
           onClose={() => setCookiesModalAccount(null)}
+        />
+      )}
+
+      {/* 下载页 Header「新建下载」弹窗 */}
+      {newDownloadOpen && (
+        <NewDownloadModal
+          accounts={accounts}
+          showToast={showToast}
+          onClose={() => setNewDownloadOpen(false)}
         />
       )}
 

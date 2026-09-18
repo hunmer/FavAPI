@@ -104,6 +104,74 @@ def parse_folder_list(data: dict) -> dict:
     return {"owner": {"mid": owner_mid, "name": None, "avatar": None}, "folders": folders}
 
 
+def parse_following_list(data: dict) -> dict:
+    """relation/followings 的 data → {followings, total}。
+
+    pn/ps 偏移分页且响应无 has_more，cursor/has_more 由 api_client 按 total 推导；
+    条目精简为展示/入库所需字段（mtime 关注时间 → follow_time ISO）。
+    """
+    followings = [
+        {
+            "mid": str(u.get("mid") or ""),
+            "nickname": u.get("uname"),
+            "avatar_url": u.get("face"),
+            "signature": (u.get("sign") or "").strip() or None,
+            "follow_time": _ts_iso(u.get("mtime")),
+            "special": bool(u.get("special")),
+            "official_verify": ((u.get("official_verify") or {}).get("desc")) or None,
+        }
+        for u in data.get("list") or []
+        if u.get("mid")
+    ]
+    return {"followings": followings, "total": _as_int(data.get("total")) or 0}
+
+
+def _length_seconds(length) -> int | None:
+    """arc/search 的 length（"MM:SS" / "H:MM:SS"）→ 秒。"""
+    parts = str(length or "").split(":")
+    if not parts or not all(p.isdigit() for p in parts):
+        return None
+    seconds = 0
+    for p in parts:
+        seconds = seconds * 60 + int(p)
+    return seconds
+
+
+def parse_arc_search(data: dict) -> dict:
+    """space/wbi/arc/search 的 data → {items, total}。
+
+    投稿在 data.list.vlist（list_v2 仅部分场景下发，vlist 始终存在）；
+    条目 → contents 行字段，collected_at 取发布时间 created（投稿的
+    "入库时间"即发布时间，与抖音 parse_aweme 以 create_time 兜底同义）。
+    """
+    vlist = (data.get("list") or {}).get("vlist") or []
+    items = [
+        {
+            "content_id": v.get("bvid"),
+            "title": v.get("title"),
+            "description": v.get("description") or None,
+            "author_id": str(v.get("mid") or ""),
+            "author_name": v.get("author"),
+            "cover_url": v.get("pic"),
+            "duration": _length_seconds(v.get("length")),
+            "statistics": json.dumps(
+                {
+                    "play": _as_int(v.get("play")),
+                    "comment": _as_int(v.get("comment")),
+                    "danmaku": _as_int(v.get("video_review")),
+                },
+                ensure_ascii=False,
+            ),
+            "raw_data": json.dumps(v, ensure_ascii=False),
+            "collected_at": _ts_iso(v.get("created")),
+        }
+        for v in vlist
+        if v.get("bvid")
+    ]
+    page = data.get("page") or {}
+    return {"items": items, "total": _as_int(page.get("count")) or 0}
+
+
 # playurl quality → 画质名（B 站 qn 编码）
 _QN_LABELS = {
     127: "8K 超高清", 126: "杜比视界", 125: "HDR 真彩", 120: "4K 超清",
@@ -120,9 +188,14 @@ _CODEC_PRIORITY = ("avc1", "hev1", "hvc1", "av01")
 
 
 def parse_video_detail(data: dict) -> dict:
-    """view 接口的 data → 详情摘要（cid 为 P1 的 cid，多 P 见 pages）。"""
+    """view 接口的 data → 详情摘要（cid 为 P1 的 cid，多 P 见 pages）。
+
+    statistics 键对齐 follows PlayerModal（digg/comment/collect/share）+ 平台特有
+    （play/danmaku），pub_date 为发布时间 epoch 秒（follows 播放信息用）。
+    """
     d = data.get("data") or data
     owner = d.get("owner") or {}
+    stat = d.get("stat") or {}
     pages = [
         {"page": _as_int(p.get("page")), "cid": str(p.get("cid") or ""),
          "title": p.get("part")}
@@ -137,6 +210,18 @@ def parse_video_detail(data: dict) -> dict:
         "author_name": owner.get("name"),
         "cid": str(d.get("cid") or ""),
         "pages": pages,
+        "statistics": json.dumps(
+            {
+                "play": _as_int(stat.get("view")),
+                "danmaku": _as_int(stat.get("danmaku")),
+                "digg_count": _as_int(stat.get("like")),
+                "comment_count": _as_int(stat.get("reply")),
+                "collect_count": _as_int(stat.get("favorite")),
+                "share_count": _as_int(stat.get("share")),
+            },
+            ensure_ascii=False,
+        ),
+        "pub_date": _as_int(d.get("pubdate")),
     }
 
 

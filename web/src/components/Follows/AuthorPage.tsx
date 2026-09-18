@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import {
   ArrowLeft,
@@ -15,35 +15,32 @@ import { FollowAvatar } from './FollowAvatar';
 
 interface AuthorPageProps {
   secUid: string;
+  /** 博主平台（决定用哪个平台的账号浏览/播放；特别关注已多平台） */
+  platform: string;
   accounts: Account[];
-  /** 当前会话默认用于浏览的抖音账号 ID */
-  browseAccountId: string;
   showToast: (msg: string, type?: 'success' | 'info' | 'error') => void;
   onBack: () => void;
-  /** 同步该博主最新作品入库（复用列表页逻辑） */
-  onSyncOne: (secUid: string) => Promise<void>;
 }
 
 const PAGE_SIZE = 18;
 
-/** 格式化抖音时长（毫秒） */
+/** 格式化时长：douyin 为毫秒 / bilibili 为秒，按数量级归一到秒 → m:ss */
 const fmtMs = (ms?: number | null) => {
   if (!ms || ms <= 0) return '';
-  const s = Math.round(ms / 1000);
+  const s = Math.round(ms > 10000 ? ms / 1000 : ms);
   const m = Math.floor(s / 60);
   return `${m}:${String(s % 60).padStart(2, '0')}`;
 };
 
 const fmtDate = (iso?: string | null) => (iso || '').replace('T', ' ').slice(0, 16);
 
-/** 博主主页路由（/follows/author/:secUid）：实时作品列表 + 播放器 + 已读标记。 */
+/** 博主主页路由（/follows/author/:secUid，多平台）：实时作品列表 + 播放器 + 已读标记。 */
 export const AuthorPage: React.FC<AuthorPageProps> = ({
   secUid,
+  platform,
   accounts,
-  browseAccountId,
   showToast,
   onBack,
-  onSyncOne,
 }) => {
   const [author, setAuthor] = useState<Partial<api.FollowAuthorRow> | null>(null);
   const [items, setItems] = useState<api.FollowPostRow[]>([]);
@@ -53,11 +50,21 @@ export const AuthorPage: React.FC<AuthorPageProps> = ({
   const [syncing, setSyncing] = useState(false);
   const [playing, setPlaying] = useState<{ awemeId: string; title?: string } | null>(null);
   const [onlyUnread, setOnlyUnread] = useState(false);
-  const accountIdRef = useRef(browseAccountId);
+
+  // 浏览账号：博主平台下的可用账号，默认取第一个
+  const platformAccounts = useMemo(
+    () => accounts.filter((a) => a.platform === platform && a.status === 'active'),
+    [accounts, platform]
+  );
+  const accountIdRef = useRef('');
+  useEffect(() => {
+    accountIdRef.current = platformAccounts[0]?.id || '';
+  }, [platformAccounts]);
   const isFirstLoad = useRef(true);
 
   const loadPage = useCallback(
     async (cur: number, append: boolean) => {
+      if (!accountIdRef.current) return;
       setLoading(true);
       try {
         const res = await api.fetchAuthorPosts(secUid, cur, PAGE_SIZE, accountIdRef.current);
@@ -80,12 +87,16 @@ export const AuthorPage: React.FC<AuthorPageProps> = ({
 
   useEffect(() => {
     // 刷新博主信息 + 首屏作品；返回顶部
-    accountIdRef.current = browseAccountId;
     isFirstLoad.current = true;
-    loadPage(0, false);
-    window.scrollTo({ top: 0 });
+    if (accountIdRef.current) {
+      loadPage(0, false);
+      window.scrollTo({ top: 0 });
+    } else {
+      setItems([]);
+      setAuthor(null);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [secUid, browseAccountId]);
+  }, [secUid, platformAccounts]);
 
   const handleRead = useCallback((contentId: string) => {
     setItems((prev) =>
@@ -96,8 +107,11 @@ export const AuthorPage: React.FC<AuthorPageProps> = ({
   const handleSyncOne = async () => {
     setSyncing(true);
     try {
-      await onSyncOne(secUid);
+      await api.syncFollowPosts({ sec_uids: [secUid], account_id: accountIdRef.current });
+      showToast('该博主最新作品已入库');
       await loadPage(0, false); // 同步后刷新首屏（已读状态本地保留）
+    } catch (e: any) {
+      showToast(e.message || '同步失败', 'error');
     } finally {
       setSyncing(false);
     }
@@ -187,6 +201,10 @@ export const AuthorPage: React.FC<AuthorPageProps> = ({
           <Loader2 className="w-6 h-6 animate-spin" />
           <span className="text-xs">正在加载博主作品…</span>
         </div>
+      ) : !platformAccounts.length ? (
+        <div className="text-center py-20 text-xs text-slate-400">
+          没有{platform}平台的可用账号，请先在「账号与会话管理」登录
+        </div>
       ) : items.length === 0 ? (
         <div className="text-center py-20 text-xs text-slate-400">该博主暂无可见作品</div>
       ) : (
@@ -254,10 +272,10 @@ export const AuthorPage: React.FC<AuthorPageProps> = ({
       )}
 
       {/* 播放器弹窗 */}
-      {playing && browseAccountId && (
+      {playing && accountIdRef.current && (
         <PlayerModal
           awemeId={playing.awemeId}
-          accountId={browseAccountId}
+          accountId={accountIdRef.current}
           fallbackTitle={playing.title}
           onClose={() => setPlaying(null)}
           onRead={handleRead}

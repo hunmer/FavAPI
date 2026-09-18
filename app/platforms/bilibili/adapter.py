@@ -24,7 +24,7 @@ from app.platforms.base import (
     PARAM_DATE_TO,
 )
 from app.services import browser
-from app.utils import parse_date_window
+from app.utils import now_iso, parse_date_window
 from . import api_client
 from . import constants
 from .parser import extract_mid, parse_folder_list
@@ -40,6 +40,7 @@ class BilibiliAdapter(BasePlatformAdapter):
     supported_actions = ("list_favorites",)
     api_fetch_implemented = True  # 浏览器上下文请求实现已移除，仅保留 API 直连
     download_api_implemented = True  # 支持按 bvid 解析下载直链（平台下载 → aria2c）
+    follows_api_implemented = True  # 特别关注体系：关注列表 / 博主主页作品 / 播放 / 一键同步
     fetch_targets = (
         FetchTarget(
             action="list_favorites", name="抓取收藏列表",
@@ -193,6 +194,99 @@ class BilibiliAdapter(BasePlatformAdapter):
             link.setdefault("author_name", result.get("author_name"))
             link.setdefault("author_id", result.get("author_id"))
         return result["links"]
+
+    # ---------- 特别关注（follows）体系 ----------
+
+    async def follows_profile_cookie(self, account: AccountContext) -> str:
+        return await api_client.profile_cookie_header(account.profile_path)
+
+    def follows_self_uid(self, cookie_header: str) -> str:
+        return api_client.self_mid(cookie_header)
+
+    def follows_validate_uid(self, sec_uid: str) -> None:
+        if not sec_uid.isdigit():
+            raise ValueError("Bilibili 博主 ID（mid）需为纯数字，见博主空间页地址 space.bilibili.com/{mid}")
+
+    async def follows_fetch_following(self, cookie_header: str, self_uid: str,
+                                      count: int = 0, on_batch=None) -> tuple[list[dict], bool]:
+        followings, has_more = await api_client.fetch_followings(
+            cookie_header, self_uid, count, on_batch=on_batch)
+        # followings 接口不下发粉丝/作品数，置 None 由前端兜底展示
+        mapped = [
+            {
+                "sec_uid": f["mid"], "uid": f["mid"], "unique_id": "",
+                "nickname": f["nickname"], "signature": f["signature"],
+                "avatar_url": f["avatar_url"], "follower_count": None,
+                "aweme_count": None, "is_top": bool(f.get("special")),
+            }
+            for f in followings
+        ]
+        return mapped, has_more
+
+    async def follows_fetch_posts_page(self, cookie_header: str, sec_uid: str,
+                                       cursor: int = 0, count: int = 18) -> dict:
+        # 前端 cursor 为已翻页数（0=首页），B 站接口 pn 从 1 起；末页 cursor 归 0 对齐统一语义
+        batch = await asyncio.to_thread(
+            api_client.fetch_arc_search_page, cookie_header, sec_uid,
+            max(cursor, 0) + 1, "pubdate", None, "", max(1, min(count, 50)),
+        )
+        batch["cursor"] = batch["cursor"] if batch["has_more"] else 0
+        return batch
+
+    async def follows_play_info(self, cookie_header: str, content_id: str) -> dict:
+        m = re.search(r"BV[0-9A-Za-z]{10}", str(content_id or ""))
+        if not m:
+            raise ValueError("Bilibili 作品 ID 需为 BV 号（BV 开头的 12 位编号）")
+        # 固定匿名解析播放直链：登录态下 playurl 下发 bcache 个性化 CDN 链接
+        # （带 mid/uipk，绑定获取会话，经媒体代理或其他客户端播放一律 403，
+        #  2026-09 实测）；匿名链接仅 UA 即可播。播放 720P 封顶（html5 mp4）够用，
+        # 需要高画质走下载功能的 DASH 双流。
+        detail = await asyncio.to_thread(
+            api_client.fetch_video_detail, "", m.group(0))
+        # <video> 只能直接播 mp4 单文件直链（DASH 音视频分离流不能直接播放，排除）
+        video_urls = [l["url"] for l in detail.get("links") or []
+                      if l.get("kind") == "video" and l.get("url")]
+        return {
+            "aweme_id": detail["bvid"],
+            "desc": detail.get("title"),
+            "create_time": detail.get("pub_date"),
+            "aweme_type": 0,
+            "duration": detail.get("duration"),
+            "statistics": json.loads(detail.get("statistics") or "{}"),
+            "author": {"nickname": detail.get("author_name"), "sec_uid": detail.get("author_id")},
+            "video_urls": video_urls,
+            "images": [],
+        }
+
+    async def sync_author_posts(self, account: AccountContext, author_row: dict,
+                                cookie_header: str, count: int) -> list[dict]:
+        """拉取单博主最新 count 条投稿（order=pubdate 精确截断），回填 last_synced_at / uid / 昵称。
+
+        不负责入库：follows /sync 路由与 follow_sync 抓取目标（task 体系统一入库）共用本方法。
+        """
+        from app.database import db  # 延迟导入：平台层仅此方法触库
+        from app.services import follow_store
+
+        items, _ = await api_client.fetch_arc_search(
+            cookie_header, author_row["sec_uid"], count)
+        items = items[:count]  # 单页固定 30 条，按 count 截断保证入库量与配置一致
+        author_id = next((it.get("author_id") for it in items if it.get("author_id")), None)
+        author_name = next((it.get("author_name") for it in items if it.get("author_name")), None)
+        await db.execute(
+            """UPDATE follow_authors SET last_synced_at = ?,
+                   uid = COALESCE(NULLIF(?, ''), uid),
+                   nickname = COALESCE(NULLIF(?, ''), nickname)
+               WHERE sec_uid = ?""",
+            (now_iso(), author_id or "", author_name or "", author_row["sec_uid"]),
+        )
+        # arc/search 不带作者头像：本地文件缺失时按库中 URL（关注列表入库）补下自愈
+        if follow_store.avatar_local_path(author_row["sec_uid"]) is None:
+            source_url = (author_row.get("avatar_url") or "").strip()
+            if source_url:
+                await asyncio.to_thread(
+                    follow_store.download_avatar, author_row["sec_uid"], source_url
+                )
+        return items
 
     async def edit_folder(self, account: AccountContext, params: dict) -> list[dict]:
         """编辑收藏夹（标题/简介/隐私）；cover 回填当前值避免被清空。

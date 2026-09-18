@@ -31,8 +31,10 @@ from curl_cffi import requests
 from app.services import browser
 from . import constants
 from .parser import (
+    parse_arc_search,
     parse_download_links,
     parse_folder_list,
+    parse_following_list,
     parse_resource_list,
     parse_video_detail,
 )
@@ -94,6 +96,11 @@ def csrf_from_cookie_header(cookie_header: str) -> str:
     if not value:
         raise LoginExpiredError("Bilibili cookie 中无 bili_jct（csrf token），请重新扫码登录")
     return value
+
+
+def self_mid(cookie_header: str) -> str:
+    """从 cookie 提取当前账号 mid（DedeUserID）；空串 = 登录态无身份。"""
+    return _cookie_value(cookie_header, "DedeUserID")
 
 
 def _referer(cookie_header: str, media_id: str = "") -> str:
@@ -536,3 +543,145 @@ async def cancel_fav_by_window(cookie_header: str, dt_from, dt_to, media_id: str
         "total_fetched": total_fetched,
         "stopped_early": stopped_early,
     }
+
+
+# ---------- 特别关注（follows）体系：关注列表 / 博主投稿列表 ----------
+
+def fetch_followings_page(cookie_header: str, vmid: str, pn: int = 1) -> dict:
+    """拉取一页关注列表（GET relation/followings，同步阻塞，异步侧用 asyncio.to_thread）。
+
+    order=desc 按关注时间倒序；pn/ps 偏移翻页，接口无 has_more/cursor 回显，
+    由本函数按 total 推导。返回 {followings, cursor(下一页起点), has_more, total}。
+    """
+    params = {
+        "order": "desc", "order_type": "", "vmid": vmid, "pn": pn,
+        "ps": constants.FOLLOWING_PAGE_SIZE, "gaia_source": "main_web",
+        "web_location": "333.1387",
+    }
+    response = requests.get(
+        constants.FOLLOWINGS_API + "?" + urlencode(params),
+        headers={
+            **_HEADERS,
+            "referer": f"https://space.bilibili.com/{vmid}/relation/follow",
+            "cookie": cookie_header,
+        },
+        impersonate="chrome", timeout=20,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get("code") != 0:
+        raise RuntimeError(
+            f"followings 返回错误 code={payload.get('code')}："
+            f"{payload.get('message') or payload.get('msg')}"
+        )
+    parsed = parse_following_list(payload.get("data") or {})
+    fetched = (pn - 1) * constants.FOLLOWING_PAGE_SIZE + len(parsed["followings"])
+    return {**parsed, "cursor": fetched, "has_more": fetched < parsed["total"]}
+
+
+async def fetch_followings(cookie_header: str, vmid: str, count: int = 0,
+                           on_batch=None):
+    """pn 偏移翻页拉取关注列表，直到取满 count（0=全部）或 has_more=false。
+
+    返回 (全部 followings, 最后一批的 has_more)；on_batch({"page", "followings"}) 逐页回调。
+    """
+    collected: list[dict] = []
+    pn = 1
+    while True:
+        batch = await asyncio.to_thread(fetch_followings_page, cookie_header, vmid, pn)
+        collected.extend(batch["followings"])
+        logger.info(
+            "followings 第 %d 页：%d 条，累计 %d / %d，has_more=%s",
+            pn, len(batch["followings"]), len(collected), batch["total"], batch["has_more"],
+        )
+        if on_batch and batch["followings"]:
+            await on_batch({"page": pn, "followings": batch["followings"]})
+        if not batch["has_more"] or not batch["followings"]:
+            return collected, False
+        if count and len(collected) >= count:
+            return collected, True
+        pn += 1
+        await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
+
+
+def fetch_arc_search_page(cookie_header: str, mid: str, pn: int = 1,
+                          order: str = "pubdate", session=None,
+                          mixin_key: str = "", ps: int = 0) -> dict:
+    """拉取一页博主投稿列表（GET space/wbi/arc/search，需 WBI 签名，同步阻塞）。
+
+    order：pubdate 最新发布（默认，拉最新作品场景）/ click 最多播放 / stow 最多收藏。
+    session/mixin_key 由翻页循环 fetch_arc_search 复用传入（省每页一次 nav），
+    缺省自动创建；匿名时照视频详情模式先访问首页取 buvid3 防风控 412。
+    ps 每页条数（0 = constants.ARC_PAGE_SIZE）。
+    pn/ps 偏移翻页，返回 {items, cursor(下一页页码), has_more, total}。
+    """
+    own_session = session is None
+    session = session or requests.Session(impersonate="chrome")
+    headers = {**_HEADERS, "referer": f"https://space.bilibili.com/{mid}/video"}
+    try:
+        if cookie_header:
+            headers["cookie"] = cookie_header
+        else:
+            session.get(constants.HOME_URL, headers=headers, timeout=20)
+        mixin_key = mixin_key or _wbi_mixin_key(session, headers)
+        params = _wbi_sign(
+            {"mid": mid, "pn": pn, "ps": ps or constants.ARC_PAGE_SIZE, "tid": 0,
+             "keyword": "", "order": order, "platform": "web",
+             "web_location": "1550101"},
+            mixin_key,
+        )
+        response = session.get(
+            constants.ARC_SEARCH_API, params=params, headers=headers, timeout=20)
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("code") != 0:
+            raise RuntimeError(
+                f"arc/search 返回错误 code={payload.get('code')}：{payload.get('message')}"
+            )
+        parsed = parse_arc_search(payload.get("data") or {})
+        fetched = (pn - 1) * constants.ARC_PAGE_SIZE + len(parsed["items"])
+        return {
+            **parsed, "cursor": pn + 1, "has_more": fetched < parsed["total"],
+        }
+    finally:
+        if own_session:
+            session.close()
+
+
+async def fetch_arc_search(cookie_header: str, mid: str, count: int = 0,
+                           order: str = "pubdate", on_batch=None):
+    """pn 偏移翻页拉取博主投稿列表，直到取满 count（0=全部）或 has_more=false。
+
+    session 与 WBI mixin key 单次获取全翻页复用；返回 (全部 items, 最后一批的 has_more)；
+    on_batch({"page", "items"}) 逐页回调。
+    """
+    session = requests.Session(impersonate="chrome")
+    try:
+        headers = {**_HEADERS, "referer": f"https://space.bilibili.com/{mid}/video"}
+        if cookie_header:
+            headers["cookie"] = cookie_header
+        else:
+            session.get(constants.HOME_URL, headers=headers, timeout=20)
+        mixin_key = _wbi_mixin_key(session, headers)
+
+        collected: list[dict] = []
+        pn = 1
+        while True:
+            batch = await asyncio.to_thread(
+                fetch_arc_search_page, cookie_header, mid, pn, order, session, mixin_key
+            )
+            collected.extend(batch["items"])
+            logger.info(
+                "arc/search 第 %d 页：%d 条，累计 %d / %d，has_more=%s",
+                pn, len(batch["items"]), len(collected), batch["total"], batch["has_more"],
+            )
+            if on_batch and batch["items"]:
+                await on_batch({"page": pn, "items": batch["items"]})
+            if not batch["has_more"] or not batch["items"]:
+                return collected, False
+            if count and len(collected) >= count:
+                return collected, True
+            pn += 1
+            await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
+    finally:
+        session.close()

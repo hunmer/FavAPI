@@ -31,6 +31,13 @@ PLAYER_PLAYURL_API = "https://api.bilibili.com/x/player/wbi/playurl"
 # playurl 请求画质（html5 mp4 端点 qn>64 返回空，64=720P 为主选，16=360P 兜底）
 PLAYURL_QN_FALLBACKS = (64, 16)
 
+# 关注列表（GET relation/followings：某用户的公开关注列表，pn/ps 偏移翻页）
+FOLLOWINGS_API = "https://api.bilibili.com/x/relation/followings"
+FOLLOWING_PAGE_SIZE = 24          # 网页端每页条数
+# 博主投稿列表（GET space/wbi/arc/search：需 WBI 签名，pn/ps 偏移翻页）
+ARC_SEARCH_API = "https://api.bilibili.com/x/space/wbi/arc/search"
+ARC_PAGE_SIZE = 30                # 网页端每页条数
+
 BATCH_DEL_SIZE = 20            # 批量删除单批条数（与抖音取消收藏同量级考量）
 BATCH_DEL_INTERVAL_SEC = 0.5   # 批次间隔，防风控
 API_PAGE_INTERVAL_SEC = 0.8    # API 直连翻页间隔（防风控，同抖音量级）
