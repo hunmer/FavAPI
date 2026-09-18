@@ -19,7 +19,12 @@ from curl_cffi import requests
 
 from app.services import browser
 from . import constants
-from .parser import parse_feeds_page, parse_profile
+from .parser import (
+    parse_download_links,
+    parse_feeds_page,
+    parse_profile,
+    parse_video_detail,
+)
 from ..base import LoginExpiredError
 
 logger = logging.getLogger("favapi.kuaishou.api")
@@ -154,6 +159,41 @@ def fetch_like_page(cookie_header: str, pcursor: str = "") -> dict:
     """拉取一页点赞列表（POST /rest/v/feed/liked，同步阻塞），结构与收藏页同构。"""
     data = _post(cookie_header, "/rest/v/feed/liked", {"pcursor": pcursor, "page": "profile"})
     return parse_feeds_page(data)
+
+
+def fetch_photo_detail(cookie_header: str, photo_id: str) -> dict:
+    """按 photo_id 拉取视频详情并解析可下载直链（POST /graphql，同步阻塞）。
+
+    visionVideoDetail 走 graphql 网关，不在 __NS_hxfalcon 签名白名单（2026-09
+    实测直连即可，kww header 亦可省）；变量仅需 photoId + page="detail"。
+    返回 parse_video_detail 结果 + {"links": [{url, label, ext, kind, width, height}]}，
+    links 首项为推荐地址（H.264 直链，兼容性最好；H.265 高画质档置后）。
+    """
+    body = {
+        "operationName": "visionVideoDetail",
+        "variables": {"photoId": photo_id, "page": "detail"},
+        "query": constants.VIDEO_DETAIL_QUERY,
+    }
+    logger.info("fetch_photo_detail 请求：photo_id=%s", photo_id)
+    r = requests.post(
+        constants.GRAPHQL_URL,
+        data=json.dumps(body, separators=(",", ":")),
+        headers={**_HEADERS, "accept": "*/*", "origin": "https://www.kuaishou.com",
+                 "content-type": "application/json", "cookie": cookie_header},
+        impersonate="chrome", timeout=20,
+    )
+    r.raise_for_status()
+    data = r.json()
+    detail = (data.get("data") or {}).get("visionVideoDetail") or {}
+    if data.get("errors") or detail.get("status") != 1 or not (detail.get("photo") or {}).get("id"):
+        raise RuntimeError(
+            f"visionVideoDetail 返回错误：status={detail.get('status')} "
+            f"errors={str(data.get('errors'))[:120]}（作品可能已删除或设为私密）")
+    result = parse_video_detail(data)
+    result["links"] = parse_download_links(data)
+    if not result["links"]:
+        raise RuntimeError("详情响应无可下载内容（作品可能已删除或设为私密）")
+    return result
 
 
 def set_collect(cookie_header: str, photo_id: str, author_user_id: str = "",

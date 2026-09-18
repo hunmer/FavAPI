@@ -16,6 +16,41 @@ PHOTO_COLLECT_URL = "https://www.kuaishou.com/rest/v/photo/collect"
 # 点赞/取消点赞单视频（POST body：photo_id + cancel=0 点赞 / 1 取消；作者 user_id、exp_tag 可选）
 PHOTO_LIKE_URL = "https://www.kuaishou.com/rest/v/photo/like"
 
+# 视频详情（POST /graphql，visionVideoDetail；graphql 不在 __NS_hxfalcon 签名白名单，
+# 直连即可。查询文本从站点 short-video bundle 剥离，字段保留 parser 所需的最小集）
+GRAPHQL_URL = "https://www.kuaishou.com/graphql"
+VIDEO_DETAIL_QUERY = """query visionVideoDetail($photoId: String, $type: String, $page: String, $webPageArea: String) {
+  visionVideoDetail(photoId: $photoId, type: $type, page: $page, webPageArea: $webPageArea) {
+    status
+    type
+    author {
+      id
+      name
+    }
+    photo {
+      id
+      duration
+      caption
+      timestamp
+      photoUrl
+      photoH265Url
+      manifest {
+        adaptationSet {
+          representation {
+            url
+            backupUrl
+            qualityType
+            qualityLabel
+            width
+            height
+          }
+        }
+      }
+      manifestH265
+    }
+  }
+}"""
+
 # __NS_hxfalcon 签名生成脚本（Node CLI，stdin JSON → stdout 签名）
 SIG_SCRIPT = "sig4.cjs"
 

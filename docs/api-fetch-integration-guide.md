@@ -210,7 +210,7 @@ constants.py / api_client.py / adapter.py 三件套 + mockFavData.ts 加 apiFetc
 Threads 已实现：`save_post`（收藏帖子，media_id）/ `cancel_saved_multi`（批量取消，post_ids）。
 写 mutation 与读接口同套最小字段集直连（无需 fb_dtsg），文档见 `threads/constants.py`。
 
-快手已实现 10 个操作（`kuaishou/adapter.py`）：
+快手已实现 11 个操作（`kuaishou/adapter.py`）：
 
 | op_id | 说明 | 参数 |
 |---|---|---|
@@ -220,6 +220,10 @@ Threads 已实现：`save_post`（收藏帖子，media_id）/ `cancel_saved_mult
 | `collect_item` / `cancel_collect_item` | 单视频收藏/取消 | 同上 |
 | `like_multi` | 批量点赞，当日次数用完（liked_remain_count=0）自动停止 | photo_ids |
 | `cancel_like_multi` / `cancel_collect_multi` | 批量取消点赞/收藏 | photo_ids / 日期区间二选一 |
+| `resolve_download_urls` | 按视频 ID 解析下载直链（平台下载 → aria2c） | photo_id（必填） |
+
+快手视频详情走 `POST /graphql`（`visionVideoDetail`），**不在 `__NS_hxfalcon` 签名白名单**
+（直连即可）；CDN 直链（photoUrl / manifest representation / H.265 系）仅 UA 即可下载。
 
 快手写接口要点：`photo/collect`、`photo/like` **不在 `__NS_hxfalcon` 签名白名单**
 （直连即可，比读接口还简单）；`photo/like` 强校验作者 `user_id`（缺失 → result=21，

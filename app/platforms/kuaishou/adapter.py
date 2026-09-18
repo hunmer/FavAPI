@@ -57,6 +57,7 @@ _MULTI_ACTION_PARAMS = (
 
 class KuaishouAdapter(DeclarativeAdapter):
     api_fetch_implemented = True  # 收藏列表支持 API 直连（params.method="api"）
+    download_api_implemented = True  # 支持按 photo_id 解析下载直链（平台下载 → aria2c）
     api_operations = (
         ApiOperation(
             op_id="get_profile",
@@ -139,6 +140,18 @@ class KuaishouAdapter(DeclarativeAdapter):
             danger=True,
             params=_MULTI_ACTION_PARAMS,
         ),
+        ApiOperation(
+            op_id="resolve_download_urls",
+            name="解析下载直链",
+            description="按视频 ID 调详情接口返回可下载直链列表（只读，供平台下载/aria2c 使用）",
+            params=(
+                ApiOperationParam(
+                    key="photo_id", label="视频 ID", type="text", required=True,
+                    placeholder="例如：3xp76sm9jikcx7i",
+                    help="视频 photoId，可在视频分享链接或已抓取记录中获取",
+                ),
+            ),
+        ),
     )
 
     def __init__(self, base_dir: Path):
@@ -161,6 +174,31 @@ class KuaishouAdapter(DeclarativeAdapter):
         if saved is not None:
             logger.info("[%s] 身份信息已回填：%s(%s)",
                         account.account_id, owner.get("nickname"), owner["eid"])
+
+    async def resolve_download_urls(self, account: AccountContext, content_id: str) -> list[dict]:
+        """按 photo_id 调详情接口返回可下载直链列表（首项为推荐画质）。
+
+        每个链接附 headers（UA / Referer）：快手 CDN 直链实测仅 UA 即可下载，
+        Referer 与页面请求一致更稳，交给 aria2c 时作为请求头注入。
+        """
+        photo_id = str(content_id or "").strip()
+        if not photo_id:
+            raise ValueError("kuaishou 下载解析需要视频 photoId")
+        headers = {
+            "user-agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                           "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"),
+            "referer": f"https://www.kuaishou.com/short-video/{photo_id}",
+        }
+        cookie_header = await api_client.profile_cookie_header(account.profile_path)
+        logger.info("[%s] 解析下载直链：photo_id=%s", account.account_id, photo_id)
+        result = await asyncio.to_thread(api_client.fetch_photo_detail, cookie_header, photo_id)
+        for link in result["links"]:
+            if link.get("url"):
+                link["headers"] = headers
+            # 作者信息随链接下发：下载分类模板 {authorName}/{authorId} 变量来源
+            link.setdefault("author_name", result.get("author_name"))
+            link.setdefault("author_id", result.get("author_id"))
+        return result["links"]
 
     async def fetch_favorites(self, account: AccountContext, params: dict,
                               on_batch=None) -> FetchResult:
@@ -231,6 +269,11 @@ class KuaishouAdapter(DeclarativeAdapter):
         if op_id == "cancel_collect_multi":
             return await self._op_multi_action(
                 account, params, on_event, action="cancel_collect", label=op_id)
+        if op_id == "resolve_download_urls":
+            photo_id = str((params or {}).get("photo_id") or "").strip()
+            if not photo_id:
+                raise ValueError("请填写视频 ID（photo_id）")
+            return await self.resolve_download_urls(account, photo_id)
         raise ValueError(f"未知操作：{op_id}")
 
     async def _op_photo_action(self, account: AccountContext, params: dict,

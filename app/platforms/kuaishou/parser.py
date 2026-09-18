@@ -82,3 +82,76 @@ def parse_profile(data: dict) -> dict:
         "follows": _as_int(data.get("follows")),
         "avatar": data.get("userHead"),
     }
+
+
+def _manifest_links(manifest, label_prefix: str, links: list, seen: set) -> None:
+    """manifest（dict 或 JSON 串）→ representation 直链追加进 links（按 URL 去重）。"""
+    if isinstance(manifest, str):
+        try:
+            manifest = json.loads(manifest)
+        except ValueError:
+            return
+    for adaptation in (manifest or {}).get("adaptationSet") or []:
+        for rep in adaptation.get("representation") or []:
+            if rep.get("hidden"):
+                continue
+            quality = str(rep.get("qualityLabel") or "").strip()
+            label = f"{label_prefix} {quality}".strip()
+            width = _as_int(rep.get("width")) or 0
+            height = _as_int(rep.get("height")) or 0
+            if height:
+                label = f"{label} {height}p"
+            for url in [rep.get("url")] + (rep.get("backupUrl") or []):
+                url = str(url or "")
+                if not url.startswith("http") or url in seen:
+                    continue
+                seen.add(url)
+                links.append({
+                    "url": url, "label": label, "ext": "mp4", "kind": "video",
+                    "width": width, "height": height,
+                })
+
+
+def parse_video_detail(data: dict) -> dict:
+    """graphql visionVideoDetail 响应 → 详情摘要（status != 1 / 无 photo 时由调用方先抛错）。
+
+    返回 {photo_id, caption, duration, timestamp, author_id, author_name}；
+    直链解析见 parse_download_links。
+    """
+    detail = (data.get("data") or {}).get("visionVideoDetail") or {}
+    photo = detail.get("photo") or {}
+    author = detail.get("author") or {}
+    return {
+        "photo_id": str(photo.get("id") or ""),
+        "caption": (photo.get("caption") or "").strip(),
+        "duration": _as_int(photo.get("duration")),
+        "timestamp": _as_int(photo.get("timestamp")),
+        "author_id": str(author.get("id") or ""),
+        "author_name": author.get("name"),
+    }
+
+
+def parse_download_links(data: dict) -> list[dict]:
+    """graphql visionVideoDetail 响应 → 可下载直链列表（首项为推荐地址）。
+
+    H.264 直链（photoUrl）兼容性最好放首位，随后 manifest 各档（含 backupUrl）；
+    H.265（photoH265Url / manifestH265）码率通常更高但部分播放器不支持，置于末尾。
+    """
+    photo = ((data.get("data") or {}).get("visionVideoDetail") or {}).get("photo") or {}
+    if not photo.get("id"):
+        return []
+    links: list[dict] = []
+    seen: set[str] = set()
+
+    def _push(url, label: str) -> None:
+        url = str(url or "")
+        if not url.startswith("http") or url in seen:
+            return
+        seen.add(url)
+        links.append({"url": url, "label": label, "ext": "mp4", "kind": "video"})
+
+    _push(photo.get("photoUrl"), "H.264 直链")
+    _manifest_links(photo.get("manifest"), "H.264", links, seen)
+    _push(photo.get("photoH265Url"), "H.265 直链（高画质）")
+    _manifest_links(photo.get("manifestH265"), "H.265", links, seen)
+    return links
