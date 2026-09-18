@@ -71,6 +71,54 @@ def parse_feeds_page(data: dict) -> dict:
     }
 
 
+def _parse_count(value) -> int | None:
+    """快手 web 格式化计数串（"22.5万" / "1.2w" / "5亿" / "12"）→ int，无法解析返回 None。"""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return int(value)
+    text = str(value or "").strip().lower()
+    if not text:
+        return None
+    mult = 1
+    for suffix, m in (("亿", 100_000_000), ("w", 10_000), ("万", 10_000)):
+        if text.endswith(suffix):
+            mult, text = m, text[:-len(suffix)]
+            break
+    try:
+        return int(float(text) * mult)
+    except ValueError:
+        return None
+
+
+def parse_followings_page(data: dict) -> dict:
+    """relation/fol 响应 → {items, pcursor, has_more}，items 为 follows 体系统一关注人结构。
+
+    列表在 fols 字段（2026-09 实测；authors 为同构冗余），条目仅含
+    user_id / user_name / user_text / headurl，粉丝数、作品数、特别关注
+    标记接口均不下发，置 None / False 由前端兜底展示。
+    """
+    followings = []
+    for f in data.get("fols") or []:
+        user_id = str(f.get("user_id") or "")
+        if not user_id:
+            continue
+        followings.append({
+            "sec_uid": user_id,
+            "uid": user_id,
+            "unique_id": "",
+            "nickname": f.get("user_name") or "",
+            "signature": f.get("user_text") or "",
+            "avatar_url": f.get("headurl") or "",
+            "follower_count": None,
+            "aweme_count": None,
+            "is_top": False,
+        })
+    pcursor = str(data.get("pcursor") or "")
+    has_more = bool(pcursor) and pcursor != PCURSOR_NO_MORE
+    return {"items": followings, "pcursor": pcursor, "has_more": has_more}
+
+
 def parse_profile(data: dict) -> dict:
     """profile/get 响应 → 用户信息摘要（result != 1 时由调用方先抛错）。"""
     return {
@@ -115,7 +163,10 @@ def _manifest_links(manifest, label_prefix: str, links: list, seen: set) -> None
 def parse_video_detail(data: dict) -> dict:
     """graphql visionVideoDetail 响应 → 详情摘要（status != 1 / 无 photo 时由调用方先抛错）。
 
-    返回 {photo_id, caption, duration, timestamp, author_id, author_name}；
+    返回 {photo_id, caption, duration, timestamp, author_id, author_name,
+    statistics}；statistics 键对齐 follows play_info 契约（digg_count /
+    view_count，likeCount/viewCount 为 "22.5万" 风格格式化串需数值化；
+    comment 计数 GraphQL schema 无此字段，置 None）。
     直链解析见 parse_download_links。
     """
     detail = (data.get("data") or {}).get("visionVideoDetail") or {}
@@ -128,6 +179,11 @@ def parse_video_detail(data: dict) -> dict:
         "timestamp": _as_int(photo.get("timestamp")),
         "author_id": str(author.get("id") or ""),
         "author_name": author.get("name"),
+        "statistics": {
+            "digg_count": _parse_count(photo.get("likeCount")),
+            "view_count": _parse_count(photo.get("viewCount")),
+            "comment_count": None,
+        },
     }
 
 

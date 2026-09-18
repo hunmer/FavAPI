@@ -22,6 +22,7 @@ from . import constants
 from .parser import (
     parse_download_links,
     parse_feeds_page,
+    parse_followings_page,
     parse_profile,
     parse_video_detail,
 )
@@ -161,6 +162,32 @@ def fetch_like_page(cookie_header: str, pcursor: str = "") -> dict:
     return parse_feeds_page(data)
 
 
+def fetch_followings_page(cookie_header: str, pcursor: str = "") -> dict:
+    """拉取一页关注列表（POST /rest/v/relation/fol，同步阻塞）。
+
+    pcursor 首页传空串，末页返回 "no_more"。接口在 __NS_hxfalcon 签名
+    白名单内：缺失签名不报错而是静默返回空列表 + no_more（2026-09 实测），
+    必须带签名请求。返回 parse_followings_page 结果
+    {items, pcursor, has_more}，items 为 follows 体系统一关注人结构。
+    """
+    data = _post(cookie_header, "/rest/v/relation/fol",
+                 {"pcursor": pcursor, "ftype": 1})
+    return parse_followings_page(data)
+
+
+def fetch_profile_feed_page(cookie_header: str, user_id: str,
+                            pcursor: str = "") -> dict:
+    """拉取一页博主主页作品（POST /rest/v/profile/feed，同步阻塞）。
+
+    user_id 为博主 eid（即关注列表条目的 user_id）；body 与 collect/list
+    同构但键名为下划线 user_id，需 __NS_hxfalcon 签名；响应 feeds 结构
+    与 collect/list 同构，复用 parse_feeds_page。
+    """
+    data = _post(cookie_header, "/rest/v/profile/feed",
+                 {"user_id": user_id, "pcursor": pcursor, "page": "profile"})
+    return parse_feeds_page(data)
+
+
 def fetch_photo_detail(cookie_header: str, photo_id: str) -> dict:
     """按 photo_id 拉取视频详情并解析可下载直链（POST /graphql，同步阻塞）。
 
@@ -287,6 +314,21 @@ async def fetch_like(cookie_header: str, count: int, on_batch=None):
     return await _fetch_paged(
         lambda cur: fetch_like_page(cookie_header, cur),
         count, on_batch, "liked")
+
+
+async def fetch_followings(cookie_header: str, count: int = 0, on_batch=None):
+    """翻页拉取关注列表，直到取满 count（0=全部）或 pcursor=no_more。"""
+    return await _fetch_paged(
+        lambda cur: fetch_followings_page(cookie_header, cur),
+        count, on_batch, "followings")
+
+
+async def fetch_profile_feed(cookie_header: str, user_id: str, count: int = 0,
+                             on_batch=None):
+    """翻页拉取博主主页作品，直到取满 count（0=全部）或 pcursor=no_more。"""
+    return await _fetch_paged(
+        lambda cur: fetch_profile_feed_page(cookie_header, user_id, cur),
+        count, on_batch, "profile_feed")
 
 
 def resolve_user_eid(cookie_header: str) -> str:

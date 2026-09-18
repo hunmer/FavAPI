@@ -18,7 +18,7 @@ from app.platforms.base import (
     FetchResult,
 )
 from app.platforms.declarative import DeclarativeAdapter
-from app.utils import filter_by_date_window, parse_date_window
+from app.utils import filter_by_date_window, now_iso, parse_date_window
 from . import api_client
 from . import constants
 
@@ -58,6 +58,7 @@ _MULTI_ACTION_PARAMS = (
 class KuaishouAdapter(DeclarativeAdapter):
     api_fetch_implemented = True  # 收藏列表支持 API 直连（params.method="api"）
     download_api_implemented = True  # 支持按 photo_id 解析下载直链（平台下载 → aria2c）
+    follows_api_implemented = True  # 特别关注体系：关注列表 / 博主主页作品 / 播放 / 一键同步
     api_operations = (
         ApiOperation(
             op_id="get_profile",
@@ -237,6 +238,109 @@ class KuaishouAdapter(DeclarativeAdapter):
             has_more=last_has_more and (not count or len(collected) >= skip + count),
             total=len(collected),
         )
+
+    # ---------- 特别关注（follows）体系：api_client 薄委托 ----------
+
+    async def follows_profile_cookie(self, account: AccountContext) -> str:
+        return await api_client.profile_cookie_header(account.profile_path)
+
+    def follows_self_uid(self, cookie_header: str) -> str:
+        # 账号 eid（3x 主键）即博主主页主键，profile/get 解析；cookie 无 eid 只能走接口
+        # —— follows API 层为同步调用约定，此处同步阻塞一次 HTTP（约 0.5s）
+        try:
+            return api_client.resolve_user_eid(cookie_header)
+        except api_client.SignError:
+            raise  # 缺 Node 等环境问题：后续必然失败，直接暴露真实原因
+        except (RuntimeError, ValueError):
+            return ""  # 登录态/接口异常 → follows API 层转 400
+
+    def follows_validate_uid(self, sec_uid: str) -> None:
+        if not re.fullmatch(r"3x[0-9a-z]{10,}", str(sec_uid or "")):
+            raise ValueError(
+                "快手博主 ID 需为 3x 开头的主页主键（博主主页地址 profile/ 后那串）")
+
+    async def follows_fetch_following(self, cookie_header: str, self_uid: str,
+                                      count: int = 0, on_batch=None) -> tuple[list[dict], bool]:
+        # relation/fol 只拉当前登录账号自己的关注列表，self_uid 不参与请求
+        return await api_client.fetch_followings(cookie_header, count, on_batch=on_batch)
+
+    async def follows_fetch_posts_page(self, cookie_header: str, sec_uid: str,
+                                       cursor: int = 0, count: int = 18) -> dict:
+        # 统一 cursor(int) ↔ 快手 pcursor（"1.78E12" 科学计数法字符串）归一：
+        # 入参转普通数字串（实测服务端接受），响应转 int 时间戳，末页归 0
+        batch = await asyncio.to_thread(
+            api_client.fetch_profile_feed_page, cookie_header, sec_uid,
+            str(cursor) if cursor else "")
+        next_cursor = 0
+        if batch["has_more"]:
+            try:
+                next_cursor = int(float(batch["pcursor"]))
+            except ValueError:
+                pass
+        batch["cursor"] = next_cursor
+        return batch
+
+    async def follows_play_info(self, cookie_header: str, content_id: str) -> dict:
+        photo_id = str(content_id or "").strip()
+        if not re.fullmatch(r"3x[0-9a-z]+", photo_id):
+            raise ValueError("快手作品 ID 需为 photoId（3x 开头）")
+        detail = await asyncio.to_thread(
+            api_client.fetch_photo_detail, cookie_header, photo_id)
+        return {
+            "aweme_id": detail["photo_id"],
+            "desc": detail.get("caption"),
+            "create_time": (detail.get("timestamp") or 0) // 1000,  # 毫秒 → 秒
+            "aweme_type": 0,
+            "duration": detail.get("duration"),  # 毫秒，与抖音语义一致，前端 fmtMs 归一
+            "statistics": detail.get("statistics") or {},
+            "author": {"nickname": detail.get("author_name"),
+                       "sec_uid": detail.get("author_id")},
+            # CDN 直链（photoUrl / manifest）实测仅 UA 即可访问，代理直接放行
+            "video_urls": [l["url"] for l in detail.get("links") or [] if l.get("url")],
+            "images": [],
+        }
+
+    async def sync_author_posts(self, account: AccountContext, author_row: dict,
+                                cookie_header: str, count: int) -> list[dict]:
+        """拉取单博主最新 count 条作品（精确截断），并回填 last_synced_at / uid / 昵称 / 头像。
+
+        不负责入库：follows /sync 路由与 follow_sync 抓取目标（task 体系统一入库）共用本方法。
+        """
+        from app.database import db  # 延迟导入：平台层仅此方法触库
+        from app.services import follow_store
+
+        items, _ = await api_client.fetch_profile_feed(
+            cookie_header, author_row["sec_uid"], count)
+        items = items[:count]  # 翻页按页边界返回可能超出，按 count 截断保证入库量一致
+        author_id = next((it.get("author_id") for it in items if it.get("author_id")), None)
+        author_name = next((it.get("author_name") for it in items if it.get("author_name")), None)
+        # 作者头像：profile/feed 的 author 带 headerUrl，作为库中无头像时的兜底
+        avatar_url = None
+        for it in items:
+            try:
+                raw = json.loads(it["raw_data"]) if isinstance(it.get("raw_data"), str) \
+                    else (it.get("raw_data") or {})
+            except (TypeError, ValueError):
+                raw = {}
+            url = str((raw.get("author") or {}).get("headerUrl") or "")
+            if url.startswith("http"):
+                avatar_url = url
+                break
+        await db.execute(
+            """UPDATE follow_authors SET last_synced_at = ?,
+                   uid = COALESCE(NULLIF(?, ''), uid),
+                   nickname = COALESCE(NULLIF(?, ''), nickname),
+                   avatar_url = COALESCE(NULLIF(?, ''), avatar_url)
+               WHERE sec_uid = ?""",
+            (now_iso(), author_id or "", author_name or "", avatar_url or "",
+             author_row["sec_uid"]),
+        )
+        if follow_store.avatar_local_path(author_row["sec_uid"]) is None:
+            source_url = (author_row.get("avatar_url") or "").strip() or avatar_url
+            if source_url:
+                await asyncio.to_thread(
+                    follow_store.download_avatar, author_row["sec_uid"], source_url)
+        return items
 
     async def execute_api_operation(
         self, op_id: str, account: AccountContext, params: dict, on_event=None

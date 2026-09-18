@@ -11,6 +11,10 @@ PROFILE_URL = "https://www.kuaishou.com/rest/v/profile/get"
 COLLECT_LIST_URL = "https://www.kuaishou.com/rest/v/collect/list"
 # 点赞列表（POST JSON body：pcursor 翻页游标，page 固定 "profile"）
 FEED_LIKED_URL = "https://www.kuaishou.com/rest/v/feed/liked"
+# 关注列表（POST JSON body：pcursor 翻页游标 + ftype=1 关注 / 2 粉丝；缺签名静默返回空列表，必须签名）
+RELATION_FOL_URL = "https://www.kuaishou.com/rest/v/relation/fol"
+# 博主主页作品列表（POST JSON body：user_id=博主 eid + pcursor 翻页游标，page 固定 "profile"）
+PROFILE_FEED_URL = "https://www.kuaishou.com/rest/v/profile/feed"
 # 收藏/取消收藏单视频（POST body：photoId + collect=1 收藏 / 2 取消；作者 userId 可选）
 PHOTO_COLLECT_URL = "https://www.kuaishou.com/rest/v/photo/collect"
 # 点赞/取消点赞单视频（POST body：photo_id + cancel=0 点赞 / 1 取消；作者 user_id、exp_tag 可选）
@@ -32,6 +36,8 @@ VIDEO_DETAIL_QUERY = """query visionVideoDetail($photoId: String, $type: String,
       duration
       caption
       timestamp
+      likeCount
+      viewCount
       photoUrl
       photoH265Url
       manifest {

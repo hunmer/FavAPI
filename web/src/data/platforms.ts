@@ -69,6 +69,7 @@ export const PLATFORMS: PlatformMeta[] = [
     isSupported: true,
     tagline: '支持收藏/点赞视频抓取，API 直连与浏览器模拟',
     apiFetch: true,
+    followsApi: true,
   },
   {
     id: 'threads',
