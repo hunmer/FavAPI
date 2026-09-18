@@ -131,6 +131,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pages: write
     steps:
       - uses: actions/checkout@v4
 
@@ -179,10 +180,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
           git clone "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" pages-repo
           cd pages-repo
+          # identity 必须配在 pages-repo（独立 clone，主仓库的 config 带不过来）
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           if ! git checkout gh-pages 2>/dev/null; then
             git checkout --orphan gh-pages
             git rm -rqf . 2>/dev/null || true
@@ -190,7 +192,7 @@ jobs:
           # 不使用 --delete：历史 targets 是补丁链的 diff 基准，必须保留
           rsync -a ../repository/ ./
           git add -A
-          git commit -qm "tufup: publish ${GITHUB_REF_NAME}" || echo "无变更"
+          git commit -qm "tufup: publish ${GITHUB_REF_NAME}"
           git push -q origin gh-pages
 
       - name: Ensure GitHub Pages serves gh-pages branch
