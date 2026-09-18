@@ -6,10 +6,23 @@ curl_cffi impersonate="chrome" 直连模式：登录态复用账号浏览器 pro
 避免每次操作都占用浏览器会话。
 
 写操作（批量删除收藏等）为 POST 表单，csrf 参数取 cookie 中 bili_jct 的值。
+
+视频详情/下载（fetch_video_detail，2026-09 接入）踩坑记录：
+- view 接口无签名；playurl 需 WBI 签名（w_rid/wts），mixin key 取自 nav 的
+  wbi_img（img_key+sub_key 按混淆表重排取前 32 位，纯 md5 无需浏览器）；
+  匿名请求 nav 返回 code=-101 但 wbi_img 照常下发，勿当错误。
+- api.bilibili.com 为跨域接口，浏览器 referrer 策略只发根 origin ——
+  请求头带视频页完整 referer 一律 412（风控），必须用 https://www.bilibili.com/。
+- mp4 单文件直链走 platform=html5 + fnval=1（音视频合一，匿名 720P 封顶，
+  qn>64 的 mp4 返回空）；高画质走 fnval=16 的 DASH（需登录态，1080P+/4K），
+  音视频分离 —— download_worker 双流下载后 ffmpeg -c copy 合并为单个 mp4。
+- 匿名时先访问首页取 buvid3 再走接口（部分风控路径缺它 412），单会话复用。
 """
 import asyncio
+import hashlib
 import json
 import logging
+import time
 from datetime import datetime
 from urllib.parse import urlencode
 
@@ -17,7 +30,12 @@ from curl_cffi import requests
 
 from app.services import browser
 from . import constants
-from .parser import parse_folder_list, parse_resource_list
+from .parser import (
+    parse_download_links,
+    parse_folder_list,
+    parse_resource_list,
+    parse_video_detail,
+)
 from ..base import LoginExpiredError
 
 logger = logging.getLogger("favapi.bilibili.api")
@@ -29,6 +47,21 @@ _HEADERS = {
     "sec-fetch-dest": "empty",
     "sec-fetch-mode": "cors",
     "sec-fetch-site": "same-site",
+}
+
+# WBI 签名：img_key+sub_key 按该混淆表重排后取前 32 位为 mixin key（站点公开算法）
+_WBI_MIXIN_ENC_TAB = (
+    46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35,
+    27, 43, 5, 49, 33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13,
+    37, 48, 7, 16, 24, 55, 40, 61, 26, 17, 0, 1, 60, 51, 30, 4,
+    22, 25, 54, 21, 56, 59, 6, 63, 57, 62, 11, 36, 20, 34, 44, 52,
+)
+
+# 视频详情/播放接口请求头（space 系接口的 origin 头对视频接口多余，不带）
+_VIDEO_HEADERS = {
+    "accept": "application/json, text/plain, */*",
+    "accept-language": "zh-CN,zh;q=0.9",
+    "referer": "https://www.bilibili.com/",
 }
 
 
@@ -118,6 +151,117 @@ def fetch_folder_list_full(cookie_header: str, up_mid: str) -> dict:
 def fetch_folder_list(cookie_header: str, up_mid: str) -> list[dict]:
     """拉取用户的收藏夹列表，返回 parse_folder_list 的 folders：[{media_id, title, media_count}]。"""
     return fetch_folder_list_full(cookie_header, up_mid)["folders"]
+
+
+def _wbi_mixin_key(session, headers: dict) -> str:
+    """从 nav 响应的 wbi_img 生成 WBI mixin key（匿名可取，密钥全网共用定期轮换）。
+
+    匿名请求 nav 返回 code=-101（账号未登录）但 wbi_img 照常下发，不视为错误。
+    """
+    response = session.get(constants.NAV_API, headers=headers, timeout=20)
+    response.raise_for_status()
+    wbi = ((response.json().get("data") or {}).get("wbi_img")) or {}
+    img_key = str(wbi.get("img_url") or "").rsplit("/", 1)[-1].split(".")[0]
+    sub_key = str(wbi.get("sub_url") or "").rsplit("/", 1)[-1].split(".")[0]
+    if not (img_key and sub_key):
+        raise RuntimeError("nav 响应缺少 wbi_img，无法生成 WBI 签名")
+    raw = img_key + sub_key
+    return "".join(raw[i] for i in _WBI_MIXIN_ENC_TAB if i < len(raw))[:32]
+
+
+def _wbi_sign(params: dict, mixin_key: str) -> dict:
+    """给 query 参数补 WBI 签名：加 wts → 值过滤 !'()* → 排序 → md5(query + mixin_key)。"""
+    params = dict(params, wts=int(time.time()))
+    params = {k: "".join(ch for ch in str(v) if ch not in "!'()*")
+              for k, v in sorted(params.items())}
+    return dict(params, w_rid=hashlib.md5((urlencode(params) + mixin_key).encode()).hexdigest())
+
+
+def fetch_video_detail(cookie_header: str, bvid: str, page: int = 1) -> dict:
+    """按 bvid 拉取视频详情并解析可下载直链（同步阻塞，异步侧用 asyncio.to_thread）。
+
+    view 接口无需签名（bvid → cid / 标题 / 作者 / 多 P 页列表）；
+    playurl 需 WBI 签名，请求两次：platform=html5 + fnval=1 走 mp4 单文件
+    （音视频合一，匿名最高 720P，links 首项为推荐地址）；fnval=16 再取 DASH
+    高画质流（需登录态，1080P+/4K，kind="dash" 附 audio_url，由下载器
+    双流下载后 ffmpeg 合并）。多 P 视频 page 指定分 P（默认 1）。
+    返回 parse_video_detail 结果 + {"cid", "links"}。
+    """
+    # 单会话复用；api.bilibili.com 为跨域接口，浏览器 referrer 策略只发根 origin，
+    # 带视频页完整 referer 反而触发风控 412（2026-09 实测），统一用根 referer
+    session = requests.Session(impersonate="chrome")
+    headers = dict(_VIDEO_HEADERS)
+    if cookie_header:
+        headers["cookie"] = cookie_header
+    else:
+        # 匿名：先访问首页取 buvid3（部分风控路径缺失该 cookie 时接口 412）
+        session.get(constants.HOME_URL, headers=_VIDEO_HEADERS, timeout=20)
+
+    response = session.get(
+        constants.VIDEO_VIEW_API, params={"bvid": bvid}, headers=headers, timeout=20)
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get("code") != 0:
+        raise RuntimeError(
+            f"view 返回错误 code={payload.get('code')}：{payload.get('message')}"
+            f"（bvid={bvid}，作品可能已删除或为充电专属）"
+        )
+    detail = parse_video_detail(payload)
+    pages = detail["pages"]
+    if pages:
+        if not (1 <= page <= len(pages)):
+            raise ValueError(f"分 P 页码超出范围：page={page}，该视频共 {len(pages)} P")
+        cid = pages[page - 1]["cid"]
+    else:
+        cid = detail["cid"]
+    if not cid:
+        raise RuntimeError("view 响应缺少 cid，无法解析播放直链")
+    detail["cid"] = cid
+
+    mixin_key = _wbi_mixin_key(session, headers)
+    play_data: dict = {}
+    for qn in constants.PLAYURL_QN_FALLBACKS:  # 720P 主选，无 720P 源回退 360P
+        params = _wbi_sign(
+            {"bvid": bvid, "cid": cid, "qn": qn, "fnval": 1, "fnver": 0, "fourk": 1,
+             "platform": "html5", "high_quality": 1},
+            mixin_key,
+        )
+        response = session.get(
+            constants.PLAYER_PLAYURL_API, params=params, headers=headers, timeout=20)
+        response.raise_for_status()
+        play_data = response.json()
+        if play_data.get("code") != 0:
+            raise RuntimeError(
+                f"playurl 返回错误 code={play_data.get('code')}：{play_data.get('message')}"
+            )
+        if (play_data.get("data") or {}).get("durl"):
+            break
+
+    # DASH 高画质流（fnval=16 需登录态，匿名响应无 dash 字段 → links 退化为仅 mp4）；
+    # 失败不阻断 mp4 结果，仅记日志降级
+    dash_data: dict = {}
+    try:
+        response = session.get(
+            constants.PLAYER_PLAYURL_API,
+            params=_wbi_sign(
+                {"bvid": bvid, "cid": cid, "qn": 64, "fnval": 16, "fnver": 0, "fourk": 1},
+                mixin_key),
+            headers=headers, timeout=20)
+        response.raise_for_status()
+        dash_data = response.json()
+        if dash_data.get("code") != 0:
+            raise RuntimeError(f"code={dash_data.get('code')}")
+    except Exception:
+        logger.warning("playurl DASH 请求失败，跳过高画质流", exc_info=True)
+        dash_data = {}
+
+    logger.info("fetch_video_detail 完成：bvid=%s P%d cid=%s qn=%s dash=%s",
+                bvid, page, cid, (play_data.get("data") or {}).get("quality"),
+                len(((dash_data.get("data") or {}).get("dash") or {}).get("video") or []))
+    detail["links"] = parse_download_links(play_data, dash_data)
+    if not detail["links"]:
+        raise RuntimeError("详情响应无可下载内容（作品可能已删除、付费或仅区域可见）")
+    return detail
 
 
 def folder_edit(cookie_header: str, media_id: str, title: str, intro: str = "",

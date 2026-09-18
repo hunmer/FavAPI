@@ -16,6 +16,13 @@ logger = logging.getLogger("favapi.downloader")
 CHECK_INTERVAL = 2            # 队列扫描间隔（秒）
 PROGRESS_WRITE_INTERVAL = 0.5  # 进度落库最小间隔（秒）
 
+# DASH 双流合并依赖（无 ffmpeg 时高画质下载回落 mp4 单文件）
+_FFMPEG_HINT = (
+    "未找到 ffmpeg 可执行文件，高画质 DASH 下载需要 ffmpeg 合并音视频。"
+    "Windows: winget install Gyan.FFmpeg（或 scoop install ffmpeg）；"
+    "macOS: brew install ffmpeg；Linux: 包管理器安装 ffmpeg"
+)
+
 # videodl 专用解析客户端映射（装好 videodl 后自动生效；未映射平台走其通用解析器）
 VIDEODL_CLIENTS = {
     "bilibili": "BilibiliVideoClient",
@@ -375,6 +382,34 @@ async def _execute_aria2(row: dict):
         return await _execute_note(row, links)
 
     best = _pick_link_by_quality(links, row.get("quality"))
+    # DASH 双流（B 站高画质）：无 ffmpeg 时回落 mp4 单文件（音视频合一）
+    if best.get("kind") == "dash" and best.get("audio_url"):
+        if shutil.which("ffmpeg"):
+            return await _execute_aria2_dash(row, best)
+        mp4 = next((l for l in links if l.get("kind") != "dash" and l.get("url")), None)
+        if mp4 is None:
+            return await _fail(_FFMPEG_HINT)
+        _append_log(download_id, f"[{now_iso()}] {_FFMPEG_HINT}，回落 {mp4.get('label')} 单文件")
+        await download_store.update_download(
+            download_id, progress=f"未安装 ffmpeg，回落 {mp4.get('label')} 单文件下载...")
+        best = mp4
+    return await _execute_aria2_single(row, best)
+
+
+async def _execute_aria2_single(row: dict, best: dict):
+    """单直链下载（mp4 单文件等）：一个 aria2 任务直落最终文件。"""
+    from app.services import aria2_service
+
+    download_id = row["download_id"]
+    platform = row.get("platform") or ""
+    content_id = str(row.get("content_id") or "")
+
+    async def _fail(message: str):
+        _append_log(download_id, f"[{now_iso()}] {message}")
+        await download_store.update_download(
+            download_id, status="failed", error_message=message, finished_at=now_iso(),
+        )
+
     out_dir = downloads_root() / _category_dir(
         platform, content_id, row.get("title") or "", best)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -414,6 +449,97 @@ async def _execute_aria2(row: dict):
         )
         _append_log(download_id, f"[{now_iso()}] 下载失败：{message}")
         logger.warning("平台下载失败 %s：%s", download_id, message)
+
+
+async def _execute_aria2_dash(row: dict, best: dict):
+    """DASH 双流下载（B 站 1080P+/4K）：视频/音频 m4s 双 aria2 任务，完成后 ffmpeg 合并。
+
+    ffmpeg -c copy 仅重封装不转码；合并中任务计入 _running（暂停/取消可终止进程）。
+    """
+    from app.services import aria2_service
+
+    download_id = row["download_id"]
+    platform = row.get("platform") or ""
+    content_id = str(row.get("content_id") or "")
+    out_dir = downloads_root() / _category_dir(
+        platform, content_id, row.get("title") or "", best)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    filename = _safe_filename(row.get("title") or "", content_id, "mp4")
+    stem = Path(filename).stem
+    video_part = out_dir / f"{stem}.video.m4s"
+    audio_part = out_dir / f"{stem}.audio.m4s"
+    output = out_dir / filename
+    headers = best.get("headers") or {}
+
+    async def _fail(message: str):
+        _append_log(download_id, f"[{now_iso()}] {message}")
+        await download_store.update_download(
+            download_id, status="failed", error_message=message, finished_at=now_iso(),
+        )
+
+    try:
+        video_gid = await aria2_service.add(best["url"], out_dir, video_part.name, headers)
+        audio_gid = await aria2_service.add(best["audio_url"], out_dir, audio_part.name, headers)
+    except Exception as exc:
+        return await _fail(f"提交 aria2c 失败：{exc}")
+    _aria2_gids[download_id] = [video_gid, audio_gid]
+    _append_log(download_id, f"[{now_iso()}] DASH 双流 {best.get('label')}："
+                             f"video gid={video_gid} audio gid={audio_gid}")
+    await download_store.update_download(
+        download_id,
+        progress=f"已解析直链（{best.get('label')}，音视频双流），提交 aria2c 下载...")
+
+    async def _wait(gid: str, stage: str) -> tuple[bool, str]:
+        async def _progress(text: str):
+            await download_store.update_download(download_id, progress=f"{stage}：{text}")
+
+        return await aria2_service.wait(download_id, gid, on_update=_progress)
+
+    ok, message = await _wait(video_gid, "视频流")
+    if not ok:
+        aria2_service.remove(audio_gid)
+        _aria2_gids.pop(download_id, None)
+        cur = await download_store.get_download(download_id)
+        if cur and cur["status"] in ("canceled", "paused"):
+            _append_log(download_id, f"[{now_iso()}] 任务被终止（{cur['status']}）")
+            return
+        return await _fail(f"视频流下载失败：{message or 'aria2c 出错'}")
+    ok, message = await _wait(audio_gid, "音频流")
+    _aria2_gids.pop(download_id, None)
+    if not ok:
+        cur = await download_store.get_download(download_id)
+        if cur and cur["status"] in ("canceled", "paused"):
+            _append_log(download_id, f"[{now_iso()}] 任务被终止（{cur['status']}）")
+            return
+        return await _fail(f"音频流下载失败：{message or 'aria2c 出错'}")
+
+    await download_store.update_download(download_id, progress="ffmpeg 合并音视频...")
+    cmd = [shutil.which("ffmpeg"), "-y", "-loglevel", "error",
+           "-i", str(video_part), "-i", str(audio_part), "-c", "copy", str(output)]
+    _append_log(download_id, f"[{now_iso()}] ffmpeg 合并：{' '.join(cmd)}")
+    proc = await asyncio.create_subprocess_exec(
+        *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+    _running[download_id] = proc  # 暂停/取消时可终止合并进程
+    try:
+        _, stderr = await proc.communicate()
+    finally:
+        _running.pop(download_id, None)
+    cur = await download_store.get_download(download_id)
+    if cur and cur["status"] in ("canceled", "paused"):
+        _append_log(download_id, f"[{now_iso()}] 任务被终止（{cur['status']}）")
+        return
+    if proc.returncode != 0:
+        err = (stderr or b"").decode("utf-8", errors="replace")[-400:]
+        _append_log(download_id, f"[{now_iso()}] ffmpeg 合并失败：{err}")
+        return await _fail(f"ffmpeg 合并失败：{err or f'退出码 {proc.returncode}'}")
+    video_part.unlink(missing_ok=True)
+    audio_part.unlink(missing_ok=True)
+    await download_store.update_download(
+        download_id, status="success", progress="下载完成（已合并音视频）",
+        output_path=str(output), finished_at=now_iso(),
+    )
+    _append_log(download_id, f"[{now_iso()}] DASH 下载完成（已合并）：{output}")
+    logger.info("DASH 平台下载完成 %s：%s", download_id, output)
 
 
 async def _execute_note(row: dict, links: list[dict]):

@@ -102,3 +102,117 @@ def parse_folder_list(data: dict) -> dict:
     ]
     owner_mid = next((str(f.get("mid")) for f in (data.get("list") or []) if f.get("mid")), "")
     return {"owner": {"mid": owner_mid, "name": None, "avatar": None}, "folders": folders}
+
+
+# playurl quality → 画质名（B 站 qn 编码）
+_QN_LABELS = {
+    127: "8K 超高清", 126: "杜比视界", 125: "HDR 真彩", 120: "4K 超清",
+    116: "1080P60", 112: "1080P 高码率", 80: "1080P 高清", 74: "720P60",
+    64: "720P 高清", 32: "480P 清晰", 16: "360P 流畅",
+}
+# qn → 画面高度（durl mp4 不带分辨率字段，按 qn 推导供画质选链）
+_QN_HEIGHTS = {
+    127: 4320, 126: 1080, 125: 1080, 120: 2160, 116: 1080, 112: 1080,
+    80: 1080, 74: 720, 64: 720, 32: 480, 16: 360,
+}
+# DASH 同一画质多编码并存时的优先序（avc 兼容性最好）
+_CODEC_PRIORITY = ("avc1", "hev1", "hvc1", "av01")
+
+
+def parse_video_detail(data: dict) -> dict:
+    """view 接口的 data → 详情摘要（cid 为 P1 的 cid，多 P 见 pages）。"""
+    d = data.get("data") or data
+    owner = d.get("owner") or {}
+    pages = [
+        {"page": _as_int(p.get("page")), "cid": str(p.get("cid") or ""),
+         "title": p.get("part")}
+        for p in (d.get("pages") or []) if p.get("cid")
+    ]
+    return {
+        "bvid": d.get("bvid") or "",
+        "aid": str(d.get("aid") or ""),
+        "title": d.get("title"),
+        "duration": _as_int(d.get("duration")),  # 秒
+        "author_id": str(owner.get("mid") or ""),
+        "author_name": owner.get("name"),
+        "cid": str(d.get("cid") or ""),
+        "pages": pages,
+    }
+
+
+def _pick_dash_videos(dash: dict) -> list[tuple[int, int, dict]]:
+    """dash.video[] → [(height, qn, stream)]：每个 qn 择一编码（avc 优先），高度降序。
+
+    仅保留高于 720P 的档位（720P 及以下已有 mp4 单文件直链，无需走 DASH）。
+    """
+    best: dict[int, tuple[int, dict]] = {}
+    for v in dash.get("video") or []:
+        qn = _as_int(v.get("id"))
+        url = str(v.get("baseUrl") or v.get("base_url") or "")
+        if not qn or not url.startswith("http"):
+            continue
+        codecs = str(v.get("codecs") or "")
+        rank = next((i for i, prefix in enumerate(_CODEC_PRIORITY)
+                     if codecs.startswith(prefix)), len(_CODEC_PRIORITY))
+        cur = best.get(qn)
+        if cur is None or rank < cur[0]:
+            best[qn] = (rank, v)
+    picked = []
+    for qn, (_rank, v) in best.items():
+        height = _as_int(v.get("height")) or _QN_HEIGHTS.get(qn) or 0
+        if height <= 720:
+            continue
+        picked.append((height, qn, v))
+    picked.sort(key=lambda t: (t[0], t[1]), reverse=True)
+    return picked
+
+
+def _pick_dash_audio(dash: dict) -> str:
+    """dash.audio[] → 最高码率一档的 baseUrl（音质最好且兼容 mp4 容器）。"""
+    audios = [a for a in (dash.get("audio") or [])
+              if str(a.get("baseUrl") or a.get("base_url") or "").startswith("http")]
+    if not audios:
+        return ""
+    best = max(audios, key=lambda a: _as_int(a.get("bandwidth")) or 0)
+    return str(best.get("baseUrl") or best.get("base_url") or "")
+
+
+def parse_download_links(mp4_data: dict, dash_data: dict | None = None) -> list[dict]:
+    """playurl 响应 → 可下载直链列表（首项为推荐地址）。
+
+    mp4_data（platform=html5 请求）：durl 音视频合一单文件（多段时每段一条，
+    主链 + backup_url 均收，按 URL 去重）。
+    dash_data（fnval=16 请求，需登录态）：高画质 DASH 流 —— 视频流 url 之外附
+    audio_url（配套音频流），kind="dash"，由下载器双流下载后 ffmpeg 合并。
+    """
+    d = (mp4_data.get("data") or {})
+    quality = _as_int(d.get("quality")) or 0
+    label = _QN_LABELS.get(quality) or f"qn{quality}"
+    height = _QN_HEIGHTS.get(quality) or 0
+    links: list[dict] = []
+    seen: set[str] = set()
+    for seg in d.get("durl") or []:
+        size = _as_int(seg.get("size"))
+        seg_label = label if len(d.get("durl") or []) == 1 else f"{label} 第{seg.get('order') or len(links) + 1}段"
+        for url in [seg.get("url")] + (seg.get("backup_url") or []):
+            url = str(url or "")
+            if not url.startswith("http") or url in seen:
+                continue
+            seen.add(url)
+            links.append({
+                "url": url, "label": seg_label, "ext": "mp4", "kind": "video",
+                "size": size, "height": height,
+            })
+
+    if dash_data:
+        dash = (dash_data.get("data") or {}).get("dash") or {}
+        audio_url = _pick_dash_audio(dash)
+        for dash_height, qn, v in _pick_dash_videos(dash):
+            links.append({
+                "url": str(v.get("baseUrl") or v.get("base_url") or ""),
+                "label": f"{_QN_LABELS.get(qn) or f'qn{qn}'} DASH",
+                "ext": "mp4", "kind": "dash",
+                "width": _as_int(v.get("width")) or 0, "height": dash_height,
+                "audio_url": audio_url,
+            })
+    return links

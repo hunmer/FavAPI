@@ -7,6 +7,7 @@ Bilibili 收藏夹有干净的分页接口（fav/resource/list 的 pn/ps），�
 import asyncio
 import json
 import logging
+import re
 import time
 
 from app import config
@@ -39,6 +40,7 @@ class BilibiliAdapter(BasePlatformAdapter):
     implemented = True
     supported_actions = ("list_favorites",)
     api_fetch_implemented = True  # 浏览器上下文请求实现已移除，仅保留 API 直连
+    download_api_implemented = True  # 支持按 bvid 解析下载直链（平台下载 → aria2c）
     fetch_targets = (
         FetchTarget(
             action="list_favorites", name="抓取收藏列表",
@@ -91,6 +93,24 @@ class BilibiliAdapter(BasePlatformAdapter):
                 ),
             ),
         ),
+        ApiOperation(
+            op_id="resolve_download_urls",
+            name="解析下载直链",
+            description="按视频 BV 号调详情接口返回可下载直链（只读，供平台下载/aria2c 使用）；"
+                        "选高画质走 DASH 双流，下载完成后由 ffmpeg 自动合并（需已安装）",
+            params=(
+                ApiOperationParam(
+                    key="bvid", label="视频 BV 号", type="text", required=True,
+                    placeholder="例如：BV1GJ411x7h7（可粘贴完整链接）",
+                    help="视频 bvid，也支持粘贴视频页链接自动提取",
+                ),
+                ApiOperationParam(
+                    key="page", label="分 P 页码（可选）", type="number",
+                    placeholder="默认 1",
+                    help="多 P 视频指定分 P；单 P 视频留空即可",
+                ),
+            ),
+        ),
     )
 
     async def execute_api_operation(
@@ -98,6 +118,14 @@ class BilibiliAdapter(BasePlatformAdapter):
     ) -> dict:
         if op_id == "cancel_favorites":
             return await self._op_cancel_favorites(account, params, on_event)
+        if op_id == "resolve_download_urls":
+            raw = str((params or {}).get("bvid") or "").strip()
+            m = re.search(r"BV[0-9A-Za-z]{10}", raw)
+            if not m:
+                raise ValueError("请填写视频 BV 号（BV 开头的 12 位编号，或粘贴视频页链接）")
+            raw_page = str((params or {}).get("page") or "").strip()
+            page = min(max(int(raw_page), 1), 1000) if raw_page.isdigit() else 1
+            return await self.resolve_download_urls(account, m.group(0), page=page)
         raise ValueError(f"未知操作：{op_id}")
 
     async def _op_cancel_favorites(self, account: AccountContext, params: dict, on_event=None) -> dict:
@@ -127,6 +155,40 @@ class BilibiliAdapter(BasePlatformAdapter):
             result["note"] = "该日期区间内没有匹配的收藏，未执行删除"
         logger.info("[%s] 批量取消收藏完成：%s", account.account_id, result)
         return result
+
+    async def resolve_download_urls(self, account: AccountContext, content_id: str,
+                                    page: int = 1) -> list[dict]:
+        """按 bvid 调 view + playurl 返回可下载 mp4 直链列表（首项为推荐画质）。
+
+        每个链接附 headers（UA / Referer）：B 站 CDN 直链实测仅 UA 即可下载，
+        Referer 与页面请求一致更稳。登录态失效时回退匿名（playurl 匿名同样可用，
+        720P 封顶不受影响）。
+        """
+        bvid = str(content_id or "").strip()
+        m = re.search(r"BV[0-9A-Za-z]{10}", bvid)
+        if not m:
+            raise ValueError("bilibili 下载解析需要视频 BV 号（BV 开头的 12 位编号）")
+        bvid = m.group(0)
+        headers = {
+            "user-agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                           "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"),
+            "referer": f"https://www.bilibili.com/video/{bvid}/",
+        }
+        try:
+            cookie_header = await api_client.profile_cookie_header(account.profile_path)
+        except LoginExpiredError:
+            cookie_header = ""  # 详情/直链接口匿名可用，登录失效不阻断下载
+            logger.info("[%s] 登录态缺失，回退匿名解析下载直链：bvid=%s", account.account_id, bvid)
+        logger.info("[%s] 解析下载直链：bvid=%s P%d", account.account_id, bvid, page)
+        result = await asyncio.to_thread(
+            api_client.fetch_video_detail, cookie_header, bvid, page)
+        for link in result["links"]:
+            if link.get("url"):
+                link["headers"] = headers
+            # 作者信息随链接下发：下载分类模板 {authorName}/{authorId} 变量来源
+            link.setdefault("author_name", result.get("author_name"))
+            link.setdefault("author_id", result.get("author_id"))
+        return result["links"]
 
     async def edit_folder(self, account: AccountContext, params: dict) -> list[dict]:
         """编辑收藏夹（标题/简介/隐私）；cover 回填当前值避免被清空。

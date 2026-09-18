@@ -66,6 +66,9 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
   onTaggingDone,
   showToast,
 }) => {
+  // HashRouter 的查询参数位于 hash 内（/#/data?...），通过路由 hook 读取。
+  const [searchParams, setSearchParams] = useSearchParams();
+
   // View mode with memory (localStorage or fallback to grid)
   const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
     const saved = localStorage.getItem('favapi_data_view_mode');
@@ -95,17 +98,18 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
   };
 
   // ---------- 过滤状态（Filter & Search） ----------
-  /** 过滤状态初始化：读取当前地址栏查询参数（组件外使用，不依赖 hooks）。 */
-  const searchParamsInit = () => new URLSearchParams(window.location.search);
-
-  const urlInit = searchParamsInit();
+  const urlInit = searchParams;
   const savedFilters = readSavedFilters();
   // 恢复优先级：URL 参数（外部跳转显式意图）> localStorage 记忆 > prop/默认
-  const initFilter = (urlKey: keyof SavedFilters, fallback = ''): string =>
-    (urlInit.get(urlKey) as string) || (savedFilters?.[urlKey] as string) || fallback;
+  const initFilter = (urlKey: keyof SavedFilters, fallback = ''): string => {
+    if (urlInit.has(urlKey)) return urlInit.get(urlKey) || fallback;
+    return (savedFilters?.[urlKey] as string) || fallback;
+  };
 
   const [selectedAccountId, setSelectedAccountId] = useState<string>(
-    urlInit.get('account') || savedFilters?.account || initialAccountId || 'all'
+    urlInit.has('account')
+      ? urlInit.get('account') || 'all'
+      : savedFilters?.account || initialAccountId || 'all'
   );
   const initialQuery = externalSearchQuery || urlInit.get('q') || savedFilters?.q || '';
   const [searchQuery, setSearchQuery] = useState(initialQuery);
@@ -441,13 +445,12 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
 
   // URL 参数与过滤状态双向同步：全部过滤条件入 URL（account/folder/author/date/date_end/pub_start/pub_end/tags/q），
   // 刷新/分享/后退可完整恢复过滤现场。
-  const [searchParams, setSearchParams] = useSearchParams();
-  const firstRenderRef = React.useRef(true);
+  const searchParamsString = searchParams.toString();
+  const previousSearchParamsStringRef = React.useRef(searchParamsString);
+  const urlChangedSincePreviousRender = previousSearchParamsStringRef.current !== searchParamsString;
   useEffect(() => {
-    if (firstRenderRef.current) {
-      firstRenderRef.current = false;
-      return;
-    }
+    previousSearchParamsStringRef.current = searchParamsString;
+    if (!urlChangedSincePreviousRender) return;
     // 浏览器后退/前进或外部跳转（如总览日历卡）时从 URL 回填
     setSelectedAccountId(searchParams.get('account') || 'all');
     setSelectedFolder(searchParams.get('folder') || 'all');
@@ -459,7 +462,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
     setSelectedPubEndDate(searchParams.get('pub_end') || '');
     setSelectedTags(searchParams.get('tags')?.split(',').filter(Boolean) ?? []);
     setSearchQuery(searchParams.get('q') || '');
-  }, [searchParams]);
+  }, [searchParams, searchParamsString, urlChangedSincePreviousRender]);
 
   // 过滤状态 → URL + localStorage 记忆（replace 不产生历史；q 用防抖值避免每键写 URL）
   useEffect(() => {
@@ -486,9 +489,24 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
     if (selectedPubEndDate) next.set('pub_end', selectedPubEndDate);
     if (selectedTags.length) next.set('tags', selectedTags.join(','));
     if (debouncedQuery.trim()) next.set('q', debouncedQuery.trim());
-    if (next.toString() === searchParams.toString()) return;
+    const nextString = next.toString();
+    const currentString = searchParamsString;
+    const hasEmptyAccountParam = searchParams.has('account') && !searchParams.get('account');
+
+    // URL 变化触发的状态回填会先经过上一轮渲染；只有状态自身发生变化时才写回，
+    // 避免用旧状态覆盖浏览器后退/前进或外部跳转的查询参数。
+    if (urlChangedSincePreviousRender) return;
+
+    // 空 account 等价于“全部账号”，统一去掉该参数，避免与有效账号值来回切换。
+    if (hasEmptyAccountParam) {
+      const normalized = new URLSearchParams(searchParams);
+      normalized.delete('account');
+      setSearchParams(normalized, { replace: true });
+      return;
+    }
+    if (nextString === currentString) return;
     setSearchParams(next, { replace: true });
-  }, [selectedAccountId, selectedFolder, selectedSource, selectedAuthor, selectedDate, selectedEndDate, selectedPubDate, selectedPubEndDate, selectedTags, debouncedQuery, searchParams, setSearchParams]);
+  }, [selectedAccountId, selectedFolder, selectedSource, selectedAuthor, selectedDate, selectedEndDate, selectedPubDate, selectedPubEndDate, selectedTags, debouncedQuery, searchParams, searchParamsString, setSearchParams, urlChangedSincePreviousRender]);
 
   // 当前过滤条件（不含分页）：列表查询与「全选所有」共用，useMemo 保持引用稳定避免请求循环
   const filterOpts = useMemo<api.FavoriteListOpts>(

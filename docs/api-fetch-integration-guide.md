@@ -157,7 +157,7 @@ curl ... -d '{"platform":"bilibili",...,"params":{"method":"api"}}'   # → 400 
 | 平台 | 浏览器模拟 | API 请求 | 备注 |
 |---|---|---|---|
 | douyin | ✅ | ✅ | 首个落地，代码即模板 |
-| bilibili | ✅ | ❌ | 接口带 WBI 签名，按本指南流程接入 |
+| bilibili | ✅ | ✅ | 2026-09 接入：收藏夹接口无 WBI；视频详情 `view` 无签名、播放直链 `playurl` 需 WBI 签名（mixin key 取自 nav 的 wbi_img，纯 Python md5）；mp4 单文件走 `platform=html5` 端点（匿名 720P 封顶），1080P+/4K 走 DASH 双流 + ffmpeg 合并；坑见 `bilibili/api_client.py` 模块注释（跨域 referer 必须只发根 origin，带视频页完整 referer 一律 412） |
 | xiaohongshu | ✅ | ✅ | 2026-09 接入：x-s/x-s-common/x-t 签名用 [xhshow](https://github.com/Cloxl/xhshow) 纯算生成（XYS_ 格式）+ curl_cffi 直连；坑见 `xiaohongshu/api_client.py` 模块 docstring（query 编码必须与签名逐字节一致、cookies 传 dict） |
 | wechat | JSON 导入 | — | 无浏览器抓取概念，不适用 |
 | youtube | ✅ | ❌ | 按需接入 |
@@ -229,6 +229,14 @@ Threads 已实现：`save_post`（收藏帖子，media_id）/ `cancel_saved_mult
 （直连即可，比读接口还简单）；`photo/like` 强校验作者 `user_id`（缺失 → result=21，
 批量 ID 模式从 contents 表自动补全，未入库视频先抓取入库）；
 `photo/collect` 的作者 `userId` 可省；`exp_tag` 均可省。批量操作逐条执行 + 0.5s 节流。
+
+Bilibili 已实现 `cancel_favorites`（批量取消收藏）与 `resolve_download_urls`
+（按 BV 号解析下载直链，支持粘贴完整链接、多 P 指定分 P，默认 P1）。
+下载要点：mp4 单文件走 `platform=html5 + fnval=1`（音视频合一，匿名 720P 封顶，
+登录态失效自动回退匿名）；高画质（1080P+/4K，需登录态）走 `fnval=16` 的 DASH
+双流（link 附 `audio_url`，kind="dash"）—— download_worker 双 aria2 任务下载
+`.video.m4s` / `.audio.m4s` 后 `ffmpeg -c copy` 合并为单个 mp4 并清理分片；
+未安装 ffmpeg 时自动回落 mp4 单文件。CDN 直链实测仅 UA 即可下载。
 
 日期区间过滤复用 `app/utils.py::parse_date_window / filter_by_date_window`
 （collected_at 缺失由 parser 兜底发布时间）；task_executor 的抓取过滤也走同一份实现。
