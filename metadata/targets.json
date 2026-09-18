@@ -2,14 +2,27 @@
  "signatures": [
   {
    "keyid": "fe81569c169c84e4931cb302686f1f853aaa67278f347bc17f3168536bea8b00",
-   "sig": "0d0a2fbb0cc4886fd8907a2061dfcb19c49f22793248e185540da84443a4f6e34a4d9507068fa66945be76a4d79b75d5a63b16a17626fb9b69824dc1ddce4206"
+   "sig": "4904ea90ba1977a868120557819bfa279f2087938c9d8e45a2d943977d30ef1dae1b822d4ab11d66752fe593b66239ead0ff7253225ad20d139ae9a2c8387807"
   }
  ],
  "signed": {
   "_type": "targets",
-  "expires": "2027-09-18T15:43:46Z",
+  "expires": "2027-09-18T17:41:19Z",
   "spec_version": "1.0.31",
-  "targets": {},
-  "version": 1
+  "targets": {
+   "FavAPI-macos-arm64-0.2.0.tar.gz": {
+    "custom": {
+     "tufup": {
+      "required": false
+     },
+     "user": null
+    },
+    "hashes": {
+     "sha256": "ca1a768785917aec22f845b97babaecc29d7b82010305bbabdfe5b8b8c6551bd"
+    },
+    "length": 71323497
+   }
+  },
+  "version": 2
  }
 }
