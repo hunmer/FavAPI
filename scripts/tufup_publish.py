@@ -43,6 +43,12 @@ def main() -> None:
         if archive_name in targets_json.read_text(encoding="utf-8"):
             print(f"{app_name} {args.version} 已发布，跳过（幂等重跑）")
             continue
+        # chromium（pw-browsers 约 180MB）不参与增量更新：排除后全量归档约 60MB，
+        # 低于 GitHub 单文件 100MB 上限；客户端安装时同样跳过 pw-browsers，
+        # chromium 由 Release 全量包首次分发
+        import shutil
+
+        shutil.rmtree(bundle_dir / "pw-browsers", ignore_errors=True)
         # 清掉上次失败的未发布残留，避免 tufup 交互询问覆盖（CI 无 stdin）
         (args.repo_dir / "targets" / archive_name).unlink(missing_ok=True)
         # 双 app 共享 repo_dir：元数据全局累积，publish 各自 bump snapshot/timestamp
