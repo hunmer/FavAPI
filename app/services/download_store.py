@@ -65,7 +65,7 @@ async def get_download(download_id: str) -> dict | None:
 
 
 async def update_download(download_id: str, **fields) -> dict | None:
-    allowed = ("status", "progress", "output_path", "error_message", "started_at", "finished_at")
+    allowed = ("status", "progress", "output_path", "error_message", "started_at", "finished_at", "downloader")
     values = {k: v for k, v in fields.items() if k in allowed}
     if values:
         cols = ", ".join(f"{k} = ?" for k in values)
@@ -80,11 +80,11 @@ async def next_pending() -> dict | None:
     )
 
 
-async def reset_download(download_id: str) -> dict | None:
-    """失败/取消/暂停后重新入队。"""
+async def reset_download(download_id: str, downloader: str | None = None) -> dict | None:
+    """失败/取消/暂停后重新入队；downloader 非空时顺带切换下载器。"""
     return await update_download(
         download_id, status="pending", progress=None, error_message=None,
-        started_at=None, finished_at=None,
+        started_at=None, finished_at=None, downloader=downloader,
     )
 
 

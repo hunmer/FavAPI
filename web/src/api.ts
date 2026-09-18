@@ -858,8 +858,11 @@ export async function createDownload(body: {
   return request('/downloads', { method: 'POST', body: JSON.stringify(body) });
 }
 
-export async function retryDownload(id: string) {
-  return request(`/downloads/${id}/retry`, { method: 'POST' });
+export async function retryDownload(id: string, downloader?: DownloaderId) {
+  return request(`/downloads/${id}/retry`, {
+    method: 'POST',
+    body: JSON.stringify(downloader ? { downloader } : {}),
+  });
 }
 
 export async function pauseDownload(id: string) {
@@ -988,4 +991,24 @@ export function fetchAppSettings(): Promise<AppSettings> {
 
 export function updateAppSettings(patch: Partial<AppSettings>): Promise<AppSettings> {
   return request('/settings', { method: 'PUT', body: JSON.stringify(patch) });
+}
+
+// ---------- 通知中心 ----------
+
+export interface NotificationRow {
+  notification_id: string;
+  type: string;               // info / success / error
+  title: string;
+  detail?: string | null;
+  task_id?: string | null;
+  read: number;
+  created_at?: string | null;
+}
+
+export function listNotifications(limit = 50): Promise<{ notifications: NotificationRow[]; unread: number }> {
+  return request(`/notifications?limit=${limit}`);
+}
+
+export function markNotificationsRead(): Promise<{ updated: number }> {
+  return request('/notifications/read-all', { method: 'POST' });
 }

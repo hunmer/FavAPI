@@ -108,11 +108,22 @@ CREATE TABLE IF NOT EXISTS downloads (
     finished_at    TEXT
 );
 
+CREATE TABLE IF NOT EXISTS notifications (
+    notification_id TEXT PRIMARY KEY,
+    type            TEXT DEFAULT 'info',   -- info / success / error
+    title           TEXT NOT NULL,
+    detail          TEXT,
+    task_id         TEXT,
+    read            INTEGER DEFAULT 0,
+    created_at      TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_favorites_account ON favorites(account_id, platform);
 CREATE INDEX IF NOT EXISTS idx_tasks_started ON fetch_tasks(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_contents_platform ON contents(platform);
 CREATE INDEX IF NOT EXISTS idx_schedules_due ON schedules(status, next_run_at);
 CREATE INDEX IF NOT EXISTS idx_downloads_created ON downloads(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC);
 """
 
 

@@ -9,7 +9,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
-from app.models import DownloadCreate, DownloadOut
+from app.models import DownloadCreate, DownloadOut, DownloadRetry
 from app.services import download_store, download_worker
 
 router = APIRouter(prefix="/api/v1/downloads", tags=["downloads"])
@@ -124,12 +124,15 @@ async def create_download(body: DownloadCreate):
 
 
 @router.post("/{download_id}/retry", status_code=202)
-async def retry_download(download_id: str):
+async def retry_download(download_id: str, body: DownloadRetry | None = None):
+    downloader = body.downloader if body else None
+    if downloader and downloader not in TOOLCHAIN:
+        raise HTTPException(status_code=400, detail=f"不支持的下载器：{downloader}")
     row = await _get_or_404(download_id)
     if row["status"] in ("pending", "running"):
         raise HTTPException(status_code=400, detail="任务仍在队列中，无需重试")
-    await download_store.reset_download(download_id)
-    return {"download_id": download_id, "status": "pending"}
+    await download_store.reset_download(download_id, downloader=downloader)
+    return {"download_id": download_id, "status": "pending", "downloader": downloader or row["downloader"]}
 
 
 @router.post("/{download_id}/pause", status_code=202)

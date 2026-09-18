@@ -130,6 +130,10 @@ class DownloadCreate(BaseModel):
     quality: str = "auto"   # 平台下载清晰度（auto = 平台推荐；其他为高度如 1080）
 
 
+class DownloadRetry(BaseModel):
+    downloader: str | None = None  # 重试时切换下载器；缺省保持原值
+
+
 class DownloadOut(BaseModel):
     download_id: str
     platform: str | None = None
@@ -146,6 +150,18 @@ class DownloadOut(BaseModel):
     created_at: str | None = None
     started_at: str | None = None
     finished_at: str | None = None
+
+
+# ---------- 通知中心 ----------
+
+class NotificationOut(BaseModel):
+    notification_id: str
+    type: str = "info"  # info / success / error
+    title: str
+    detail: str | None = None
+    task_id: str | None = None
+    read: int = 0
+    created_at: str | None = None
 
 
 # ---------- AI Agent 配置 ----------

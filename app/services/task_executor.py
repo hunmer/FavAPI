@@ -129,11 +129,38 @@ async def start_fetch(
 
 
 async def _guarded_run(task_id: str, account: dict, action: str, params: dict):
-    """async_run 模式的兜底：任何异常只记日志，不打崩事件循环。"""
+    """async_run 模式的兜底：任何异常只记日志，不打崩事件循环；结束后写入通知中心。"""
     try:
-        await _run_task(task_id, account, action, params)
+        result = await _run_task(task_id, account, action, params)
     except Exception:
         logger.exception("后台抓取任务 %s 异常", task_id)
+        result = None
+    try:
+        await _notify_task_result(task_id, account, result)
+    except Exception:
+        logger.exception("任务 %s 写入通知失败", task_id)
+
+
+async def _notify_task_result(task_id: str, account: dict, result: dict | None):
+    """后台任务落终态后写通知；_run_task 抛异常（result=None）时按任务表终态兜底。"""
+    from app.services import notification_store
+
+    task = result or await data_store.get_task(task_id) or {}
+    name = account.get("name") or account.get("account_id", "")
+    if task.get("status") == "success":
+        await notification_store.create_notification(
+            "success",
+            f"{name} 抓取完成：新增 {task.get('new_favorites') or 0} 条收藏",
+            f"共入库 {task.get('result_count') or 0} 条",
+            task_id=task_id,
+        )
+    else:
+        await notification_store.create_notification(
+            "error",
+            f"{name} 抓取失败",
+            task.get("error_message") or "未知错误",
+            task_id=task_id,
+        )
 
 
 async def _run_task(task_id: str, account: dict, action: str, params: dict) -> dict:
