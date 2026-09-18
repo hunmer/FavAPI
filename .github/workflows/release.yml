@@ -62,21 +62,24 @@ jobs:
         shell: bash
         run: bash scripts/build_portable.sh
 
-      - name: Pack artifact (versioned)
-        shell: bash
+      - name: Pack artifact (macOS)
+        if: runner.os == 'macOS'
         run: |
           VER="${GITHUB_REF_NAME#v}"
-          NAME="FavAPI-${VER}-${{ matrix.platform }}"
           cd dist
-          if [ "${{ runner.os }}" = "macOS" ]; then
-            # tar 保留可执行权限与符号链接（chromium .app 内部需要），zip 会丢失
-            tar -czf "$NAME.tar.gz" FavAPI
-          else
-            # 用 bsdtar 而非 Compress-Archive：后者生成的 zip 以反斜杠作路径分隔符，
-            # Linux 端 unzip 解压失败
-            tar -a -cf "$NAME.zip" FavAPI
-          fi
+          # tar 保留可执行权限与符号链接（chromium .app 内部需要），zip 会丢失
+          tar -czf "FavAPI-${VER}-macos-arm64.tar.gz" FavAPI
           ls -lh FavAPI-*
+
+      - name: Pack artifact (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # 必须用系统内置 bsdtar（System32\tar.exe）：Git Bash 的 GNU tar 不支持 zip；
+          # Compress-Archive 生成的 zip 用反斜杠路径分隔符，Linux 端解压失败
+          $ver = "${{ github.ref_name }}" -replace '^v', ''
+          tar -a -cf "dist/FavAPI-$ver-windows-x64.zip" -C dist FavAPI
+          Get-Item "dist/FavAPI-*.zip" | Select-Object Name, Length
 
       - uses: actions/upload-artifact@v4
         with:
