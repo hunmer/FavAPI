@@ -223,8 +223,9 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
               <X className="w-4 h-4" />
             </button>
             <div className="grid grid-cols-1 md:grid-cols-2 grid-rows-2 md:grid-rows-1 gap-6 flex-1 min-h-0">
-              {/* 左栏：参数表单（内容超高时内部滚动） */}
-              <div className="space-y-4 min-h-0 overflow-y-auto">
+              {/* 左栏：参数表单（内容超高时表单区内部滚动，提示与按钮固定底部） */}
+              <div className="flex flex-col min-h-0">
+                <div className="flex-1 min-h-0 overflow-y-auto space-y-4">
                 <div>
                   <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                     {activeOp.name}
@@ -275,7 +276,10 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
                     {p.help && <p className="text-[11px] text-slate-400 mt-1">{p.help}</p>}
                   </div>
                 ))}
+                </div>
 
+                {/* 底部固定区：危险提示 + 操作按钮，不随表单滚动 */}
+                <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800 space-y-3">
                 {showOpDangerConfirm && (
                   <p className="text-xs text-rose-700 dark:text-rose-400 bg-rose-50 dark:bg-rose-950 border border-rose-200 dark:border-rose-800 p-3 rounded-xl flex items-start gap-2">
                     <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -283,7 +287,7 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
                   </p>
                 )}
 
-                <div className="flex justify-end gap-2 pt-1">
+                <div className="flex justify-end gap-2">
                   <button
                     type="button"
                     disabled={opRunning}
@@ -315,6 +319,7 @@ export const PlatformOperations: React.FC<PlatformOperationsProps> = ({ account 
                       {showOpDangerConfirm ? '确认执行' : '执行'}
                     </button>
                   )}
+                </div>
                 </div>
               </div>
 
