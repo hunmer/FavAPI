@@ -133,6 +133,24 @@ async def delete_bilibili_folder(account_id: str, body: FolderDeleteBody):
     return {"account_id": account_id, "folders": folders}
 
 
+@router.post("/{account_id}/folders/sync")
+async def sync_bilibili_folders(account_id: str):
+    """走 API 拉取 Bilibili 最新收藏夹列表，返回同步后的收藏夹。"""
+    account, adapter = await _validate_folder_op(account_id)
+    from app.services import browser
+
+    await browser.close_manual(account_id)
+    try:
+        folders = await adapter.sync_folders(account_manager.to_context(account))
+    except LoginExpiredError as exc:
+        await account_manager.update_account(account_id, status="expired")
+        raise HTTPException(409, str(exc))
+    except Exception as exc:
+        logger.exception("收藏夹同步失败：%s", account_id)
+        raise HTTPException(502, friendly_error(exc))
+    return {"account_id": account_id, "folders": folders}
+
+
 async def _validate_operation(account_id: str, op_id: str) -> tuple[dict, object]:
     """操作执行前置校验，返回 (account, adapter)。"""
     account = await _get_account_or_404(account_id)

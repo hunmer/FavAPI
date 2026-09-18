@@ -409,6 +409,13 @@ export async function deleteBilibiliFolder(
   });
 }
 
+/** 走 API 拉取 Bilibili 最新收藏夹列表（FolderPicker 刷新按钮）。 */
+export async function syncBilibiliFolders(
+  accountId: string
+): Promise<{ account_id: string; folders: BilibiliFolder[] }> {
+  return request(`/accounts/${accountId}/folders/sync`, { method: 'POST' });
+}
+
 export async function toggleBrowse(accountId: string, url?: string) {
   // 带 url 时为【账号打开】语义：已打开则导航到该地址，不执行关闭切换
   const qs = url ? `?url=${encodeURIComponent(url)}` : '';

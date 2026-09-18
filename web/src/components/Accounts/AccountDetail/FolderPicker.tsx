@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Account, BilibiliFolder } from '../../../types';
-import { deleteBilibiliFolder, editBilibiliFolder } from '../../../api';
+import { deleteBilibiliFolder, editBilibiliFolder, syncBilibiliFolders } from '../../../api';
 import {
   AlertTriangle, CheckSquare, FolderHeart, ListChecks, MoreVertical, Pencil, RefreshCw, Square, Trash2,
 } from 'lucide-react';
@@ -37,6 +37,20 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
   const [editForm, setEditForm] = useState({ title: '', intro: '', privacy: '0' });
   const [opBusy, setOpBusy] = useState(false);
   const [opError, setOpError] = useState('');
+  const [syncing, setSyncing] = useState(false);
+
+  // 走 API 拉取最新收藏夹列表（Bilibili 专属按钮）
+  const syncFolders = async () => {
+    setSyncing(true);
+    try {
+      await syncBilibiliFolders(account.id);
+      onFoldersChanged?.();
+    } catch (e) {
+      setOpError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   // 多选模式与勾选集合（默认收藏夹不可删，不参与勾选）
   const [multiSelect, setMultiSelect] = useState(false);
@@ -145,6 +159,17 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
               {multiSelect ? `已选 ${checked.size} 个` : '点击卡片设为抓取目标'}
             </span>
           )}
+          {account.platform === 'bilibili' && (
+            <button
+              type="button"
+              title={syncing ? '正在同步…' : '从 B 站刷新收藏夹列表'}
+              disabled={syncing}
+              onClick={syncFolders}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-40"
+            >
+              <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+            </button>
+          )}
           {folders.length > 0 && (
             <button
               type="button"
@@ -178,6 +203,11 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
 
       {/* Tab Content：收藏夹列表网格，或空占位 */}
       <div className="p-6">
+        {opError && !editTarget && !deleteTargets && (
+          <p className="mb-2.5 text-[11px] text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950 border border-rose-200 dark:border-rose-800 p-2 rounded-lg">
+            {opError}
+          </p>
+        )}
         {folders.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
             {folders.map((f) => {
@@ -193,7 +223,8 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
                         if (checkable) toggleChecked(f.mediaId);
                         return; // 默认夹多选模式不可勾选；多选模式不切换抓取目标
                       }
-                      onSelect(f.mediaId);
+                      // 再次点击已选中的卡片取消选择（清空抓取目标）
+                      onSelect(isSelected ? '' : f.mediaId);
                     }}
                     className={`w-full p-3 rounded-xl border text-left transition-all ${
                       isChecked

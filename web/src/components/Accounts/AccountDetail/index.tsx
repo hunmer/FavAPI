@@ -54,10 +54,8 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
 }) => {
   const platform = PLATFORMS.find((p) => p.id === account.platform) || PLATFORMS[0];
 
-  // 抓取目标收藏夹：收藏夹 Tab 点击与 Bilibili 专属参数输入双向联动
-  const [selectedFolderMediaId, setSelectedFolderMediaId] = useState<string>(
-    account.folders && account.folders[0] ? account.folders[0].mediaId : ''
-  );
+  // 抓取目标收藏夹：收藏夹 Tab 点击与 Bilibili 专属参数输入双向联动；默认不选，点击已选卡片可取消
+  const [selectedFolderMediaId, setSelectedFolderMediaId] = useState<string>('');
 
   // 本地库实时统计（favorites 表按账号聚合），概览卡片与清空确认框使用
   const [localStats, setLocalStats] = useState<{ total: number; folderCount: number } | null>(null);

@@ -232,6 +232,11 @@ class BilibiliAdapter(BasePlatformAdapter):
         logger.info("[%s] 删除收藏夹 %s：%s", account.account_id, media_id, current.get("title"))
         return await self._sync_folders_meta(account.account_id, cookie_header)
 
+    async def sync_folders(self, account: AccountContext) -> list[dict]:
+        """走 API 拉取最新收藏夹列表并写入 extra（FolderPicker 刷新按钮调）。"""
+        cookie_header = await api_client.profile_cookie_header(account.profile_path)
+        return await self._sync_folders_meta(account.account_id, cookie_header)
+
     async def _current_folder(self, cookie_header: str, media_id: str) -> dict | None:
         """从 list-all 找指定收藏夹的当前元数据（不存在返回 None）。"""
         up_mid = api_client._cookie_value(cookie_header, "DedeUserID")
