@@ -248,8 +248,12 @@ async def fetch_following(account_id: str, count: int = 0):
 # ---------- 博主主页作品 ----------
 
 @router.get("/authors/{sec_uid}/posts")
-async def author_posts(sec_uid: str, cursor: int = 0, count: int = 18, account_id: str = ""):
-    """实时拉取博主主页作品（一页；cursor 0 = 首页，末页返回 0），附已读状态。"""
+async def author_posts(sec_uid: str, cursor: int | str = 0, count: int = 18, account_id: str = ""):
+    """实时拉取博主主页作品（一页；cursor 0 = 首页，末页返回 0），附已读状态。
+
+    cursor 兼容两种形态：int（douyin/bilibili/kuaishou 的时间戳或页码）与
+    str（xiaohongshu 的不透明十六进制游标，超出 JS 安全整数不可数值化）。
+    """
     author = await db.query_one(
         "SELECT * FROM follow_authors WHERE sec_uid = ?", (sec_uid,)
     )
@@ -268,7 +272,9 @@ async def author_posts(sec_uid: str, cursor: int = 0, count: int = 18, account_i
         )
     try:
         batch = await adapter.follows_fetch_posts_page(
-            cookie_header, sec_uid, max(0, cursor), max(1, min(count, 50))
+            cookie_header, sec_uid,
+            cursor if isinstance(cursor, str) and cursor else max(0, cursor),
+            max(1, min(count, 50)),
         )
     except Exception as exc:
         logger.exception("拉取博主作品失败：%s", sec_uid)

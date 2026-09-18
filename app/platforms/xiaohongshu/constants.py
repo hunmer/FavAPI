@@ -23,6 +23,14 @@ API_PAGE_INTERVAL_SEC = 1.2    # 翻页间隔（小红书风控较严，慢于�
 # token 来自收藏/点赞列表响应 notes[].xsec_token；xsec_source 实测不校验，固定 pc_feed）
 NOTE_DETAIL_URL = "https://edith.xiaohongshu.com/api/sns/web/v1/feed"
 
+# 博主主页笔记列表（GET；x-s 签名强校验，无签名 406；cursor 为服务端游标；
+# xsec_token 为博主访问凭证，实测空串亦可访问（2026-09），有 token 时带上与浏览器一致）
+USER_POSTED_URL = "https://edith.xiaohongshu.com/api/sns/web/v1/user_posted"
+# 关注列表（GET，IM 通道；实测不校验 x-s 签名，仍走统一签名链路；
+# page/size 偏移翻页，无 has_more 字段，末页返回空列表）
+FOLLOWING_ALL_URL = "https://edith.xiaohongshu.com/api/im/web/users/following/all"
+FOLLOWING_PAGE_SIZE = 200  # 关注列表单页条数（与浏览器抓包一致，一页基本全覆盖）
+
 # 写操作接口（POST JSON，body 字段名各异见 api_client.py；签名与读接口同链路）
 COLLECT_NOTE_URL = "https://edith.xiaohongshu.com/api/sns/web/v1/note/collect"
 UNCOLLECT_NOTE_URL = "https://edith.xiaohongshu.com/api/sns/web/v1/note/uncollect"

@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import time
+from collections import OrderedDict
 
 from app import config
 from app.platforms.base import (
@@ -23,7 +24,7 @@ from app.platforms.base import (
     PARAM_DATE_TO,
 )
 from app.services import browser
-from app.utils import filter_by_date_window, parse_date_window
+from app.utils import filter_by_date_window, now_iso, parse_date_window
 from . import api_client, constants
 from .parser import extract_user_id, is_user_id
 
@@ -70,6 +71,13 @@ class XiaohongshuAdapter(BasePlatformAdapter):
     supported_actions = ("list_favorites",)
     api_fetch_implemented = True  # API 直连：xhshow 纯算签名 + curl_cffi（浏览器模拟已移除）
     download_api_implemented = True  # 支持按 note_id 解析下载直链（平台下载 → aria2c）
+    follows_api_implemented = True  # 特别关注体系：关注列表 / 博主主页笔记 / 播放 / 一键同步
+
+    # 浏览→播放链路的笔记 xsec_token 缓存（详情接口强校验 token，而 aweme 路由只传
+    # note_id）：浏览作品页时顺手缓存本页 token，播放时 LRU 命中；miss 再查已入库
+    # raw_data。类级共享（registry 单例），容量上限防泄漏
+    _xsec_token_cache: "OrderedDict[str, str]" = OrderedDict()
+    _XSEC_TOKEN_CACHE_MAX = 2000
     fetch_targets = (
         FetchTarget(
             action="list_favorites", name="抓取收藏列表",
@@ -417,6 +425,135 @@ class XiaohongshuAdapter(BasePlatformAdapter):
             has_more=last_has_more and (not count or len(collected) >= skip + count),
             total=len(collected),
         )
+
+    # ---------- 特别关注（follows）体系：api_client 薄委托 ----------
+
+    async def follows_profile_cookie(self, account: AccountContext) -> dict:
+        # 返回 cookies dict 而非其他平台的 cookie 头字符串：小红书签名必须以
+        # dict 传参（模块 docstring 坑：unread 值带引号会让字符串解析错位）；
+        # follows API 层对此值仅透传，不做 str 操作
+        return await api_client.profile_cookies(account.profile_path)
+
+    def follows_self_uid(self, cookie_header: dict) -> str:
+        # user/me 解析当前账号 user_id；follows API 层为同步调用约定，
+        # 此处同步阻塞一次签名 HTTP（约 1s）
+        try:
+            me = api_client.fetch_me(cookie_header)
+        except (RuntimeError, ValueError):
+            return ""
+        return str(me.get("user_id") or "")
+
+    def follows_validate_uid(self, sec_uid: str) -> None:
+        if not is_user_id(str(sec_uid or "")):
+            raise ValueError(
+                "小红书博主 ID 需为 24 位十六进制用户 id（主页地址 user/profile/ 后那串）")
+
+    async def follows_fetch_following(self, cookie_header: dict, self_uid: str,
+                                      count: int = 0, on_batch=None):
+        # IM following/all 只拉当前登录账号自己的关注列表，self_uid 不参与请求
+        return await api_client.fetch_followings(cookie_header, count, on_batch=on_batch)
+
+    async def follows_fetch_posts_page(self, cookie_header: dict, sec_uid: str,
+                                       cursor=0, count: int = 18) -> dict:
+        # cursor 为服务端不透明字符串游标（Mongo ObjectId 风格十六进制，超出 JS
+        # 安全整数不能转 int，契约扩展为 int|str 原样透传）：0/"" = 首页，末页归 0
+        cur = str(cursor).strip() if cursor not in (0, "", None) else ""
+        batch = await asyncio.to_thread(
+            api_client.fetch_user_posted_page, cookie_header, sec_uid, cur)
+        for it in batch["items"]:
+            self._cache_xsec_token(it)
+        batch["cursor"] = batch["cursor"] if batch["has_more"] else 0
+        return batch
+
+    @classmethod
+    def _cache_xsec_token(cls, item: dict) -> None:
+        """作品行 raw_data 里的 xsec_token 写入 LRU（播放详情依赖）。"""
+        raw = item.get("raw_data")
+        try:
+            raw = json.loads(raw) if isinstance(raw, str) else (raw or {})
+        except (TypeError, ValueError):
+            return
+        token = str(raw.get("xsec_token") or "")
+        if not token:
+            return
+        cache = cls._xsec_token_cache
+        cache[item["content_id"]] = token
+        cache.move_to_end(item["content_id"])
+        while len(cache) > cls._XSEC_TOKEN_CACHE_MAX:
+            cache.popitem(last=False)
+
+    async def follows_play_info(self, cookie_header: dict, content_id: str) -> dict:
+        note_id = self._note_id_param({"note_id": content_id}, "note_id")
+        token = self._xsec_token_cache.get(note_id) or self._stored_xsec_token(note_id)
+        if not token:
+            raise ValueError(
+                "播放详情需要 xsec_token：该笔记不在近期浏览与已入库记录中，"
+                "请先打开博主主页或同步后再播放")
+        detail = await asyncio.to_thread(
+            api_client.fetch_note_detail, cookie_header, note_id, token)
+        links = detail.get("links") or []
+        # 发布时间：note_id 为 Mongo ObjectId，前 8 位十六进制即创建时间 Unix 秒
+        try:
+            create_time = int(note_id[:8], 16)
+        except ValueError:
+            create_time = 0
+        return {
+            "aweme_id": note_id,
+            "desc": None,
+            "create_time": create_time,
+            "aweme_type": 0,
+            "duration": None,
+            "statistics": {},
+            "author": {"nickname": detail.get("author_name"),
+                       "sec_uid": detail.get("author_id")},
+            # CDN 直链需站内 referer（与下载通道一致），媒体代理按域自动附加
+            "video_urls": [l["url"] for l in links if l.get("kind") == "video" and l.get("url")],
+            "images": [{"url": l["url"]} for l in links if l.get("kind") == "image" and l.get("url")],
+        }
+
+    async def sync_author_posts(self, account: AccountContext, author_row: dict,
+                                cookie_header: dict, count: int) -> list[dict]:
+        """拉取单博主最新 count 条笔记（精确截断），并回填 last_synced_at / uid / 昵称 / 头像。
+
+        不负责入库：follows /sync 路由与 follow_sync 抓取目标（task 体系统一入库）共用本方法。
+        """
+        from app.database import db  # 延迟导入：平台层仅此方法触库
+        from app.services import follow_store
+
+        items, _ = await api_client.fetch_user_posted(
+            cookie_header, author_row["sec_uid"], count)
+        items = items[:count]  # 翻页按页边界返回可能超出，按 count 截断保证入库量一致
+        for it in items:
+            self._cache_xsec_token(it)  # 同步的笔记 token 一并缓存，播放即可用
+        author_id = next((it.get("author_id") for it in items if it.get("author_id")), None)
+        author_name = next((it.get("author_name") for it in items if it.get("author_name")), None)
+        # 作者头像：user_posted 的 user.avatar，作为库中无头像时的兜底
+        avatar_url = None
+        for it in items:
+            try:
+                raw = json.loads(it["raw_data"]) if isinstance(it.get("raw_data"), str) \
+                    else (it.get("raw_data") or {})
+            except (TypeError, ValueError):
+                raw = {}
+            url = str((raw.get("user") or {}).get("avatar") or "")
+            if url.startswith("http"):
+                avatar_url = url
+                break
+        await db.execute(
+            """UPDATE follow_authors SET last_synced_at = ?,
+                   uid = COALESCE(NULLIF(?, ''), uid),
+                   nickname = COALESCE(NULLIF(?, ''), nickname),
+                   avatar_url = COALESCE(NULLIF(?, ''), avatar_url)
+               WHERE sec_uid = ?""",
+            (now_iso(), author_id or "", author_name or "", avatar_url or "",
+             author_row["sec_uid"]),
+        )
+        if follow_store.avatar_local_path(author_row["sec_uid"]) is None:
+            source_url = (author_row.get("avatar_url") or "").strip() or avatar_url
+            if source_url:
+                await asyncio.to_thread(
+                    follow_store.download_avatar, author_row["sec_uid"], source_url)
+        return items
 
     async def execute_api_operation(
         self, op_id: str, account: AccountContext, params: dict, on_event=None

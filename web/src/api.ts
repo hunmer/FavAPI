@@ -1152,10 +1152,10 @@ export function fetchFollowing(accountId: string, count = 0): Promise<{ total: n
   return request(`/follows/following/${encodeURIComponent(accountId)}?count=${count}`);
 }
 
-export function fetchAuthorPosts(secUid: string, cursor = 0, count = 18, accountId = ''): Promise<{
+export function fetchAuthorPosts(secUid: string, cursor: number | string = 0, count = 18, accountId = ''): Promise<{
   author: Partial<FollowAuthorRow> | null;
   items: FollowPostRow[];
-  cursor: number;
+  cursor: number | string;
   has_more: boolean;
 }> {
   const q = new URLSearchParams({ cursor: String(cursor), count: String(count) });

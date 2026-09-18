@@ -258,11 +258,13 @@ class BasePlatformAdapter(ABC):
         raise NotImplementedError(f"{self.display_name} 未实现特别关注能力")
 
     async def follows_fetch_posts_page(self, cookie_header: str, sec_uid: str,
-                                       cursor: int = 0, count: int = 18) -> dict:
+                                       cursor: int | str = 0, count: int = 18) -> dict:
         """拉取一页博主主页作品 → {items, cursor, has_more}。
 
         cursor 语义：0 = 首页，响应 cursor 供下次翻页，末页返回 0（无更多）；
-        items 为通用 content 行（parser 输出，直接入库/展示）。
+        形态 int（时间戳/页码）或 str（xiaohongshu 不透明十六进制游标，超出
+        JS 安全整数不可数值化，原样透传）；items 为通用 content 行（parser 输出，
+        直接入库/展示）。
         """
         raise NotImplementedError(f"{self.display_name} 未实现特别关注能力")
 

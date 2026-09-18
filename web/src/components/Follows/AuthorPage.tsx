@@ -44,7 +44,7 @@ export const AuthorPage: React.FC<AuthorPageProps> = ({
 }) => {
   const [author, setAuthor] = useState<Partial<api.FollowAuthorRow> | null>(null);
   const [items, setItems] = useState<api.FollowPostRow[]>([]);
-  const [cursor, setCursor] = useState(0);
+  const [cursor, setCursor] = useState<number | string>(0);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -63,7 +63,7 @@ export const AuthorPage: React.FC<AuthorPageProps> = ({
   const isFirstLoad = useRef(true);
 
   const loadPage = useCallback(
-    async (cur: number, append: boolean) => {
+    async (cur: number | string, append: boolean) => {
       if (!accountIdRef.current) return;
       setLoading(true);
       try {

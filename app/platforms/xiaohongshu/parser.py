@@ -98,6 +98,33 @@ def parse_collect_page(data: dict) -> dict:
     }
 
 
+def parse_following_page(data: dict, page_size: int) -> dict:
+    """im/web/users/following/all 响应 → {items, has_more}，items 为 follows 体系统一关注人结构。
+
+    条目仅有 user_id / nick_name / avatar（IM 通道精简结构），粉丝数、作品数、
+    签名、特别关注标记接口均不下发，置 None / 空由前端兜底；接口无 has_more
+    字段，满页（== page_size）即视为可能有下一页，末页返回空列表。
+    """
+    entries = (data.get("data") or {}).get("follow_user_d_t_o_list") or []
+    followings = []
+    for u in entries:
+        user_id = str(u.get("user_id") or "")
+        if not user_id:
+            continue
+        followings.append({
+            "sec_uid": user_id,
+            "uid": user_id,
+            "unique_id": "",
+            "nickname": u.get("nick_name") or "",
+            "signature": "",
+            "avatar_url": u.get("avatar") or "",
+            "follower_count": None,
+            "aweme_count": None,
+            "is_top": False,
+        })
+    return {"items": followings, "has_more": len(followings) >= page_size}
+
+
 def parse_download_links(data: dict) -> list[dict]:
     """feed 详情响应 → 可下载直链列表（首项为推荐地址）。
 

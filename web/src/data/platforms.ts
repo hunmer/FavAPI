@@ -48,6 +48,7 @@ export const PLATFORMS: PlatformMeta[] = [
     isSupported: true,
     tagline: '支持专辑与笔记收藏抓取、高清图文及视频入库',
     apiFetch: true,
+    followsApi: true,
   },
   {
     id: 'douyin',

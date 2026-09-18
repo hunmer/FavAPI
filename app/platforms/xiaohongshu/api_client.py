@@ -20,7 +20,7 @@ from xhshow import Xhshow
 
 from app.services import browser
 from . import constants
-from .parser import parse_collect_page, parse_download_links
+from .parser import parse_collect_page, parse_download_links, parse_following_page
 from ..base import LoginExpiredError
 
 logger = logging.getLogger("favapi.xiaohongshu.api")
@@ -192,6 +192,88 @@ async def fetch_note_pages(cookies: dict[str, str], url: str, user_id: str,
             "note 列表第 %d 页：%d 条，累计 %d，has_more=%s",
             page, len(batch["items"]), len(collected), batch["has_more"],
         )
+        if on_batch and batch["items"]:
+            await on_batch({"page": page, "items": batch["items"]})
+        if not batch["has_more"] or not batch["cursor"]:
+            return collected, False
+        if count and len(collected) >= count:
+            return collected, True
+        cursor = batch["cursor"]
+        await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
+
+
+# ---- 关注列表 / 博主主页笔记（follows 体系数据层，2026-09 实测）----
+
+
+def fetch_following_page(cookies: dict[str, str], page: int = 1) -> dict:
+    """拉取一页关注列表（GET im/web/users/following/all，同步阻塞）。
+
+    IM 通道接口实测不校验 x-s 签名，仍走统一签名链路与浏览器行为一致；
+    page/size 偏移翻页，接口无 has_more 字段，末页返回空列表。
+    返回 parse_following_page 结果 {items, has_more}，items 为统一关注人结构。
+    """
+    data = _signed_get(cookies, constants.FOLLOWING_ALL_URL, {
+        "page": str(page), "size": str(constants.FOLLOWING_PAGE_SIZE),
+    })
+    return parse_following_page(data, constants.FOLLOWING_PAGE_SIZE)
+
+
+async def fetch_followings(cookies: dict[str, str], count: int = 0, on_batch=None):
+    """翻页拉取关注列表，直到取满 count（0=全部）或返回空页。
+
+    返回 (全部 items, 最后一批的 has_more)；on_batch({"page", "items"}) 逐页回调。
+    """
+    collected: list[dict] = []
+    page = 1
+    while True:
+        batch = await asyncio.to_thread(fetch_following_page, cookies, page)
+        collected.extend(batch["items"])
+        logger.info("followings 第 %d 页：%d 条，累计 %d，has_more=%s",
+                    page, len(batch["items"]), len(collected), batch["has_more"])
+        if on_batch and batch["items"]:
+            await on_batch({"page": page, "items": batch["items"]})
+        if not batch["has_more"] or not batch["items"]:
+            return collected, False
+        if count and len(collected) >= count:
+            return collected, True
+        page += 1
+        await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
+
+
+def fetch_user_posted_page(cookies: dict[str, str], user_id: str, cursor: str = "",
+                           xsec_token: str = "") -> dict:
+    """拉取一页博主主页笔记（GET user_posted，同步阻塞）。
+
+    x-s 签名强校验（无签名 406）；xsec_token 为博主访问凭证，实测空串
+    亦可访问（2026-09，未在全部博主上验证），有 token（信息流/搜索下发）时
+    带上与浏览器行为一致；cursor 为上一页响应返回的不透明游标（首页空串）。
+    响应 notes 与 collect/page 同构，复用 parse_collect_page
+    → {items, cursor, has_more, total}。
+    """
+    params = {
+        "num": str(constants.API_PAGE_COUNT), "cursor": cursor, "user_id": user_id,
+        "image_formats": "jpg,webp,avif", "xsec_token": xsec_token,
+        "xsec_source": "pc_feed",
+    }
+    data = _signed_get(cookies, constants.USER_POSTED_URL, params, user_id=user_id)
+    return parse_collect_page(data)
+
+
+async def fetch_user_posted(cookies: dict[str, str], user_id: str, count: int = 0,
+                            on_batch=None):
+    """按 cursor 游标翻页拉取博主主页笔记，直到取满 count（0=全部）或 has_more=false。
+
+    返回 (全部 items, 最后一批的 has_more)；on_batch({"page", "items"}) 逐页回调。
+    """
+    cursor = ""
+    collected: list[dict] = []
+    page = 0
+    while True:
+        batch = await asyncio.to_thread(fetch_user_posted_page, cookies, user_id, cursor)
+        page += 1
+        collected.extend(batch["items"])
+        logger.info("user_posted 第 %d 页：%d 条，累计 %d，has_more=%s",
+                    page, len(batch["items"]), len(collected), batch["has_more"])
         if on_batch and batch["items"]:
             await on_batch({"page": page, "items": batch["items"]})
         if not batch["has_more"] or not batch["cursor"]:

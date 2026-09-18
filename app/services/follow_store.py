@@ -17,12 +17,14 @@ logger = logging.getLogger("favapi.follows")
 # 媒体域名白名单（视频 / 图片 / 音乐），媒体代理与头像下载共用：
 # 抖音系 CDN + B 站系 CDN（i0/i1/i2.hdslb.com 头像封面、upos-sz-mirror*.bilivideo.com 视频直链）
 # + 快手系 CDN（kwimgs 头像、yximgs 封面、kwaicdn/djvod.ndcimgs 视频直链，均仅 UA 即可访问）
+# + 小红书系 CDN（sns-avatar/sns-webpic/sns-video*.xhscdn.com 头像/封面/直链，需站内 referer）
 MEDIA_HOST_SUFFIXES = (
     "douyinvod.com", "douyinpic.com", "douyinstatic.com", "douyin.com", "byteimg.com",
     "bytecdn.cn", "snssdk.com", "bytedance.com", "zjcdn.com", "volccdn.com",
     "ipdlab.com", "myqcloud.com",
     "hdslb.com", "bilivideo.com", "bilivideo.cn",
     "kwimgs.com", "yximgs.com", "kwaicdn.com", "ndcimgs.com",
+    "xhscdn.com",
 )
 # 需要站内 referer 的平台 CDN（其余如 B 站直链不带 referer 最稳）
 DOUYIN_REFERER = "https://www.douyin.com/"
@@ -30,6 +32,8 @@ _DOUYIN_REFERER_SUFFIXES = (
     "douyinvod.com", "douyinpic.com", "douyinstatic.com", "douyin.com",
     "zjcdn.com", "volccdn.com", "snssdk.com",
 )
+XHS_REFERER = "https://www.xiaohongshu.com/"
+_XHS_REFERER_SUFFIXES = ("xhscdn.com",)
 
 MEDIA_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
             "(KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36")
@@ -59,8 +63,10 @@ def upgrade_media_url(url: str) -> str:
 
 
 def media_referer(url: str) -> str:
-    """按目标 CDN 域选 referer：抖音系需站内 referer，其余（B 站 CDN）直链不带最稳。"""
+    """按目标 CDN 域选 referer：抖音/小红书系需站内 referer，其余（B 站 CDN）直链不带最稳。"""
     host = urlparse(url or "").hostname or ""
+    if any(host == s or host.endswith("." + s) for s in _XHS_REFERER_SUFFIXES):
+        return XHS_REFERER
     return DOUYIN_REFERER if any(
         host == s or host.endswith("." + s) for s in _DOUYIN_REFERER_SUFFIXES
     ) else ""
