@@ -1,7 +1,10 @@
 import React from 'react';
-import { LayoutGrid, List, Loader2, Sparkles, X, CheckSquare, Download, Trash2 } from 'lucide-react';
+import { LayoutGrid, List, Loader2, Sparkles, X, CheckSquare, Download, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
 
-/** 右列头部：标题 + 视图切换/多选/一键打标（移动端页面滚动时吸顶），自 DataBrowserView 抽离 */
+/** 列表排序字段：default 按抓取入库时间，collected 收藏时间，duration 时长 */
+export type BrowserSortBy = 'default' | 'collected' | 'duration';
+
+/** 右列头部：标题 + 排序/视图切换/多选/一键打标（移动端页面滚动时吸顶），自 DataBrowserView 抽离 */
 export const BrowserToolbar: React.FC<{
   listLoading: boolean;
   viewMode: 'grid' | 'list';
@@ -13,6 +16,10 @@ export const BrowserToolbar: React.FC<{
   selectedCount: number;
   agentsAvailable: boolean;
   onOpenTagModal: () => void;
+  sortBy: BrowserSortBy;
+  onSortByChange: (by: BrowserSortBy) => void;
+  sortAsc: boolean;
+  onToggleSortOrder: () => void;
 }> = ({
   listLoading,
   viewMode,
@@ -24,6 +31,10 @@ export const BrowserToolbar: React.FC<{
   selectedCount,
   agentsAvailable,
   onOpenTagModal,
+  sortBy,
+  onSortByChange,
+  sortAsc,
+  onToggleSortOrder,
 }) => (
   <div className="sticky top-0 z-20 bg-[#F8FAFC] dark:bg-[#0D1117] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
     <div>
@@ -34,7 +45,7 @@ export const BrowserToolbar: React.FC<{
     </div>
 
     {/* View mode toggle: List vs Grid + 一键打标 + 多选 */}
-    <div className="flex items-center gap-2.5 self-start sm:self-auto">
+    <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
       {selectionMode ? (
         <button
           type="button"
@@ -66,6 +77,28 @@ export const BrowserToolbar: React.FC<{
         <Sparkles className="w-3.5 h-3.5" />
         一键打标
       </button>
+      {/* 排序：字段 + 正反序 */}
+      <div className="bg-white dark:bg-slate-800 p-1 rounded-2xl border border-slate-200 dark:border-slate-700 flex items-center gap-1 shadow-2xs">
+        <select
+          value={sortBy}
+          onChange={(e) => onSortByChange(e.target.value as BrowserSortBy)}
+          title="列表排序字段（收藏时间/时长为空值的条目恒排末尾）"
+          className="px-2 py-1.5 rounded-xl text-xs font-semibold bg-transparent text-slate-700 dark:text-slate-200 outline-none cursor-pointer"
+        >
+          <option value="default">默认排序</option>
+          <option value="collected">收藏时间</option>
+          <option value="duration">时长</option>
+        </select>
+        <button
+          type="button"
+          onClick={onToggleSortOrder}
+          title={sortAsc ? '当前正序，点击切换为倒序' : '当前倒序，点击切换为正序'}
+          className="px-2 py-1.5 rounded-xl text-xs font-semibold inline-flex items-center gap-1 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all active:scale-95 cursor-pointer"
+        >
+          {sortAsc ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />}
+          <span>{sortAsc ? '正序' : '倒序'}</span>
+        </button>
+      </div>
       <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl border border-slate-200 dark:border-slate-700 flex items-center gap-1 shadow-2xs">
         <button
           type="button"

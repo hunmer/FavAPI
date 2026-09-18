@@ -77,6 +77,23 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
     localStorage.setItem('favapi_data_view_mode', mode);
   };
 
+  // ---------- 排序（收藏时间 / 时长 + 正反序，localStorage 记忆） ----------
+  const [sortBy, setSortBy] = useState<'default' | 'collected' | 'duration'>(() => {
+    const saved = localStorage.getItem('favapi_data_sort_by');
+    return saved === 'collected' || saved === 'duration' ? saved : 'default';
+  });
+  const [sortAsc, setSortAsc] = useState(() => localStorage.getItem('favapi_data_sort_order') === 'asc');
+  const handleSortByChange = (by: 'default' | 'collected' | 'duration') => {
+    setSortBy(by);
+    localStorage.setItem('favapi_data_sort_by', by);
+  };
+  const handleToggleSortOrder = () => {
+    setSortAsc((prev) => {
+      localStorage.setItem('favapi_data_sort_order', prev ? 'desc' : 'asc');
+      return !prev;
+    });
+  };
+
   // ---------- 过滤状态（Filter & Search） ----------
   /** 过滤状态初始化：读取当前地址栏查询参数（组件外使用，不依赖 hooks）。 */
   const searchParamsInit = () => new URLSearchParams(window.location.search);
@@ -500,6 +517,8 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
         ...filterOpts,
         limit: pageSize,
         offset: (currentPage - 1) * pageSize,
+        sortBy: sortBy === 'default' ? undefined : sortBy,
+        sortOrder: sortAsc ? 'asc' : 'desc',
       })
         .then(({ total, items }) => {
           if (cancelled) return;
@@ -517,7 +536,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
       cancelled = true;
       window.clearTimeout(t);
     };
-  }, [filterOpts, currentPage, pageSize, reloadFlag, accounts]);
+  }, [filterOpts, currentPage, pageSize, reloadFlag, accounts, sortBy, sortAsc]);
 
   // facets：收藏夹候选按账号收敛，作者候选按账号+收藏夹收敛
   useEffect(() => {
@@ -588,7 +607,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
   // Reset page on filter change
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedAccountId, selectedFolder, selectedSource, selectedAuthor, selectedTags, searchQuery, pageSize, selectedDate, selectedEndDate, selectedPubDate, selectedPubEndDate]);
+  }, [selectedAccountId, selectedFolder, selectedSource, selectedAuthor, selectedTags, searchQuery, pageSize, selectedDate, selectedEndDate, selectedPubDate, selectedPubEndDate, sortBy, sortAsc]);
 
   // 服务端总数缩小后当前页越界：回退到最后一页
   useEffect(() => {
@@ -689,6 +708,10 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
           selectedCount={selectedKeys.size}
           agentsAvailable={agents.length > 0}
           onOpenTagModal={tagging.openTagModal}
+          sortBy={sortBy}
+          onSortByChange={handleSortByChange}
+          sortAsc={sortAsc}
+          onToggleSortOrder={handleToggleSortOrder}
         />
 
         {/* 多选模式批量操作条：全选当前页 / 删除 */}

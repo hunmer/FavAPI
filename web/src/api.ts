@@ -508,6 +508,10 @@ export interface FavoriteListOpts {
   q?: string;
   limit?: number;
   offset?: number;
+  /** 排序字段：collected（收藏时间）/ duration（时长），缺省按抓取时间 */
+  sortBy?: 'collected' | 'duration';
+  /** 排序方向，默认 desc */
+  sortOrder?: 'asc' | 'desc';
 }
 
 export async function listFavorites(opts: FavoriteListOpts = {}): Promise<{ total: number; items: FavoriteRow[] }> {
@@ -523,6 +527,8 @@ export async function listFavorites(opts: FavoriteListOpts = {}): Promise<{ tota
   if (opts.pubEnd) p.set('pub_end', opts.pubEnd);
   if (opts.tags?.length) p.set('tags', opts.tags.join(','));
   if (opts.q) p.set('q', opts.q);
+  if (opts.sortBy) p.set('sort_by', opts.sortBy);
+  if (opts.sortOrder) p.set('sort_order', opts.sortOrder);
   return request(`/favorites?${p.toString()}`);
 }
 

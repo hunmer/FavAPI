@@ -185,13 +185,13 @@ class DouyinAdapter(BasePlatformAdapter):
         ApiOperation(
             op_id="cancel_digg_multi",
             name="批量取消点赞",
-            description="完整扫描喜欢(点赞)列表，按视频上传时间批量取消点赞（操作不可恢复，浏览器页面通道执行）",
+            description="按 ID 列表或日期区间批量取消点赞；都不填则取消全部点赞（操作不可恢复，浏览器页面通道执行）",
             danger=True,
             params=(
                 ApiOperationParam(
                     key="aweme_ids", label="视频 ID 列表", type="textarea",
                     placeholder="ID 之间用逗号或换行分隔，例如：\n7686197461799665984\n7686125901436145833",
-                    help="与日期区间二选一；填写日期区间时忽略本项",
+                    help="与日期区间二选一；填写日期区间时忽略本项；都不填则取消全部点赞",
                 ),
                 ApiOperationParam(
                     key="date_from", label="按日期区间：从", type="date",
@@ -200,10 +200,6 @@ class DouyinAdapter(BasePlatformAdapter):
                 ApiOperationParam(
                     key="date_to", label="按日期区间：至", type="date",
                     help="闭区间（含当天）",
-                ),
-                ApiOperationParam(
-                    key="sec_user_id", label="sec_user_id（可选）", type="text",
-                    help="默认从登录态自动提取；提取失败时手动填写（喜欢页 URL 中可见）",
                 ),
             ),
         ),
@@ -318,15 +314,14 @@ class DouyinAdapter(BasePlatformAdapter):
         return {"aweme_id": aweme_id, "is_digg": data.get("is_digg")}
 
     async def _op_cancel_digg(self, account: AccountContext, params: dict, on_event=None) -> dict:
-        """批量取消点赞：视频 ID 列表 / 日期区间二选一（日期优先，浏览器页面通道）。
+        """批量取消点赞：视频 ID 列表 / 日期区间可选（日期优先，浏览器页面通道）。
 
-        日期区间模式先完整扫描喜欢(点赞)列表收集命中 ID，再统一取消。
+        都不填时完整扫描喜欢(点赞)列表取消全部点赞（不设限制）；
+        填日期区间时先完整扫描收集命中 ID，再统一取消。
         """
         raw = str((params or {}).get("aweme_ids") or "")
         aweme_ids = [t.strip() for t in re.split(r"[\s,，;；]+", raw) if t.strip()]
         dt_from, dt_to = parse_date_window(params or {})
-        if not aweme_ids and not (dt_from or dt_to):
-            raise ValueError("请填写视频 ID 列表或日期区间（二选一）")
         if any(not t.isdigit() for t in aweme_ids):
             raise ValueError("aweme_ids 含非数字 ID，请检查输入")
 
@@ -334,18 +329,18 @@ class DouyinAdapter(BasePlatformAdapter):
             if on_event:
                 await on_event(info)
 
-        if dt_from or dt_to:
+        if not aweme_ids or dt_from or dt_to:
             cookie_header = await api_client.profile_cookie_header(account.profile_path)
             sec_uid = str((params or {}).get("sec_user_id") or "").strip() or api_client.self_sec_uid(cookie_header)
             if not sec_uid:
-                raise ValueError("无法从登录态提取 sec_user_id，请在参数中手动填写（喜欢页 URL 中可见）")
-            logger.info("[%s] 按日期区间取消点赞（先扫描后取消）：%s ~ %s",
-                        account.account_id, dt_from, dt_to)
+                raise ValueError("无法从登录态提取 sec_user_id，请重新登录后再试")
+            logger.info("[%s] 扫描喜欢列表取消点赞（先扫描后取消）：区间=%s~%s",
+                        account.account_id, dt_from or "不限", dt_to or "不限")
             result = await api_client.cancel_digg_by_window(
                 account.profile_path, cookie_header, sec_uid, dt_from, dt_to, on_progress=_progress
             )
             if result["canceled"] == 0:
-                result["note"] = "该日期区间内没有匹配的点赞，未执行取消"
+                result["note"] = "没有匹配的点赞，未执行取消"
             logger.info("[%s] 批量取消点赞完成：%s", account.account_id, result)
             return result
 

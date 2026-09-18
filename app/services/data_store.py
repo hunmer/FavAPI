@@ -231,13 +231,17 @@ async def list_favorites(
     source: str | None = None,
     limit: int = 50,
     offset: int = 0,
+    sort_by: str | None = None,
+    sort_order: str = "desc",
 ) -> dict:
-    """favorites JOIN contents，按抓取时间倒序；tag 基于 contents.tags JSON 数组精确匹配。
+    """favorites JOIN contents；tag 基于 contents.tags JSON 数组精确匹配。
 
     服务端过滤（与前端过滤面板语义一致）：
     - folder/author/source 精确匹配，空值占位（'默认收藏夹'/'—'/'收藏列表'）匹配 NULL 或空串
     - date_start/date_end 按 fetched_at 前 10 位（YYYY-MM-DD）闭区间比较，可只填一端
     - tags 多标签 OR；q 模糊匹配标题/作者/标签
+    排序：sort_by 白名单 collected（收藏时间）/ duration（时长），NULL 恒排末尾；
+    默认按 fetched_at（抓取入库时间），sort_order 仅支持 asc/desc。
     """
     where, params = [], []
     if account_id:
@@ -292,6 +296,15 @@ async def list_favorites(
         params.extend([like, like, like])
     where_sql = f"WHERE {' AND '.join(where)}" if where else ""
 
+    # 排序：字段白名单防注入；可空字段（collected_at/duration）NULL 恒排末尾
+    dir_sql = "ASC" if sort_order.lower() == "asc" else "DESC"
+    sort_columns = {"collected": "f.collected_at", "duration": "c.duration"}
+    if sort_by in sort_columns:
+        col = sort_columns[sort_by]
+        order_sql = f"ORDER BY {col} IS NULL, {col} {dir_sql}, f.id DESC"
+    else:
+        order_sql = f"ORDER BY f.fetched_at {dir_sql}, f.id DESC"
+
     total_row = await db.query_one(
         f"""SELECT COUNT(*) AS n FROM favorites f
             LEFT JOIN contents c ON c.content_id = f.content_id AND c.platform = f.platform
@@ -306,7 +319,7 @@ async def list_favorites(
             FROM favorites f LEFT JOIN contents c
               ON c.content_id = f.content_id AND c.platform = f.platform
             {where_sql}
-            ORDER BY f.fetched_at DESC, f.id DESC
+            {order_sql}
             LIMIT ? OFFSET ?""",
         (*params, limit, offset),
     )
