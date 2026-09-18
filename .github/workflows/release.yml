@@ -163,7 +163,9 @@ jobs:
       - name: Restore previous TUF repository (gh-pages)
         run: |
           mkdir -p repository
+          # checkout 是浅克隆，须先 fetch gh-pages 才有本地 ref
           if git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1; then
+            git fetch -q origin gh-pages --depth=1
             git archive origin/gh-pages | tar -x -C repository
             echo "已恢复上次 TUF 仓库"
           else
