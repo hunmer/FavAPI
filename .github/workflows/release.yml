@@ -72,7 +72,9 @@ jobs:
             # tar 保留可执行权限与符号链接（chromium .app 内部需要），zip 会丢失
             tar -czf "$NAME.tar.gz" FavAPI
           else
-            powershell Compress-Archive -Path FavAPI -DestinationPath "$NAME.zip"
+            # 用 bsdtar 而非 Compress-Archive：后者生成的 zip 以反斜杠作路径分隔符，
+            # Linux 端 unzip 解压失败
+            tar -a -cf "$NAME.zip" FavAPI
           fi
           ls -lh FavAPI-*
 
