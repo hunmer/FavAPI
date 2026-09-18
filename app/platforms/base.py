@@ -64,8 +64,8 @@ class FetchTarget:
 
 # 抓取目标的通用参数（count / cursor / 收藏日期区间），各平台声明 target 时复用
 PARAM_COUNT = ApiOperationParam(
-    key="count", label="抓取数量 (0 为全部)", type="number", placeholder="默认 20",
-    help="返回条数上限；设为 0 抓取全部（结果以流式方式实时入库）",
+    key="count", label="抓取数量 (0 为全部)", type="number", placeholder="默认全部",
+    help="返回条数上限；留空或 0 抓取全部（结果以流式方式实时入库）",
 )
 PARAM_CURSOR = ApiOperationParam(
     key="cursor", label="起始游标 (已抓取条数)", type="number", placeholder="留空从第 1 条开始",

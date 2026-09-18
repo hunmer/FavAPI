@@ -12,6 +12,7 @@ extra 缺失时从 /favorites SSR 现提取兜底。
 import asyncio
 import json
 import logging
+import re
 from pathlib import Path
 
 from app import config
@@ -28,9 +29,13 @@ from . import constants
 
 logger = logging.getLogger("favapi.tiktok")
 
+# 帖子链接中的 item_id（/video/{id} 与 /photo/{id} 两种路径）
+_ITEM_URL_PATTERN = re.compile(r"(?:video|photo)/(\d{6,})")
+
 
 class TikTokAdapter(DeclarativeAdapter):
     api_fetch_implemented = True  # 收藏列表支持 API 直连（params.method="api"）
+    download_api_implemented = True  # 支持按帖子 ID/链接解析下载直链（平台下载 → aria2c）
     api_operations = (
         ApiOperation(
             op_id="get_profile",
@@ -52,7 +57,7 @@ class TikTokAdapter(DeclarativeAdapter):
             params=(
                 ApiOperationParam(
                     key="count", label="数量 (0 为全部)", type="number",
-                    placeholder="默认 20",
+                    placeholder="默认全部",
                     help="返回条数上限",
                 ),
                 ApiOperationParam(
@@ -69,12 +74,25 @@ class TikTokAdapter(DeclarativeAdapter):
             params=(
                 ApiOperationParam(
                     key="count", label="数量 (0 为全部)", type="number",
-                    placeholder="默认 20",
+                    placeholder="默认全部",
                     help="返回条数上限",
                 ),
                 ApiOperationParam(
                     key="sec_uid", label="secUid（可选）", type="text",
                     help="默认自动提取；提取失败时手动填写（个人主页源码中可见）",
+                ),
+            ),
+        ),
+        ApiOperation(
+            op_id="resolve_download_urls",
+            name="解析下载直链",
+            description="按帖子 ID/链接返回可下载直链（视频多档画质/图文逐张原图，只读，"
+                        "供平台下载/aria2c 使用）；详情走帖子页 SSR 公开数据，无需登录态",
+            params=(
+                ApiOperationParam(
+                    key="item_id", label="帖子链接或 ID", type="text", required=True,
+                    placeholder="例如：7680180904886635794（可粘贴完整链接）",
+                    help="视频（/video/）与图文（/photo/）链接均支持，自动提取数字 ID",
                 ),
             ),
         ),
@@ -145,6 +163,11 @@ class TikTokAdapter(DeclarativeAdapter):
                 account, params, on_event,
                 lambda c, cb: api_client.fetch_favorite(c, sec_uid, _count_of(params), on_batch=cb),
                 "点赞")
+        if op_id == "resolve_download_urls":
+            source = str((params or {}).get("item_id") or "").strip()
+            if not source:
+                raise ValueError("请填写 TikTok 帖子链接或数字 ID")
+            return await self.resolve_download_urls(account, source)
         raise ValueError(f"未知操作：{op_id}")
 
     async def _op_get_profile(self, account: AccountContext, params: dict) -> dict:
@@ -337,6 +360,32 @@ class TikTokAdapter(DeclarativeAdapter):
         except (TypeError, json.JSONDecodeError):
             return {}
         return extra.get("tiktok") or {}
+
+    async def resolve_download_urls(self, account: AccountContext, content_id: str) -> list[dict]:
+        """按帖子 ID（或完整链接）解析可下载直链（首项为推荐画质/首张图）。
+
+        详情走帖子页 SSR 公开数据（无需登录态，见 api_client.fetch_post_detail）；
+        视频直链下载需页面会话 cookie（tt_chain_token），随链接 headers 注入
+        aria2c；图文直链仅 UA 即可。作者信息随链接下发（下载分类模板变量来源）。
+        """
+        source = str(content_id or "").strip()
+        m = _ITEM_URL_PATTERN.search(source)
+        item_id = m.group(1) if m else source
+        if not item_id.isdigit():
+            raise ValueError("tiktok 下载解析需要纯数字帖子 ID，或含 /video/、/photo/ 的链接")
+        logger.info("[%s] 解析下载直链：item_id=%s", account.account_id, item_id)
+        result = await asyncio.to_thread(api_client.fetch_post_detail, item_id)
+        headers = {
+            "user-agent": constants.USER_AGENT,
+            "referer": constants.POST_DETAIL_URL.format(item_id=item_id),
+            "cookie": result.get("cookie_header") or "",
+        }
+        for link in result["links"]:
+            if link.get("url"):
+                link["headers"] = headers
+            link.setdefault("author_name", result.get("author_name"))
+            link.setdefault("author_id", result.get("author_id"))
+        return result["links"]
 
     async def refresh_profile(self, account: AccountContext) -> None:
         """登录成功后回填主人信息：common-app-context 直读（纯 HTTP，无需浏览器导航）。

@@ -1,4 +1,4 @@
-"""Threads 适配器：登录 / 登录态检查 / 收藏（已保存）列表抓取。
+"""Threads 适配器：登录 / 登录态检查 / 收藏（已保存）列表抓取 / 帖子下载直链解析。
 
 API 直连：profile cookies + curl_cffi 直连 GraphQL（浏览器模拟实现已移除，method 入口保留）。
 
@@ -16,7 +16,11 @@ from app.platforms.base import (
     ApiOperationParam,
     BasePlatformAdapter,
     FetchResult,
+    FetchTarget,
     LoginExpiredError,
+    PARAM_CURSOR,
+    PARAM_DATE_FROM,
+    PARAM_DATE_TO,
 )
 from app.services import browser
 from . import api_client
@@ -40,6 +44,21 @@ class ThreadsAdapter(BasePlatformAdapter):
     implemented = True
     supported_actions = ("list_favorites",)
     api_fetch_implemented = True  # 收藏列表支持 API 直连（params.method="api"）
+    download_api_implemented = True  # 支持按帖子 ID/链接解析下载直链（视频/图文/文案）
+    # 不填 count 默认抓全部（fetch_favorites_api 默认 0），覆盖通用 PARAM_COUNT 文案
+    fetch_targets = (
+        FetchTarget(
+            action="list_favorites", name="抓取收藏列表",
+            description="API 直连抓取收藏（已保存）列表并入库",
+            params=[
+                ApiOperationParam(
+                    key="count", label="抓取数量 (0 为全部)", type="number", placeholder="默认全部",
+                    help="返回条数上限；留空或 0 抓取全部（结果以流式方式实时入库）",
+                ),
+                PARAM_CURSOR, PARAM_DATE_FROM, PARAM_DATE_TO,
+            ],
+        ),
+    )
     api_operations = (
         ApiOperation(
             op_id="save_post",
@@ -66,6 +85,18 @@ class ThreadsAdapter(BasePlatformAdapter):
                 ),
             ),
         ),
+        ApiOperation(
+            op_id="resolve_download_urls",
+            name="解析下载直链",
+            description="按帖子链接或 ID 调详情接口返回可下载内容（视频/图文/文案，只读）",
+            params=(
+                ApiOperationParam(
+                    key="post", label="帖子链接或 ID", type="text", required=True,
+                    placeholder="例如：https://www.threads.com/share/D1gl8QJ37/",
+                    help="支持分享短链、帖子页链接（/@用户/post/代码）或纯数字帖子 ID",
+                ),
+            ),
+        ),
     )
 
     def __init__(self, base_dir=None):
@@ -78,6 +109,11 @@ class ThreadsAdapter(BasePlatformAdapter):
             return await self._op_save_post(account, params)
         if op_id == "cancel_saved_multi":
             return await self._op_cancel_saved(account, params, on_event)
+        if op_id == "resolve_download_urls":
+            source = str((params or {}).get("post") or "").strip()
+            if not source:
+                raise ValueError("请填写帖子链接或 ID")
+            return await self.resolve_download_urls(account, source)
         raise ValueError(f"未知操作：{op_id}")
 
     async def _op_save_post(self, account: AccountContext, params: dict) -> dict:
@@ -113,6 +149,35 @@ class ThreadsAdapter(BasePlatformAdapter):
         result["matched"] = len(media_ids)
         logger.info("[%s] 批量取消收藏完成：%s", account.account_id, result)
         return result
+
+    async def resolve_download_urls(self, account: AccountContext, content_id: str) -> list[dict]:
+        """按帖子 ID/链接调详情接口返回可下载内容列表（首项为推荐下载项）。
+
+        content_id 支持：纯数字 pk（收藏条目）、分享短链、帖子页链接；
+        每个链接附 headers（UA）：Instagram CDN 直链下载仅需 UA 与页面一致，
+        交给 aria2c 时作为请求头注入。
+        """
+        source = str(content_id or "").strip()
+        if not source:
+            raise ValueError("threads 下载解析需要帖子 ID 或链接")
+        headers = {
+            "user-agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                           "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"),
+        }
+        cookie_header = await api_client.profile_cookie_header(account.profile_path)
+        logger.info("[%s] 解析下载直链：%s", account.account_id, source[:80])
+        post_id = await asyncio.to_thread(api_client.resolve_post_id, cookie_header, source)
+        lsd = await asyncio.to_thread(api_client.fetch_lsd, cookie_header)
+        result = await asyncio.to_thread(api_client.fetch_post_detail, cookie_header, lsd, post_id)
+        logger.info("[%s] 帖子 %s（media_type=%s）解析到 %d 项",
+                    account.account_id, post_id, result.get("media_type"), len(result["links"]))
+        for link in result["links"]:
+            if link.get("url"):
+                link["headers"] = headers
+            # 作者信息随链接下发：下载分类模板 {authorName}/{authorId} 变量来源
+            link.setdefault("author_name", result.get("author_name"))
+            link.setdefault("author_id", result.get("author_id"))
+        return result["links"]
 
     async def login(self, account: AccountContext, timeout: float | None = None) -> bool:
         """打开有头浏览器等待用户登录；检测到 sessionid 即成功。"""
@@ -210,10 +275,9 @@ class ThreadsAdapter(BasePlatformAdapter):
         cursor 语义与浏览器模式一致（已抓取条数偏移）；接口翻页内部用 end_cursor。
         """
         raw_count = params.get("count")
-        if raw_count in (None, ""):
-            count = constants.DEFAULT_COUNT
-        else:
-            count = max(0, min(int(raw_count), constants.MAX_COUNT))  # 0 = 全部
+        # 不填默认 DEFAULT_COUNT=0 = 全部（用户反馈：默认 20 条反直觉）
+        count = (constants.DEFAULT_COUNT if raw_count in (None, "")
+                 else max(0, min(int(raw_count), constants.MAX_COUNT)))
         skip = max(0, int(params.get("cursor") or 0))
         logger.info("[%s] API 直连抓取收藏：count=%s cursor=%d",
                     account.account_id, count or "全部", skip)

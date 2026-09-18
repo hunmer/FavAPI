@@ -38,7 +38,7 @@ API_PAGE_INTERVAL_SEC = 0.8    # API 直连翻页间隔（防风控，同抖音�
 # 判定已登录的 cookie（任一存在且非空即视为登录）
 LOGIN_COOKIE_KEYS = ("SESSDATA",)
 
-DEFAULT_COUNT = 20
+DEFAULT_COUNT = 0          # 不填 count 时抓全部（0 = 无上限）
 MAX_COUNT = 500
 PAGE_SIZE = 36            # 网页端每页条数
 PAGE_INTERVAL_MS = 800    # 翻页请求间隔，防风控

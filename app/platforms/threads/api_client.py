@@ -3,8 +3,15 @@
 Threads Web 走 GraphQL（POST /graphql/query，form-urlencoded）：
 - TLS/HTTP2 指纹层有校验（原生 httpx 被拒），用 curl_cffi impersonate="chrome" 直连；
 - POST 必须带 x-csrftoken 头（取 cookie csrftoken），缺失直接 403；
-- variables 必须带完整的 relay pv 标志（constants.SAVED_PV_FLAGS），缺失报 GraphQL execution error；
+- variables 必须带完整的 relay pv 标志（SAVED_PV_FLAGS / POST_DETAIL_PV_FLAGS），
+  缺失报 GraphQL execution error / missing_required_variable_value；
 - lsd 令牌从 /saved 页面 HTML 提取（"LSD",[],{"token":"..."}），每次会话现取。
+
+帖子详情下载（resolve_post_id + fetch_post_detail）：
+- BarcelonaPostPageTargetQuery 只认数字 pk，分享短链先解析
+  （登录态 302 首页的 injected_media_ids / 登出态帖子页 HTML 的 "post_id"）；
+- 视频 video_versions 取 type=101 的 mp4，图文取 image_versions2 最大候选，
+  CDN 直链（cdninstagram.com）仅 UA 即可下载。
 
 登录态复用账号浏览器 profile：起一次无头 Chromium 读出 threads.com 域 cookies
 （profile 同时含 instagram.com 同名 cookie，必须按域过滤），后续请求纯 HTTP。
@@ -16,14 +23,14 @@ import logging
 import os
 import re
 import time
-from urllib.parse import urlencode
+from urllib.parse import parse_qs, urlencode, urlparse
 
 from curl_cffi import requests
 from curl_cffi.requests.exceptions import HTTPError, RequestException
 
 from app.services import browser
 from . import constants
-from .parser import parse_saved_media, parse_viewer_profile
+from .parser import parse_post_links, parse_saved_media, parse_viewer_profile
 from ..base import LoginExpiredError
 
 logger = logging.getLogger("favapi.threads.api")
@@ -216,6 +223,66 @@ async def fetch_saved(cookie_header: str, count: int, on_batch=None):
             return collected, True
         after = batch["cursor"]
         await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
+
+
+def resolve_post_id(cookie_header: str, source: str) -> str:
+    """把帖子输入解析成数字 pk（同步阻塞，异步侧用 asyncio.to_thread 调用）。
+
+    支持三种输入：纯数字 pk / 分享短链（/share/<code>）/ 帖子页链接（/@user/post/<code>）。
+    链接类输入 GET 跟随跳转后：登录态最终落首页、pk 在 injected_media_ids query 参数；
+    登出态落帖子页、pk 在 HTML 内嵌的 "post_id"（GraphQL 只认 pk，shortcode 不行）。
+    """
+    source = str(source or "").strip()
+    if source.isdigit():
+        return source
+    if not source.startswith(("http://", "https://")):
+        raise ValueError("无法识别的帖子输入（支持纯数字 pk 或 threads.com 链接）")
+    response = _http_with_retry(
+        requests.get, source, headers={"cookie": cookie_header},
+        impersonate="chrome", timeout=30, proxy=resolve_proxy(),
+    )
+    response.raise_for_status()
+    injected = (parse_qs(urlparse(response.url).query).get("injected_media_ids") or [""])[0]
+    try:
+        pk = str((json.loads(injected) or [""])[0])
+    except ValueError:
+        pk = ""
+    if not pk.isdigit():
+        match = re.search(r'"post_id":"(\d+)"', response.text)
+        pk = match.group(1) if match else ""
+    if not pk.isdigit():
+        raise RuntimeError("未能从链接解析出帖子 ID（帖子可能已删除或不可见）")
+    return pk
+
+
+def fetch_post_detail(cookie_header: str, lsd: str, post_id: str) -> dict:
+    """按帖子 pk 拉取详情并解析可下载直链（同步阻塞，异步侧 to_thread 调用）。
+
+    BarcelonaPostPageTargetQuery（data.media 含 video_versions / image_versions2 /
+    carousel_media）；返回 {post_id, media_type, links, author_name, author_id}，
+    links 结构与小红书一致（kind=video/image/text），供 download_worker 消费。
+    """
+    data = _graphql_post(cookie_header, lsd, constants.POST_DETAIL_QUERY_NAME,
+                         {"postID": str(post_id), **constants.POST_DETAIL_PV_FLAGS},
+                         constants.POST_DETAIL_DOC_ID)
+    media = (data.get("data") or {}).get("media")
+    if media is None:
+        errors = "; ".join(str(e.get("message")) for e in (data.get("errors") or []))
+        raise RuntimeError(f"帖子详情查询失败：{errors or str(data)[:200]}")
+    links = parse_post_links(media)
+    if not any(l.get("url") for l in links):
+        # 纯文字帖只有文案链接，无直链不算失败；完全为空才视为异常
+        if not any(l.get("kind") == "text" for l in links):
+            raise RuntimeError("帖子详情无可下载内容（帖子可能已删除或设为私密）")
+    user = media.get("user") or {}
+    return {
+        "post_id": str(media.get("pk") or post_id),
+        "code": media.get("code"),
+        "media_type": media.get("media_type"),
+        "links": links,
+        "author_name": user.get("username"),
+        "author_id": str(user.get("pk") or user.get("id") or ""),
+    }
 
 
 def _mutation_media(cookie_header: str, lsd: str, doc_id: str, friendly_name: str,

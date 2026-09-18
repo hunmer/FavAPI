@@ -64,5 +64,5 @@ PCURSOR_NO_MORE = "no_more"
 # 判定 API 直连登录态的 cookie（服务端会话，任一存在且非空即视为登录）
 LOGIN_COOKIE_KEYS = ("kuaishou.server.webday7_st", "userId")
 
-DEFAULT_COUNT = 20
+DEFAULT_COUNT = 0            # 不填 count 时抓全部（0 = 无上限）
 MAX_COUNT = 500

@@ -12,7 +12,12 @@ TikTok Web 列表接口 2026-09 逆向结论（用户抓包 + curl_cffi 消融�
   必须用 profile 的活跃会话；
 - 点赞接口 /api/favorite/item_list/ 半公开：仅公开点赞的用户可见，
   私密点赞（默认设置）即使本人会话也返回空列表，非报错；
-- 翻页 cursor 为服务端返回的毫秒时间戳（首页传 0），hasMore 布尔收尾。
+- 翻页 cursor 为服务端返回的毫秒时间戳（首页传 0），hasMore 布尔收尾；
+- 帖子详情（视频/图文下载直链）：/api/item/detail XHR 有签名强校验
+  （X-Gnarly 与完整 query 绑定，改任一参数即空响应），不可直连；改走帖子页
+  HTML 的 SSR 段 webapp.video-detail（公开访客可见），图文帖必须用 /video/
+  路径访问才有该段；视频 CDN 直链需页面会话 cookie（tt_chain_token），
+  v16 主机对部分出口 IP 403、v19 可用（见 fetch_post_detail）。
 
 列表接口都要求 secUid 入参：无 cookie 可得（TikTok 不写 secUid cookie），
 在登录后由 adapter.refresh_profile 从个人主页 HTML 提取并回填账号 extra，
@@ -32,7 +37,12 @@ from curl_cffi.requests.exceptions import HTTPError, RequestException
 
 from app.services import browser
 from . import constants
-from .parser import parse_item_list, parse_user_detail_html
+from .parser import (
+    parse_download_links,
+    parse_item_detail_html,
+    parse_item_list,
+    parse_user_detail_html,
+)
 from ..base import LoginExpiredError
 
 logger = logging.getLogger("favapi.tiktok.api")
@@ -258,6 +268,50 @@ def fetch_user_detail(handle: str, cookie_header: str | None = None) -> dict:
     if not info:
         raise RuntimeError(f"解析 TikTok 用户信息失败：@{handle}（页面结构变化或被风控拦截）")
     return info
+
+
+def fetch_post_detail(item_id: str) -> dict:
+    """按 item_id 拉取帖子详情并解析可下载直链（同步阻塞，异步侧 to_thread 调用）。
+
+    JS Reverse 2026-09 结论：详情 XHR /api/item/detail 有签名强校验
+    （X-Gnarly 与完整 query 绑定，改动任一参数即 HTTP 200 空响应），不可直连；
+    可用数据源是帖子页 HTML 的服务端渲染段 webapp.video-detail（公开，访客
+    可见）。图文帖必须以 /video/{id} 路径访问才有该段（/photo/ 路径不渲染，
+    /embed 页无完整数据），URL 中 handle 不参与定位（占位即可）。
+
+    视频直链（v16/v19-webapp-prime CDN）下载需页面会话 cookie（tt_chain_token，
+    URL 内 tk=tt_chain_token 对应），实测仅 UA 或仅 ttwid 均 403 —— 会话 cookie
+    随返回值 cookie_header 下发，由调用方注入下载请求头；v16 主机对部分出口
+    IP 拒绝（403），parser 已优先 v19 URL。
+    返回 {"item_id", "links", "cookie_header", "author_name", "author_id"}。
+    """
+    if not str(item_id).isdigit():
+        raise ValueError(f"TikTok 帖子 ID 需为纯数字：{item_id}")
+    url = constants.POST_DETAIL_URL.format(item_id=item_id)
+    logger.info("fetch_post_detail 请求：item_id=%s", item_id)
+    session = requests.Session()
+    response = session.get(
+        url,
+        headers={**_HEADERS, "accept": "text/html,application/xhtml+xml,*/*;q=0.8"},
+        impersonate="chrome", timeout=30, proxy=resolve_proxy(),
+    )
+    response.raise_for_status()
+    item = parse_item_detail_html(response.text)
+    if not item:
+        raise RuntimeError(
+            f"解析 TikTok 帖子详情失败：{item_id}（作品可能已删除/设为私密，或页面结构变化）")
+    links = parse_download_links(item)
+    if not links:
+        raise RuntimeError("详情响应无可下载内容（作品可能已删除或设为私密）")
+    cookie_header = "; ".join(f"{c.name}={c.value}" for c in session.cookies.jar)
+    author = item.get("author") or {}
+    return {
+        "item_id": str(item.get("id") or item_id),
+        "links": links,
+        "cookie_header": cookie_header,
+        "author_name": author.get("nickname"),
+        "author_id": str(author.get("uniqueId") or author.get("id") or ""),
+    }
 
 
 def fetch_app_context(cookie_header: str) -> dict:

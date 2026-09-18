@@ -19,7 +19,6 @@ from app.platforms.base import (
     FetchResult,
     FetchTarget,
     LoginExpiredError,
-    PARAM_COUNT,
     PARAM_CURSOR,
     PARAM_DATE_FROM,
     PARAM_DATE_TO,
@@ -46,7 +45,12 @@ class BilibiliAdapter(BasePlatformAdapter):
             action="list_favorites", name="抓取收藏列表",
             description="API 直连抓取收藏夹并入库（可指定收藏夹 / 目标用户）",
             params=[
-                PARAM_COUNT, PARAM_CURSOR,
+                # Bilibili 不填 count 默认抓全部（constants.DEFAULT_COUNT=0），覆盖通用 PARAM_COUNT 文案
+                ApiOperationParam(
+                    key="count", label="抓取数量 (0 为全部)", type="number", placeholder="默认全部",
+                    help="返回条数上限；留空或 0 抓取全部（结果以流式方式实时入库）",
+                ),
+                PARAM_CURSOR,
                 ApiOperationParam(
                     key="url", label="收藏夹主页链接或用户 UID（可选）", type="text",
                     placeholder="留空则抓当前登录账号",

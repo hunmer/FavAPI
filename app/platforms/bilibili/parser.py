@@ -141,9 +141,11 @@ def parse_video_detail(data: dict) -> dict:
 
 
 def _pick_dash_videos(dash: dict) -> list[tuple[int, int, dict]]:
-    """dash.video[] → [(height, qn, stream)]：每个 qn 择一编码（avc 优先），高度降序。
+    """dash.video[] → [(档位高度, qn, stream)]：每个 qn 择一编码（avc 优先），档位降序。
 
     仅保留高于 720P 的档位（720P 及以下已有 mp4 单文件直链，无需走 DASH）。
+    竖屏视频的 v.height 是长边（如 1080P 竖屏实际 1050x1920），画质档位
+    必须按 qn 推导：直接用响应 height 会错档（1920/854 匹配不上 1080/480）。
     """
     best: dict[int, tuple[int, dict]] = {}
     for v in dash.get("video") or []:
@@ -159,7 +161,7 @@ def _pick_dash_videos(dash: dict) -> list[tuple[int, int, dict]]:
             best[qn] = (rank, v)
     picked = []
     for qn, (_rank, v) in best.items():
-        height = _as_int(v.get("height")) or _QN_HEIGHTS.get(qn) or 0
+        height = _QN_HEIGHTS.get(qn) or _as_int(v.get("height")) or 0
         if height <= 720:
             continue
         picked.append((height, qn, v))

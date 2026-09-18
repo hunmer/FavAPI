@@ -71,7 +71,7 @@ class KuaishouAdapter(DeclarativeAdapter):
             params=(
                 ApiOperationParam(
                     key="count", label="数量 (0 为全部)", type="number",
-                    placeholder="默认 20",
+                    placeholder="默认全部",
                     help="返回条数上限",
                 ),
             ),
@@ -83,7 +83,7 @@ class KuaishouAdapter(DeclarativeAdapter):
             params=(
                 ApiOperationParam(
                     key="count", label="数量 (0 为全部)", type="number",
-                    placeholder="默认 20",
+                    placeholder="默认全部",
                     help="返回条数上限",
                 ),
             ),

@@ -76,7 +76,7 @@ class DouyinAdapter(BasePlatformAdapter):
             params=(
                 ApiOperationParam(
                     key="count", label="数量 (0 为全部)", type="number",
-                    placeholder="默认 20",
+                    placeholder="默认全部",
                     help="返回条数上限；日期区间过滤在抓取后应用",
                 ),
                 ApiOperationParam(
@@ -129,7 +129,7 @@ class DouyinAdapter(BasePlatformAdapter):
             params=(
                 ApiOperationParam(
                     key="count", label="数量 (0 为全部)", type="number",
-                    placeholder="默认 20",
+                    placeholder="默认全部",
                     help="返回条数上限；日期区间过滤在抓取后应用",
                 ),
                 ApiOperationParam(
@@ -153,7 +153,7 @@ class DouyinAdapter(BasePlatformAdapter):
             params=(
                 ApiOperationParam(
                     key="count", label="数量 (0 为全部)", type="number",
-                    placeholder="默认 20",
+                    placeholder="默认全部",
                     help="返回条数上限",
                 ),
             ),
@@ -165,7 +165,7 @@ class DouyinAdapter(BasePlatformAdapter):
             params=(
                 ApiOperationParam(
                     key="count", label="数量 (0 为全部)", type="number",
-                    placeholder="默认 20",
+                    placeholder="默认全部",
                     help="返回条数上限",
                 ),
             ),

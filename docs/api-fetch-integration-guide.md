@@ -241,6 +241,15 @@ Bilibili 已实现 `cancel_favorites`（批量取消收藏）与 `resolve_downlo
 日期区间过滤复用 `app/utils.py::parse_date_window / filter_by_date_window`
 （collected_at 缺失由 parser 兜底发布时间）；task_executor 的抓取过滤也走同一份实现。
 
+TikTok 已实现 `resolve_download_urls`（按帖子 ID/链接解析直链，视频+图文）。
+要点（坑详见 `tiktok/api_client.py` 模块 docstring）：详情 XHR `/api/item/detail`
+有签名强校验（X-Gnarly 与完整 query 绑定，改任一参数即空响应），不可直连；
+改走帖子页 HTML 的 SSR 段 `webapp.video-detail`（公开访客可见），图文帖必须
+用 `/video/{id}` 路径访问才有该段（`/photo/` 路径不渲染），URL 中 handle 不参与
+定位（占位即可）。视频 CDN 直链下载需页面会话 cookie（tt_chain_token，仅 UA 或
+仅 ttwid 均 403），且 `v16-webapp-prime` 主机对部分出口 IP 拒绝、`v19` 可用
+（parser 同档 UrlList 内优先 v19）；图片直链仅 UA 即可。
+
 ### 7.3 性能要点：提前终止
 
 收藏列表按时间倒序，翻页时传 `stop_before=dt_from`：某页全部条目可解析时间且最旧一条已早于下界

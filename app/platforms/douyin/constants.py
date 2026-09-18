@@ -44,7 +44,7 @@ AWEME_DETAIL_URL = "https://www.douyin.com/aweme/v1/web/aweme/detail/"
 # 判定已登录的 cookie（任一存在且非空即视为登录）
 LOGIN_COOKIE_KEYS = ("sessionid", "sessionid_ss")
 
-DEFAULT_COUNT = 20
+DEFAULT_COUNT = 0            # 不填 count 时抓全部（0 = 无上限）
 MAX_COUNT = 500
 SCROLL_INTERVAL_MS = 1800   # 每次滚动后等待响应的间隔
 MAX_SCROLL_ROUNDS = 300     # 滚动轮数上限，防死循环

@@ -53,6 +53,51 @@ def parse_saved_media(data: dict) -> dict:
     }
 
 
+def parse_post_links(media: dict) -> list[dict]:
+    """解析帖子详情（BarcelonaPostPageTargetQuery 的 data.media）→ 可下载直链列表。
+
+    视频（media_type=2）：video_versions 取 type=101 的 mp4（102/103 为同链分片变体），
+    不附封面图（download_worker 见 image 链接会走图文通道）；
+    图文（media_type=1/8）：carousel_media（单图时无该字段，用 media 本体）逐张取
+    image_versions2 候选中面积最大者；纯文字（media_type=19）：仅文案（kind=text）。
+    """
+    links: list[dict] = []
+
+    def _video(v: dict, label: str) -> None:
+        url = str(v.get("url") or "")
+        if url.startswith("http"):
+            links.append({"url": url, "label": label, "kind": "video", "ext": "mp4"})
+
+    videos = [v for v in media.get("video_versions") or [] if v.get("type") == 101]
+    width = media.get("original_width") or 0
+    height = media.get("original_height") or 0
+    for v in videos:
+        _video(v, f"视频 {width}x{height}" if width else "视频")
+
+    items = media.get("carousel_media") or [media]
+    count = len(items)
+    for i, item in enumerate(items, start=1):
+        if not videos:
+            for v in item.get("video_versions") or []:
+                if v.get("type") == 101:
+                    _video(v, f"视频 {i}/{count}")
+            candidates = ((item.get("image_versions2") or {}).get("candidates") or [])
+            if candidates:
+                best = max(candidates, key=lambda c: (c.get("width") or 0) * (c.get("height") or 0))
+                url = str(best.get("url") or "")
+                if url.startswith("http"):
+                    links.append({
+                        "url": url, "label": f"图片 {i}/{count}", "kind": "image",
+                        "ext": "jpg",  # CDN 路径无扩展名
+                        "width": best.get("width") or 0, "height": best.get("height") or 0,
+                    })
+
+    caption = (media.get("caption") or {}).get("text") or ""
+    if caption.strip():
+        links.append({"kind": "text", "text": caption, "label": "文案"})
+    return links
+
+
 def _balanced_json(text: str, start: int) -> str | None:
     """从 start（指向 '{'）做括号配平截取一段 JSON 子串；越界/未闭合返回 None。"""
     depth = 0

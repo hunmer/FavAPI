@@ -94,7 +94,8 @@ def parse_download_links(data: dict) -> list[dict]:
     视频：依次收 play_addr（默认画质）与 bit_rate 各档（多码率），按 URL 去重；
     老版地址带 playwm（带水印标记），统一替换为 play 以取无水源。
     图文（aweme_type=68 / images 非空）：逐张原图链接（kind=image）+ 末尾附文案
-    （kind=text，无 url，由调用方直接落盘 txt）。
+    （kind=text，无 url，由调用方直接落盘 txt）+ 背景音乐（kind=audio，
+    music.play_url 直链，文件名 music.{ext}）。
     """
     aweme = data.get("aweme_detail") or {}
     if not aweme.get("aweme_id"):
@@ -149,6 +150,14 @@ def _parse_note_links(aweme: dict, images: list) -> list[dict]:
     desc = str(aweme.get("desc") or "").strip()
     if desc:
         links.append({"kind": "text", "text": desc, "label": "文案"})
+    music_urls = (((aweme.get("music") or {}).get("play_url") or {}).get("url_list")) or []
+    music_url = next((str(u) for u in music_urls if str(u or "").startswith("http")), None)
+    if music_url:
+        m = re.search(r"\.(mp3|m4a|aac|wav|flac)(?:\?|$)", music_url, re.I)
+        links.append({
+            "url": music_url, "label": "音乐", "kind": "audio",
+            "ext": m.group(1).lower() if m else "mp3",
+        })
     return links
 
 

@@ -564,6 +564,7 @@ async def _execute_note(row: dict, links: list[dict]):
             break
 
     image_links = [l for l in links if l.get("kind") == "image" and l.get("url")]
+    audio_links = [l for l in links if l.get("kind") == "audio" and l.get("url")]
     if not image_links:
         await download_store.update_download(
             download_id, status="failed", output_path=str(out_dir),
@@ -571,11 +572,20 @@ async def _execute_note(row: dict, links: list[dict]):
         return
 
     await download_store.update_download(
-        download_id, progress=f"图文共 {len(image_links)} 张，提交 aria2c 下载...")
+        download_id,
+        progress=f"图文共 {len(image_links)} 张"
+                 + (f" + {len(audio_links)} 音乐" if audio_links else "")
+                 + "，提交 aria2c 下载...")
     entries: list[tuple[str, str]] = []  # (gid, filename)
     try:
         for idx, link in enumerate(image_links, start=1):
             filename = f"{idx:02d}.{link.get('ext') or 'jpeg'}"
+            gid = await aria2_service.add(
+                link["url"], out_dir, filename, link.get("headers") or {})
+            entries.append((gid, filename))
+            _append_log(download_id, f"[{now_iso()}] aria2 gid={gid} {link.get('label')} -> {filename}")
+        for link in audio_links:
+            filename = f"music.{link.get('ext') or 'mp3'}"
             gid = await aria2_service.add(
                 link["url"], out_dir, filename, link.get("headers") or {})
             entries.append((gid, filename))
@@ -593,9 +603,9 @@ async def _execute_note(row: dict, links: list[dict]):
     _aria2_gids[download_id] = [gid for gid, _ in entries]
     ok_count, errors = 0, []
     for i, (gid, filename) in enumerate(entries, start=1):
-        async def _progress(text: str, i=i):
+        async def _progress(text: str, i=i, filename=filename):
             await download_store.update_download(
-                download_id, progress=f"图片 {i}/{len(entries)}：{text}")
+                download_id, progress=f"文件 {i}/{len(entries)}（{filename}）：{text}")
 
         ok, message = await aria2_service.wait(download_id, gid, on_update=_progress)
         if ok:
@@ -611,13 +621,13 @@ async def _execute_note(row: dict, links: list[dict]):
 
     if ok_count == len(entries):
         await download_store.update_download(
-            download_id, status="success", progress=f"图文下载完成（{ok_count} 张）",
+            download_id, status="success", progress=f"图文下载完成（{ok_count} 个文件）",
             output_path=str(out_dir), finished_at=now_iso(),
         )
-        _append_log(download_id, f"[{now_iso()}] 图文下载完成：{out_dir}（{ok_count} 张）")
-        logger.info("图文下载完成 %s：%s（%d 张）", download_id, out_dir, ok_count)
+        _append_log(download_id, f"[{now_iso()}] 图文下载完成：{out_dir}（{ok_count} 个文件）")
+        logger.info("图文下载完成 %s：%s（%d 个文件）", download_id, out_dir, ok_count)
     else:
-        message = f"{ok_count}/{len(entries)} 张成功；" + "；".join(errors)[:400]
+        message = f"{ok_count}/{len(entries)} 个文件成功；" + "；".join(errors)[:400]
         await download_store.update_download(
             download_id, status="failed", output_path=str(out_dir),
             error_message=message, finished_at=now_iso(),

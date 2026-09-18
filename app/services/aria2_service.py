@@ -67,6 +67,39 @@ def _rpc_alive() -> bool:
         return False
 
 
+def _launch_proxy_args() -> list[str]:
+    """启动参数追加系统代理（threads 等海外平台 CDN 直链需要；env 优先，注册表回退）。
+
+    aria2 自身读取 *_PROXY 环境变量，这里只补 Windows 注册表桌面代理的场景
+    （与各平台 resolve_proxy 的 'auto' 同序，避免第五处重复就不再抽公共层）。
+    """
+    import os
+
+    if any(os.environ.get(k) for k in
+           ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy")):
+        return []
+    if os.name != "nt":
+        return []
+    try:
+        import winreg
+        key = winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Internet Settings",
+        )
+        enabled = winreg.QueryValueEx(key, "ProxyEnable")[0]
+        server = winreg.QueryValueEx(key, "ProxyServer")[0]
+        winreg.CloseKey(key)
+        if enabled and server:
+            parts = dict(p.split("=", 1) for p in str(server).split(";") if "=" in p)
+            server = parts.get("https") or parts.get("http") or server
+            if not str(server).startswith(("http://", "https://", "socks5://")):
+                server = "http://" + str(server)
+            return [f"--all-proxy={server}"]
+    except (OSError, ImportError, ValueError):
+        pass
+    return []
+
+
 async def ensure_rpc():
     """确保 RPC 可用：已有服务直接复用，否则拉起 aria2c 子进程。
 
@@ -93,6 +126,7 @@ async def ensure_rpc():
         f"--dir={downloads_root()}",
         "--continue=true", "--allow-overwrite=true", "--auto-file-renaming=false",
         "--console-log-level=warn",
+        *_launch_proxy_args(),
         stdout=log, stderr=asyncio.subprocess.STDOUT,
     )
     _proc_port = port

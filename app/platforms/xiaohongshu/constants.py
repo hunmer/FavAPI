@@ -35,7 +35,7 @@ UNCOLLECT_INTERVAL_SEC = 0.5    # 批间间隔（防风控）
 # 注意：web_session 游客也有（实测游客前缀 03/登录 04，不可靠）；id_token 仅登录后存在。
 LOGIN_COOKIE_KEYS = ("id_token",)
 
-DEFAULT_COUNT = 20
+DEFAULT_COUNT = 0            # 不填 count 时抓全部（0 = 无上限）
 MAX_COUNT = 500
 SCROLL_INTERVAL_MS = 1800   # 每次滚动后等待响应的间隔
 MAX_SCROLL_ROUNDS = 300     # 滚动轮数上限，防死循环

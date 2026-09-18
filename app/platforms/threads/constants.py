@@ -69,7 +69,56 @@ UNSAVE_QUERY_NAME = "useBarcelonaSaveMutationUnsaveMutation"
 SAVE_MODULE = "ig_text_post_permalink"  # 埋点字段，实测取值不影响结果
 UNSAVE_INTERVAL_SEC = 0.5     # 批量取消收藏间隔（防风控节流）
 
-DEFAULT_COUNT = 20
+# 帖子详情 GraphQL（BarcelonaPostPageTargetQuery，2026-09 抓包）。
+# 根字段 media: fetch__XDTMediaDict(id: $postID)，postID 必须是数字 pk（shortcode 不行）；
+# 响应 data.media 含 video_versions / image_versions2 / carousel_media / caption。
+# 分享短链（/share/<code>）解析 pk：登录态 302 到首页、pk 在 injected_media_ids
+# query 参数；登出态落到 /@user/post/<code> 页面、pk 在 HTML 的 "post_id"。
+POST_DETAIL_DOC_ID = "28685487387735394"
+POST_DETAIL_QUERY_NAME = "BarcelonaPostPageTargetQuery"
+# TargetQuery 的 @relayPv 持久化变量标志（比收藏列表多 6 个，缺失报
+# missing_required_variable_value）；值为浏览器抓包原样，仅 IsLoggedIn 按登录态置 True。
+POST_DETAIL_PV_FLAGS = {
+    "__relay_internal__pv__BarcelonaHasCommunityPermalinkPivotsrelayprovider": False,
+    "__relay_internal__pv__BarcelonaHasPodcastV2Consumptionrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasPodcastV2Productionrelayprovider": False,
+    "__relay_internal__pv__BarcelonaHasInsightsPermalinkUFIrelayprovider": False,
+    "__relay_internal__pv__BarcelonaHasBestOfThreadsrelayprovider": False,
+    "__relay_internal__pv__BarcelonaShouldShowFediverseM1Featuresrelayprovider": False,
+    "__relay_internal__pv__BarcelonaHasDearAlgoConsumptionrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasMetaAiContentAttachmentsrelayprovider": False,
+    "__relay_internal__pv__BarcelonaShouldFetchPostAuthorFullNamerelayprovider": False,
+    "__relay_internal__pv__BarcelonaIsLoggedInrelayprovider": True,
+    "__relay_internal__pv__BarcelonaMessagesHasLiveChatMessagingrelayprovider": False,
+    "__relay_internal__pv__BarcelonaHasEventBadgerelayprovider": False,
+    "__relay_internal__pv__BarcelonaGenAIRepliesEnabledrelayprovider": False,
+    "__relay_internal__pv__BarcelonaIsSearchDiscoveryEnabledrelayprovider": False,
+    "__relay_internal__pv__BarcelonaHasCommunitiesrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasGameScoreSharerelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasPublicViewCountCardrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasCommunityEmojiUpdateCardrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasCommunityEntityCardrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasScorecardCommunityrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasSportTeamAllegianceCardrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasMusicrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasNewspaperLinkStylerelayprovider": False,
+    "__relay_internal__pv__BarcelonaHasMessagingrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasPodcastTranscriptConsumptionrelayprovider": True,
+    "__relay_internal__pv__BarcelonaShouldFulfillLightboxQueryrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasViewerRepliedrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasPrivateRepliesDeprecationrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasGhostPostEmojiActivationrelayprovider": False,
+    "__relay_internal__pv__BarcelonaOptionalCookiesEnabledrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasDearAlgoWebProductionrelayprovider": False,
+    "__relay_internal__pv__BarcelonaCanSeeSponsoredContentrelayprovider": False,
+    "__relay_internal__pv__BarcelonaHasWebFaviconsrelayprovider": False,
+    "__relay_internal__pv__BarcelonaIsCrawlerrelayprovider": False,
+    "__relay_internal__pv__BarcelonaHasCommunityTopContributorsrelayprovider": False,
+    "__relay_internal__pv__BarcelonaShouldShowFediverseM075Featuresrelayprovider": True,
+    "__relay_internal__pv__BarcelonaIsInternalUserrelayprovider": False,
+}
+
+DEFAULT_COUNT = 0   # 抓取数量缺省值：0 = 全部（用户反馈默认 20 反直觉）
 MAX_COUNT = 500
 WAIT_AFTER_GOTO_MS = 5000   # 打开收藏页后等待首批数据渲染
 SCROLL_INTERVAL_MS = 1800   # 每次滚动后等待响应的间隔
