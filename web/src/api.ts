@@ -47,6 +47,7 @@ export interface TaskRow {
   result_count?: number | null;
   new_favorites?: number | null;
   error_message?: string | null;
+  progress?: string | null;   // 运行中进度摘要（终态清空）
   started_at?: string | null;
   finished_at?: string | null;
 }
@@ -206,6 +207,7 @@ export function toTask(row: TaskRow, accountNameById: Map<string, string>): Task
     scrapedCount: row.result_count ?? 0,
     newCount: row.new_favorites ?? row.result_count ?? 0,
     errorMessage: row.error_message || undefined,
+    progress: row.progress || undefined,
   };
 }
 
@@ -1070,3 +1072,108 @@ export function listNotifications(limit = 50): Promise<{ notifications: Notifica
 export function markNotificationsRead(): Promise<{ updated: number }> {
   return request('/notifications/read-all', { method: 'POST' });
 }
+
+// ---------- 特别关注（follows） ----------
+
+export interface FollowAuthorRow {
+  sec_uid: string;
+  platform: string;
+  account_id?: string | null;
+  uid?: string;
+  nickname?: string | null;
+  unique_id?: string | null;
+  avatar_url?: string | null;
+  signature?: string | null;
+  follower_count?: number | null;
+  group_name?: string;
+  created_at?: string | null;
+  last_synced_at?: string | null;
+  unread?: number;
+}
+
+export interface FollowingUserRow {
+  sec_uid: string;
+  uid: string;
+  unique_id?: string | null;
+  nickname?: string | null;
+  signature?: string | null;
+  avatar_url?: string | null;
+  follower_count?: number | null;
+  aweme_count?: number | null;
+  is_top?: boolean;
+}
+
+export interface FollowPostRow {
+  content_id: string;
+  title?: string | null;
+  cover_url?: string | null;
+  duration?: number | null;
+  published_at?: string | null;
+  read: boolean;
+}
+
+export interface PlayInfo {
+  aweme_id: string;
+  desc: string;
+  create_time?: number | null;
+  aweme_type: number;
+  duration?: number | null;
+  statistics: Record<string, number | null>;
+  author: { nickname?: string | null; sec_uid?: string | null };
+  video_urls: string[];
+  images: { url: string; width: number; height: number }[];
+  music_url?: string | null;  // 图文作品的背景音乐直链
+}
+
+export interface FollowSyncResult {
+  total: number;
+  ok: number;
+  new: number;
+  results: { sec_uid: string; nickname?: string | null; status: 'ok' | 'failed'; fetched?: number; new?: number; detail?: string }[];
+}
+
+export function listFollowAuthors(): Promise<{ authors: FollowAuthorRow[]; groups: { group_name: string; count: number }[] }> {
+  return request('/follows/authors');
+}
+
+export function addFollowAuthor(body: Partial<FollowAuthorRow> & { sec_uid: string; account_id?: string }): Promise<{ sec_uid: string }> {
+  return request('/follows/authors', { method: 'POST', body: JSON.stringify(body) });
+}
+
+export function updateFollowAuthor(secUid: string, patch: Partial<Pick<FollowAuthorRow, 'group_name' | 'nickname' | 'avatar_url' | 'follower_count'>>): Promise<{ sec_uid: string }> {
+  return request(`/follows/authors/${encodeURIComponent(secUid)}`, { method: 'PATCH', body: JSON.stringify(patch) });
+}
+
+export function deleteFollowAuthor(secUid: string): Promise<{ sec_uid: string }> {
+  return request(`/follows/authors/${encodeURIComponent(secUid)}`, { method: 'DELETE' });
+}
+
+export function fetchFollowing(accountId: string, count = 0): Promise<{ total: number; has_more: boolean; followings: FollowingUserRow[] }> {
+  return request(`/follows/following/${encodeURIComponent(accountId)}?count=${count}`);
+}
+
+export function fetchAuthorPosts(secUid: string, cursor = 0, count = 18, accountId = ''): Promise<{
+  author: Partial<FollowAuthorRow> | null;
+  items: FollowPostRow[];
+  cursor: number;
+  has_more: boolean;
+}> {
+  const q = new URLSearchParams({ cursor: String(cursor), count: String(count) });
+  if (accountId) q.set('account_id', accountId);
+  return request(`/follows/authors/${encodeURIComponent(secUid)}/posts?${q}`);
+}
+
+export function fetchPlayInfo(awemeId: string, accountId: string): Promise<PlayInfo> {
+  return request(`/follows/aweme/${encodeURIComponent(awemeId)}?account_id=${encodeURIComponent(accountId)}`);
+}
+
+export function markFollowRead(contentId: string): Promise<{ read: boolean }> {
+  return request(`/follows/read/${encodeURIComponent(contentId)}`, { method: 'POST' });
+}
+
+export function syncFollowPosts(body: { account_id?: string; sec_uids?: string[]; count?: number }): Promise<FollowSyncResult> {
+  return request('/follows/sync', { method: 'POST', body: JSON.stringify(body) });
+}
+
+/** 抖音 CDN 媒体经后端代理播放（浏览器直连会被 referer/UA 拦截）。 */
+export const mediaUrl = (url: string) => `${BASE}/follows/media?url=${encodeURIComponent(url)}`;

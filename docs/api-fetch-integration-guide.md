@@ -261,3 +261,23 @@ TikTok 已实现 `resolve_download_urls`（按帖子 ID/链接解析直链，视
 同第 3 节流程抓包拿到接口 → `api_client.py` 写请求函数（curl_cffi）→ adapter 声明 `ApiOperation`
 并在 `execute_api_operation` 按 op_id 分发 → 前端自动出卡片。危险操作记得 `danger=True`。
 
+## 8. 特别关注（follows）体系：2026-09 接入
+
+与抓取/操作平行的第三条通道：`GET|POST|PATCH|DELETE /api/v1/follows/**`（`app/api/follows.py`），
+前端「特别关注」路由（Sidebar follows → FollowsView / 博主主页 / 播放器）。
+
+涉及接口（全部 GET 读接口，curl_cffi 直连，无需 guard 头/签名，实测 2026-09）：
+
+| 接口 | 用途 | 分页 |
+|---|---|---|
+| `/aweme/v1/web/user/following/list/` | 当前账号关注列表（仅需 sec_user_id，user_id 可空） | offset 偏移 |
+| `/aweme/v1/web/aweme/post/` | 博主主页发布作品（与 favorite 同构，自带 play_addr/images） | max_cursor 游标 |
+| `/aweme/v1/web/aweme/detail/` | 作品播放信息（视频直链/图文原图，`parse_play_info`） | — |
+
+数据模型：`follow_authors`（博主主键 sec_uid，uid 为未读数关联键——**作品 author.uid 与关注列表
+返回的 uid 一致**，同步时会自动回填防漂移）+ `follow_reads`（作品已读标记）；
+作品入库走标准 `save_fetch_result(account, items, source="特别关注")`，数据页可查。
+
+媒体播放：抖音 CDN 拒绝浏览器直连（referer/UA），前端 `<video>/<img>` 统一走
+`GET /follows/media?url=...` 流式代理（域白名单 + Range 透传，同步 def 路由自动入线程池）。
+

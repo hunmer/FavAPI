@@ -9,6 +9,8 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 datas = [
     ("web/dist", "web/dist"),
+    # TUF 信任锚（root.json）：updater 首次 refresh 的本地可信元数据
+    ("app/resources/tuf-metadata", "tuf-metadata"),
 ]
 # kuaishou 签名脚本（node 运行时资源，api_client 以 __file__ 相对路径调用）
 datas += collect_data_files("app.platforms.kuaishou", includes=["*.js", "*.cjs"])
@@ -32,6 +34,8 @@ hiddenimports = [
 # playwright / yt-dlp / curl_cffi / webview 由包自带或 hooks-contrib 的 hook 处理；
 # webview 平台后端（cocoa 等）运行期动态导入，全量收集兜底
 hiddenimports += collect_submodules("webview")
+# tufup（TUF 自动更新）无官方 hook，全量收集
+hiddenimports += collect_submodules("tufup")
 
 a = Analysis(
     ["main.py"],

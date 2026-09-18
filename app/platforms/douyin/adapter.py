@@ -18,7 +18,7 @@ from app.platforms.base import (
     PARAM_DATE_TO,
 )
 from app.services import browser
-from app.utils import filter_by_date_window, parse_date_window
+from app.utils import filter_by_date_window, now_iso, parse_date_window
 from . import api_client
 from . import constants
 
@@ -40,7 +40,7 @@ class DouyinAdapter(BasePlatformAdapter):
     display_name = constants.DISPLAY_NAME
     home_url = constants.HOME_URL
     implemented = True
-    supported_actions = ("list_favorites", "list_likes", "list_watchlater")
+    supported_actions = ("list_favorites", "list_likes", "list_watchlater", "follow_sync")
     api_fetch_implemented = True  # 浏览器模拟实现已移除，各列表仅保留 API 直连
     download_api_implemented = True  # 支持按 aweme_id 解析下载直链（平台下载 → aria2c）
     # 可抓取入库的列表目标（source 为 favorites 来源标记；空 = 收藏列表）
@@ -65,6 +65,11 @@ class DouyinAdapter(BasePlatformAdapter):
         FetchTarget(
             action="list_watchlater", name="抓取稍后再看列表", source="稍后再看列表",
             description="API 直连抓取稍后再看列表并入库",
+            params=[PARAM_COUNT],
+        ),
+        FetchTarget(
+            action="follow_sync", name="同步特别关注作品", source="特别关注",
+            description="逐特别关注博主拉取最新作品并入库（特别关注页「一键更新」同源，可建定时计划）",
             params=[PARAM_COUNT],
         ),
     )
@@ -171,6 +176,18 @@ class DouyinAdapter(BasePlatformAdapter):
             ),
         ),
         ApiOperation(
+            op_id="list_following",
+            name="获取关注列表",
+            description="API 直连拉取当前账号的关注列表（只读，不入库）；「特别关注」页可从结果中挑选博主添加",
+            params=(
+                ApiOperationParam(
+                    key="count", label="数量 (0 为全部)", type="number",
+                    placeholder="默认全部",
+                    help="返回条数上限；摘要仅展示前 100 位",
+                ),
+            ),
+        ),
+        ApiOperation(
             op_id="digg_item",
             name="点赞视频",
             description="给指定视频点赞（浏览器页面通道执行，需活跃登录态）",
@@ -225,6 +242,8 @@ class DouyinAdapter(BasePlatformAdapter):
         if op_id == "list_watchlater":
             return await self._op_list_summary(
                 account, params, on_event, api_client.fetch_watchlater, "稍后再看")
+        if op_id == "list_following":
+            return await self._op_list_following(account, params, on_event)
         if op_id == "digg_item":
             return await self._op_digg_item(account, params)
         if op_id == "cancel_digg_multi":
@@ -302,6 +321,90 @@ class DouyinAdapter(BasePlatformAdapter):
             "items": summaries,
             "note": "仅展示前 100 条摘要" if len(matched) > 100 else "",
         }
+
+    async def _op_list_following(self, account: AccountContext, params: dict, on_event=None) -> dict:
+        """只读拉取当前账号的关注列表（offset 分页），返回博主摘要，不入库。"""
+        raw_count = str((params or {}).get("count") or "").strip()
+        count = min(max(int(raw_count), 0), constants.MAX_COUNT) if raw_count.isdigit() else constants.DEFAULT_COUNT
+        cookie_header = await api_client.profile_cookie_header(account.profile_path)
+        sec_uid = api_client.self_sec_uid(cookie_header)
+        if not sec_uid:
+            raise ValueError("无法从登录态提取 sec_user_id，请重新扫码登录后再试")
+        logger.info("[%s] API 操作 list_following：count=%s", account.account_id, count or "全部")
+
+        async def _collect_progress(batch: dict):
+            if on_event:
+                await on_event({
+                    "type": "stage", "stage": "collecting",
+                    "page": batch.get("page"),
+                    "total_fetched": len(batch.get("followings") or []),
+                })
+
+        followings, has_more = await api_client.fetch_following(
+            cookie_header, sec_uid, count, on_batch=_collect_progress
+        )
+        summaries = [
+            {
+                "sec_uid": f.get("sec_uid"),
+                "nickname": f.get("nickname"),
+                "unique_id": f.get("unique_id"),
+                "follower_count": f.get("follower_count"),
+                "aweme_count": f.get("aweme_count"),
+            }
+            for f in followings[:100]
+        ]
+        return {
+            "total": len(followings),
+            "has_more": has_more,
+            "followings": summaries,
+            "note": "仅展示前 100 位摘要" if len(followings) > 100 else "",
+        }
+
+    async def sync_author_posts(self, account: AccountContext, author_row: dict,
+                                cookie_header: str, count: int) -> list[dict]:
+        """拉取单博主最新 count 条作品（精确截断），并回填 uid/昵称/last_synced_at。
+
+        不负责入库：follows /sync 路由与 follow_sync 抓取目标（task 体系统一入库）共用本方法。
+        """
+        from app.database import db  # 延迟导入：平台层仅此方法触库
+
+        items, _ = await api_client.fetch_post(cookie_header, author_row["sec_uid"], count)
+        items = items[:count]  # 单页固定 20 条，按 count 截断保证入库量与配置一致
+        author_id = next((it.get("author_id") for it in items if it.get("author_id")), None)
+        author_name = next((it.get("author_name") for it in items if it.get("author_name")), None)
+        await db.execute(
+            """UPDATE follow_authors SET last_synced_at = ?,
+                   uid = COALESCE(NULLIF(?, ''), uid),
+                   nickname = COALESCE(NULLIF(?, ''), nickname)
+               WHERE sec_uid = ?""",
+            (now_iso(), author_id or "", author_name or "", author_row["sec_uid"]),
+        )
+        return items
+
+    async def _fetch_follow_sync(
+        self, account: AccountContext, params: dict, on_batch=None
+    ) -> FetchResult:
+        """同步全部特别关注博主的最新作品（task 体系：items 交执行器统一入库 source=特别关注）。"""
+        from app.database import db  # 延迟导入：平台层仅此方法触库
+
+        raw_count = str((params or {}).get("count") or "").strip()
+        count = min(max(int(raw_count), 1), 50) if raw_count.isdigit() else 10  # 0/缺省 = 10 条
+        cookie_header = await api_client.profile_cookie_header(account.profile_path)
+        authors = await db.query_all("SELECT * FROM follow_authors ORDER BY created_at")
+        logger.info("[%s] 同步特别关注：%d 位博主，每位最新 %d 条",
+                    account.account_id, len(authors), count)
+        collected: list[dict] = []
+        page = 0
+        for a in authors:
+            items = await self.sync_author_posts(account, a, cookie_header, count)
+            page += 1
+            collected.extend(items)
+            if on_batch and items:
+                await on_batch({"page": page, "items": items, "folder": a.get("nickname") or ""})
+            await asyncio.sleep(1)  # 逐博主节流防风控
+        return FetchResult(
+            items=collected, cursor=len(collected), has_more=False, total=len(collected)
+        )
 
     async def _op_digg_item(self, account: AccountContext, params: dict) -> dict:
         """给指定视频点赞（浏览器页面 fetch 通道，写接口有 JS 签名强校验）。"""
@@ -543,6 +646,8 @@ class DouyinAdapter(BasePlatformAdapter):
             return await self._fetch_likes(account, params, on_batch)
         if action == "list_watchlater":
             return await self._fetch_watchlater(account, params, on_batch)
+        if action == "follow_sync":
+            return await self._fetch_follow_sync(account, params, on_batch)
         return await self.fetch_favorites(account, params, on_batch)
 
     async def fetch_favorites(

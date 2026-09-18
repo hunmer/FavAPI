@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
-import { motion } from 'motion/react';
+import React, { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { NavTab } from '../types';
 import {
   LayoutDashboard,
   Smartphone,
   Bookmark,
+  Heart,
   Activity,
   CalendarDays,
   Download,
@@ -45,15 +46,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // 折叠状态：全屏模式且视口 ≥xl 时默认展开，其余默认折叠；点击顶部图标手动切换（两种模式均可）
   const [collapsed, setCollapsed] = useState(() => !fullPage || window.innerWidth < 1280);
   const expanded = !collapsed;
+  // 头像弹出菜单：tasks / schedule 入口藏在这里
+  const [menuOpen, setMenuOpen] = useState(false);
+  const avatarRef = useRef<HTMLDivElement>(null);
+
+  // 点击菜单外部关闭
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (avatarRef.current && !avatarRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [menuOpen]);
 
   const navItems: { id: NavTab; label: string; icon: React.ElementType }[] = [
     { id: 'dashboard', label: '总览看板', icon: LayoutDashboard },
     { id: 'accounts', label: '账号管理', icon: Smartphone },
     { id: 'data', label: '收藏数据', icon: Bookmark },
-    { id: 'tasks', label: '同步任务', icon: Activity },
-    { id: 'schedule', label: '日程调度', icon: CalendarDays },
+    { id: 'follows', label: '特别关注', icon: Heart },
     { id: 'downloads', label: '下载队列', icon: Download },
     { id: 'settings', label: '系统设置', icon: Settings },
+  ];
+
+  const menuItems: { id: NavTab; label: string; icon: React.ElementType }[] = [
+    { id: 'tasks', label: '同步任务', icon: Activity },
+    { id: 'schedule', label: '日程调度', icon: CalendarDays },
   ];
 
   return (
@@ -171,24 +191,70 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
         </button>
 
-        {/* User Avatar */}
-        <div 
+        {/* User Avatar + Popup Menu */}
+        <div
+          ref={avatarRef}
           className="relative cursor-pointer group"
           title="本地管理员: Josh / FavAdmin"
-          onClick={() => onTabChange('settings')}
+          onClick={() => setMenuOpen((o) => !o)}
         >
           {avatarUrl ? (
             <img
               src={avatarUrl}
               alt="Admin"
-              className="w-10 h-10 rounded-full object-cover ring-2 ring-slate-700 group-hover:ring-sky-500 transition-all duration-200"
+              className={`w-10 h-10 rounded-full object-cover ring-2 transition-all duration-200 ${
+                menuOpen ? 'ring-sky-500' : 'ring-slate-700 group-hover:ring-sky-500'
+              }`}
             />
           ) : (
-            <div className="w-10 h-10 rounded-full bg-slate-800/60 flex items-center justify-center ring-2 ring-slate-700 group-hover:ring-sky-500 transition-all duration-200">
+            <div
+              className={`w-10 h-10 rounded-full bg-slate-800/60 flex items-center justify-center ring-2 transition-all duration-200 ${
+                menuOpen ? 'ring-sky-500' : 'ring-slate-700 group-hover:ring-sky-500'
+              }`}
+            >
               <User className="w-5 h-5 text-slate-400" />
             </div>
           )}
           <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-[#14161C]" />
+
+          {/* Popup Menu: tasks / schedule 入口 */}
+          <AnimatePresence>
+            {menuOpen && (
+              <motion.div
+                role="menu"
+                initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                transition={{ duration: 0.18, ease: EASE_SNAPPY }}
+                className="absolute bottom-full left-0 mb-3 w-40 rounded-xl bg-slate-800 border border-slate-700 shadow-xl shadow-black/40 p-1.5 z-50"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {menuItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        onTabChange(item.id);
+                        setMenuOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                        isActive
+                          ? 'bg-sky-500/15 text-sky-400'
+                          : 'text-slate-300 hover:bg-slate-700/60 hover:text-white'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4 shrink-0" />
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
     </aside>

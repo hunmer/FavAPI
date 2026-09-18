@@ -80,6 +80,8 @@ export const Header: React.FC<HeaderProps> = ({
         return { title: '账号与会话管理', subtitle: '隔离 Profile、扫码登录与专属抓取配置' };
       case 'data':
         return { title: '收藏数据中心', subtitle: '多维度检索、标签分类与原站内容直达' };
+      case 'follows':
+        return { title: '特别关注博主', subtitle: '关注列表拉取、分组管理与博主最新作品追踪' };
       case 'tasks':
         return { title: '任务执行历史', subtitle: '增量抓取、全量同步与日志监控' };
       case 'schedule':

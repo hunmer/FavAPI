@@ -21,6 +21,14 @@ PLATFORMS_DIR = Path(os.environ.get("FAVAPI_PLATFORMS_DIR", str(BASE_DIR / "plat
 HOST = os.environ.get("FAVAPI_HOST", "127.0.0.1")
 PORT = int(os.environ.get("FAVAPI_PORT", "8300"))
 
+# 自动更新（tufup / TUF，GitHub Pages 托管；环境变量覆盖供本地联调）
+UPDATE_METADATA_URL = os.environ.get(
+    "FAVAPI_UPDATE_METADATA_URL", "https://hunmer.github.io/FavAPI/metadata/"
+).rstrip("/") + "/"
+UPDATE_TARGETS_URL = os.environ.get(
+    "FAVAPI_UPDATE_TARGETS_URL", "https://hunmer.github.io/FavAPI/targets/"
+).rstrip("/") + "/"
+
 # 浏览器：抖音对无头模式检测严格，默认有头
 HEADLESS = os.environ.get("FAVAPI_HEADLESS", "0") == "1"
 LOGIN_TIMEOUT = 300          # 扫码登录最长等待（秒）

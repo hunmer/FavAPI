@@ -22,9 +22,12 @@ from app.services import browser
 from . import constants
 from .parser import (
     parse_download_links,
+    parse_following_list,
     parse_history,
     parse_like_list,
     parse_listcollection,
+    parse_play_info,
+    parse_post_list,
     parse_watchlater,
 )
 from ..base import LoginExpiredError
@@ -400,6 +403,169 @@ def fetch_history_page(cookie_header: str, max_cursor: int = 0, count: int = 20)
             f"message={data.get('status_msg') or ''}"
         )
     return parse_history(data)
+
+
+def fetch_following_page(cookie_header: str, sec_user_id: str, offset: int = 0,
+                         count: int = 20) -> dict:
+    """拉取一页关注列表（GET /aweme/v1/web/user/following/list/，同步阻塞）。
+
+    offset 偏移分页（响应 offset 即下一页起点）；user_id 可空，仅需 sec_user_id；
+    2026-09 实测无需 bd-ticket-guard 头/签名，curl_cffi 指纹直连即可。
+    返回 parse_following_list 的结果 {followings, cursor, has_more, total}。
+    """
+    params = {
+        **_QUERY_PARAMS,
+        "user_id": "",
+        "sec_user_id": sec_user_id,
+        "offset": offset,
+        "min_time": 0,
+        "max_time": 0,
+        "count": count,
+        "source_type": 4,
+        "gps_access": 0,
+        "address_book_access": 0,
+        "is_top": 1,
+    }
+    url = constants.FOLLOWING_LIST_URL + "?" + urlencode(params)
+    logger.info("fetch_following_page 请求：offset=%d count=%d", offset, count)
+    response = requests.get(
+        url,
+        headers={**_HEADERS, "cookie": cookie_header,
+                 "referer": "https://www.douyin.com/user/self?from_tab_name=main"},
+        impersonate="chrome", timeout=20,
+    )
+    response.raise_for_status()
+    data = response.json()
+    if data.get("status_code") != 0:
+        raise RuntimeError(
+            f"following/list 返回错误 status_code={data.get('status_code')} "
+            f"message={data.get('status_msg') or ''}"
+        )
+    return parse_following_list(data)
+
+
+async def fetch_following(cookie_header: str, sec_user_id: str, count: int,
+                          offset: int = 0, on_batch=None):
+    """按 offset 偏移翻页拉取关注列表，直到取满 count（0=全部）或 has_more=false。
+
+    返回 (全部 followings, 最后一批的 has_more)。
+    """
+    collected: list[dict] = []
+    page = 0
+    while True:
+        batch = await asyncio.to_thread(
+            fetch_following_page, cookie_header, sec_user_id, offset,
+            constants.API_PAGE_COUNT,
+        )
+        page += 1
+        collected.extend(batch["followings"])
+        logger.info(
+            "following 第 %d 页：%d 条，累计 %d，has_more=%s",
+            page, len(batch["followings"]), len(collected), batch["has_more"],
+        )
+        if on_batch and batch["followings"]:
+            await on_batch({"page": page, "followings": batch["followings"]})
+        if not batch["has_more"] or not batch["followings"]:
+            return collected, False
+        if count and len(collected) >= count:
+            return collected, True
+        offset = batch["cursor"]
+        await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
+
+
+def fetch_post_page(cookie_header: str, sec_user_id: str, max_cursor: int = 0,
+                    count: int = 18) -> dict:
+    """拉取一页博主发布作品（GET /aweme/v1/web/aweme/post/，同步阻塞）。
+
+    max_cursor 为上一页响应返回的游标（首页传 0）；响应与 favorite 同构，
+    自带 play_addr 播放直链与 images 图文。
+    返回 parse_post_list 的结果 {items, cursor, has_more, total}。
+    """
+    params = {
+        **_QUERY_PARAMS,
+        "sec_user_id": sec_user_id,
+        "max_cursor": max_cursor,
+        "locate_query": "false",
+        "show_live_replay_strategy": 1,
+        "need_time_list": 0,
+        "time_list_query": 0,
+        "whale_cut_token": "",
+        "cut_version": 1,
+        "count": count,
+        "publish_video_strategy_type": 2,
+        "from_user_page": 1,
+    }
+    url = constants.POST_LIST_URL + "?" + urlencode(params)
+    logger.info("fetch_post_page 请求：sec_user_id=%s max_cursor=%d", sec_user_id, max_cursor)
+    response = requests.get(
+        url,
+        headers={**_HEADERS, "cookie": cookie_header,
+                 "referer": f"https://www.douyin.com/user/{sec_user_id}"},
+        impersonate="chrome", timeout=20,
+    )
+    response.raise_for_status()
+    data = response.json()
+    if data.get("status_code") != 0:
+        raise RuntimeError(
+            f"aweme/post 返回错误 status_code={data.get('status_code')} "
+            f"message={data.get('status_msg') or ''}"
+        )
+    return parse_post_list(data)
+
+
+async def fetch_post(cookie_header: str, sec_user_id: str, count: int, on_batch=None):
+    """按 max_cursor 游标翻页拉取博主发布作品，直到取满 count（0=全部）或 has_more=false。
+
+    返回 (全部 items, 最后一批的 has_more)。
+    """
+    cursor = 0
+    collected: list[dict] = []
+    page = 0
+    while True:
+        batch = await asyncio.to_thread(
+            fetch_post_page, cookie_header, sec_user_id, cursor, constants.API_PAGE_COUNT
+        )
+        page += 1
+        collected.extend(batch["items"])
+        logger.info(
+            "post 第 %d 页：%d 条，累计 %d，has_more=%s",
+            page, len(batch["items"]), len(collected), batch["has_more"],
+        )
+        if on_batch and batch["items"]:
+            await on_batch({"page": page, "items": batch["items"]})
+        if not batch["has_more"] or not batch["cursor"]:
+            return collected, False
+        if count and len(collected) >= count:
+            return collected, True
+        cursor = batch["cursor"]
+        await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
+
+
+def fetch_aweme_play_info(cookie_header: str, aweme_id: str) -> dict:
+    """按 aweme_id 拉取作品详情并解析播放器信息（同步阻塞，异步侧 to_thread 调用）。
+
+    返回 parse_play_info 的结果 {aweme_id, desc, video_urls, images, author, statistics...}；
+    与 fetch_aweme_detail 的区别：面向前端播放（直链原样下发，经 /follows/media 代理播放）。
+    """
+    params = {**_QUERY_PARAMS, "aweme_id": aweme_id}
+    url = constants.AWEME_DETAIL_URL + "?" + urlencode(params)
+    logger.info("fetch_aweme_play_info 请求：aweme_id=%s", aweme_id)
+    response = requests.get(
+        url,
+        headers={**_HEADERS, "cookie": cookie_header,
+                 "referer": f"https://www.douyin.com/video/{aweme_id}"},
+        impersonate="chrome",
+        timeout=20,
+    )
+    response.raise_for_status()
+    data = response.json()
+    status = data.get("status_code")
+    if status != 0:
+        raise RuntimeError(
+            f"aweme/detail 返回错误 status_code={status} "
+            f"message={data.get('status_msg') or data.get('message') or ''}"
+        )
+    return parse_play_info(data)
 
 
 def fetch_watchlater_page(cookie_header: str, offset: int = 0) -> dict:

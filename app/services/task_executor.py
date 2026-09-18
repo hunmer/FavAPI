@@ -122,6 +122,7 @@ async def start_fetch(
             task_id,
             status="failed",
             error_message=f"抓取超时（>{config.FETCH_TIMEOUT}s）",
+            progress=None,
             finished_at=now_iso(),
         )
         row = await data_store.get_task(task_id)
@@ -141,6 +142,18 @@ async def _guarded_run(task_id: str, account: dict, action: str, params: dict):
         logger.exception("任务 %s 写入通知失败", task_id)
 
 
+async def _follow_unread_total() -> int:
+    """特别关注来源的未读作品总数（与 follows 页博主角标同一口径的总量统计）。"""
+    from app.database import db
+
+    row = await db.query_one(
+        """SELECT COUNT(*) AS n FROM favorites f
+           LEFT JOIN follow_reads r ON r.content_id = f.content_id
+           WHERE f.source = '特别关注' AND r.content_id IS NULL"""
+    )
+    return row["n"] if row else 0
+
+
 async def _notify_task_result(task_id: str, account: dict, result: dict | None):
     """后台任务落终态后写通知；_run_task 抛异常（result=None）时按任务表终态兜底。"""
     from app.services import notification_store
@@ -148,12 +161,20 @@ async def _notify_task_result(task_id: str, account: dict, result: dict | None):
     task = result or await data_store.get_task(task_id) or {}
     name = account.get("name") or account.get("account_id", "")
     if task.get("status") == "success":
-        await notification_store.create_notification(
-            "success",
-            f"{name} 抓取完成：新增 {task.get('new_favorites') or 0} 条收藏",
-            f"共入库 {task.get('result_count') or 0} 条",
-            task_id=task_id,
-        )
+        count = task.get("result_count") or 0
+        new_count = task.get("new_favorites") or 0
+        title = f"{name} 抓取完成：新增 {new_count} 条收藏"
+        detail = f"共入库 {count} 条"
+        if task.get("action") == "follow_sync":
+            title = f"{name} 特别关注同步完成：新增 {new_count} 条作品"
+            detail = f"共入库 {count} 条"
+            try:
+                unread = await _follow_unread_total()
+                if unread:
+                    detail = f"共入库 {count} 条，当前未读 {unread} 条（可在「特别关注」页查看）"
+            except Exception:
+                logger.exception("统计特别关注未读数失败（不影响通知）")
+        await notification_store.create_notification("success", title, detail, task_id=task_id)
     else:
         await notification_store.create_notification(
             "error",
@@ -169,9 +190,22 @@ async def _run_task(task_id: str, account: dict, action: str, params: dict) -> d
     await account_manager.update_account(account_id, last_used_at=now_iso())
 
     adapter = registry.get_adapter(account["platform"])
+    fetched_total = 0
+
+    async def on_batch(batch: dict):
+        """运行中进度写入任务表：follow_sync 逐博主（batch.folder=博主昵称），其余逐页。"""
+        nonlocal fetched_total
+        items = batch.get("items") or []
+        fetched_total += len(items)
+        folder = batch.get("folder")
+        label = folder or f"第 {batch.get('page') or 1} 批"
+        await data_store.update_task(
+            task_id, progress=f"{label} · 累计 {fetched_total} 条"
+        )
+
     try:
         result = await adapter.fetch_by_action(
-            action, account_manager.to_context(account), params or {}
+            action, account_manager.to_context(account), params or {}, on_batch=on_batch
         )
         dt_from, dt_to = _date_window(params or {})
         if dt_from or dt_to:
@@ -196,7 +230,7 @@ async def _run_task(task_id: str, account: dict, action: str, params: dict) -> d
         await data_store.update_task(
             task_id,
             status="success", result_count=summary["result_count"],
-            new_favorites=summary["new_favorites"], finished_at=now_iso(),
+            new_favorites=summary["new_favorites"], progress=None, finished_at=now_iso(),
         )
         await account_manager.save_cookie_snapshot(account_id)  # 抓取成功自动刷新快照
         return payload
@@ -214,7 +248,8 @@ async def _fail_task(
     task_id: str, account_id: str, platform: str, action: str, message: str
 ) -> dict:
     await data_store.update_task(
-        task_id, status="failed", error_message=message[:2000], finished_at=now_iso()
+        task_id, status="failed", error_message=message[:2000], progress=None,
+        finished_at=now_iso(),
     )
     return {
         "task_id": task_id,

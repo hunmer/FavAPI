@@ -41,6 +41,11 @@ PROFILE_SELF_API = "/aweme/v1/web/user/profile/self"
 # 视频详情接口（按 aweme_id 解析播放直链；GET 读接口，可 curl_cffi 直连）
 AWEME_DETAIL_URL = "https://www.douyin.com/aweme/v1/web/aweme/detail/"
 
+# 关注列表（GET 读接口，offset 偏移分页；2026-09 实测无需 guard 头/签名可直连）
+FOLLOWING_LIST_URL = "https://www.douyin.com/aweme/v1/web/user/following/list/"
+# 博主主页发布作品列表（GET 读接口，max_cursor 游标分页，与 favorite 同构）
+POST_LIST_URL = "https://www.douyin.com/aweme/v1/web/aweme/post/"
+
 # 判定已登录的 cookie（任一存在且非空即视为登录）
 LOGIN_COOKIE_KEYS = ("sessionid", "sessionid_ss")
 

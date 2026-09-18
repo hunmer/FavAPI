@@ -20,6 +20,7 @@ import { QRCodeLoginModal } from './components/Accounts/QRCodeLoginModal';
 import { CookiesModal } from './components/Accounts/CookiesModal';
 import { TasksView } from './components/Tasks/TasksView';
 import { DataBrowserView } from './components/Data/DataBrowserView';
+import { FollowsView } from './components/Follows/FollowsView';
 import { ScheduleView } from './components/Schedule/ScheduleView';
 import { DownloadsView } from './components/Downloads/DownloadsView';
 import { SettingsView } from './components/Settings/SettingsView';
@@ -58,7 +59,7 @@ export function App() {
   };
 
   // Navigation State：由 URL hash 驱动（/#/data 等），未知路径回落 dashboard
-  const NAV_TABS: NavTab[] = ['dashboard', 'accounts', 'data', 'tasks', 'schedule', 'downloads', 'settings'];
+  const NAV_TABS: NavTab[] = ['dashboard', 'accounts', 'data', 'follows', 'tasks', 'schedule', 'downloads', 'settings'];
   const location = useLocation();
   const navigate = useNavigate();
   const pathTab = location.pathname.replace(/^\//, '').split('/')[0] as NavTab;
@@ -293,6 +294,17 @@ export function App() {
       window.clearInterval(timer);
     };
   }, []);
+
+  // 运行中任务 5s 轮询：刷新任务列表（含运行进度 progress）与抓取进度指示；
+  // 没有运行中任务时不轮询，避免空闲期无效请求
+  useEffect(() => {
+    const hasRunning = tasks.some((t) => t.status === 'running');
+    if (!hasRunning) return;
+    const timer = window.setInterval(() => {
+      reloadTasks();
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [tasks, reloadTasks]);
 
   // ---------- 账号操作 ----------
 
@@ -743,6 +755,11 @@ export function App() {
                   }}
                 />
               </div>
+            )}
+
+            {/* View 3.5: 特别关注博主 */}
+            {activeTab === 'follows' && (
+              <FollowsView accounts={accounts} showToast={showToast} />
             )}
 
             {/* View 4: 同步任务 */}

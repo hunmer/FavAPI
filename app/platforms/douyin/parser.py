@@ -169,6 +169,112 @@ def parse_history(data: dict) -> dict:
     return _parse_aweme_page(data)
 
 
+def parse_following_list(data: dict) -> dict:
+    """关注列表 /aweme/v1/web/user/following/list/ 响应 → {followings, cursor, has_more, total}。
+
+    offset 偏移分页：响应 offset 即下一页起点；条目只保留展示/入库所需精简字段。
+    """
+    def _avatar(u: dict) -> str | None:
+        for key in ("avatar_168x168", "avatar_300x300", "avatar_larger"):
+            urls = (u.get(key) or {}).get("url_list") or []
+            if urls:
+                return urls[0]
+        return None
+
+    followings = [
+        {
+            "sec_uid": str(u.get("sec_uid") or ""),
+            "uid": str(u.get("uid") or ""),
+            "unique_id": u.get("unique_id"),
+            "nickname": u.get("nickname"),
+            "signature": (u.get("signature") or "").strip()[:500] or None,
+            "avatar_url": _avatar(u),
+            "follower_count": _as_int(u.get("follower_count")),
+            "aweme_count": _as_int(u.get("aweme_count")),
+            "is_top": bool(u.get("is_top")),
+        }
+        for u in data.get("followings") or []
+        if u.get("sec_uid")
+    ]
+    return {
+        "followings": followings,
+        "cursor": _as_int(data.get("offset")) or 0,
+        "has_more": bool(data.get("has_more")),
+        "total": _as_int(data.get("total")) or 0,
+    }
+
+
+def parse_post_list(data: dict) -> dict:
+    """博主发布作品 /aweme/v1/web/aweme/post/ 响应 → {items, cursor, has_more, total}。
+
+    与 favorite 同构（aweme_list + max_cursor 游标）；响应自带 play_addr 播放直链。
+    """
+    return _parse_aweme_page(data)
+
+
+def parse_play_info(data: dict) -> dict:
+    """aweme/detail 响应 → 前端播放器信息（视频直链 / 图文原图 / 作者 / 统计）。
+
+    视频：play_addr 直链（playwm → play 去水印源）+ bit_rate 各档；
+    图文（aweme_type=68 / images 非空）：逐张原图直链。
+    """
+    aweme = data.get("aweme_detail") or {}
+    if not aweme.get("aweme_id"):
+        raise RuntimeError("详情响应无 aweme_detail（作品可能已删除或设为私密）")
+
+    def _stats() -> dict:
+        s = aweme.get("statistics") or {}
+        return {k: _as_int(s.get(k)) for k in ("digg_count", "comment_count", "share_count", "collect_count", "play_count")}
+
+    author = aweme.get("author") or {}
+    info = {
+        "aweme_id": str(aweme.get("aweme_id")),
+        "desc": (aweme.get("desc") or "").strip(),
+        "create_time": _as_int(aweme.get("create_time")),
+        "aweme_type": _as_int(aweme.get("aweme_type")) or 0,
+        "duration": _as_int((aweme.get("video") or {}).get("duration")),
+        "statistics": _stats(),
+        "author": {
+            "nickname": author.get("nickname"),
+            "sec_uid": author.get("sec_uid"),
+        },
+        "video_urls": [],
+        "images": [],
+    }
+
+    images = aweme.get("images") or []
+    if not images:
+        video = aweme.get("video") or {}
+        seen: set[str] = set()
+
+        def _push(play_addr: dict) -> None:
+            for raw in (play_addr or {}).get("url_list") or []:
+                url = str(raw or "").replace("playwm", "play")
+                if url.startswith("http") and url not in seen:
+                    seen.add(url)
+                    info["video_urls"].append(url)
+
+        _push(video.get("play_addr"))
+        for br in video.get("bit_rate") or []:
+            _push(br.get("play_addr"))
+    for img in images:
+        urls = (img.get("download_url_list") or []) + (img.get("url_list") or [])
+        url = next((str(u) for u in urls if str(u or "").startswith("http")), None)
+        if url:
+            info["images"].append({
+                "url": url,
+                "width": _as_int(img.get("width")) or 0,
+                "height": _as_int(img.get("height")) or 0,
+            })
+    music_urls = ((aweme.get("music") or {}).get("play_url") or {}).get("url_list") or []
+    info["music_url"] = next(
+        (str(u) for u in music_urls if str(u or "").startswith("http")), None
+    )
+    if not info["video_urls"] and not info["images"]:
+        raise RuntimeError("详情响应无可用播放地址（作品可能已删除或设为私密）")
+    return info
+
+
 def parse_watchlater(data: dict) -> dict:
     """稍后再看 /aweme/v1/web/watchlater/list/ 响应 → {items, cursor, has_more, total}。
 

@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS fetch_tasks (
     result_count    INTEGER,
     new_favorites   INTEGER,
     error_message   TEXT,
+    progress        TEXT,                -- 运行中进度摘要（第 N 批 · 累计 X 条；终态清空）
     started_at      TEXT,
     finished_at     TEXT
 );
@@ -117,12 +118,34 @@ CREATE TABLE IF NOT EXISTS notifications (
     created_at      TEXT
 );
 
+CREATE TABLE IF NOT EXISTS follow_authors (
+    sec_uid        TEXT PRIMARY KEY,      -- 博主 sec_user_id（添加即特别关注）
+    platform       TEXT NOT NULL DEFAULT 'douyin',
+    account_id     TEXT,                  -- 添加时所用账号（后续同步/浏览用其登录态）
+    uid            TEXT DEFAULT '',       -- 博主 uid（与作品 author_id 匹配未读数用）
+    nickname       TEXT,
+    unique_id      TEXT,
+    avatar_url     TEXT,
+    signature      TEXT,
+    follower_count INTEGER,
+    group_name     TEXT DEFAULT '',       -- 分组名（空 = 未分组）
+    created_at     TEXT,
+    last_synced_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS follow_reads (
+    content_id     TEXT PRIMARY KEY,      -- 已读的作品（特别关注场景）
+    read_at        TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_favorites_account ON favorites(account_id, platform);
 CREATE INDEX IF NOT EXISTS idx_tasks_started ON fetch_tasks(started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_contents_platform ON contents(platform);
 CREATE INDEX IF NOT EXISTS idx_schedules_due ON schedules(status, next_run_at);
 CREATE INDEX IF NOT EXISTS idx_downloads_created ON downloads(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_follow_authors_account ON follow_authors(account_id);
+CREATE INDEX IF NOT EXISTS idx_follow_reads_read ON follow_reads(read_at DESC);
 """
 
 
@@ -211,6 +234,8 @@ class Database:
             task_cols = [row[1] for row in await cur.fetchall()]
         if "new_favorites" not in task_cols:
             await self.conn.execute("ALTER TABLE fetch_tasks ADD COLUMN new_favorites INTEGER")
+        if "progress" not in task_cols:
+            await self.conn.execute("ALTER TABLE fetch_tasks ADD COLUMN progress TEXT")
 
         async with self.conn.execute("PRAGMA table_info(downloads)") as cur:
             dl_cols = [row[1] for row in await cur.fetchall()]

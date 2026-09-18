@@ -202,6 +202,15 @@ export const TasksView: React.FC<TasksViewProps> = ({
                             失败
                           </span>
                         )}
+                        {/* 运行中进度摘要（特别关注同步为逐博主，其他抓取为逐页） */}
+                        {t.status === 'running' && t.progress && (
+                          <div
+                            className="text-[10px] text-slate-400 mt-1 max-w-[150px] truncate mx-auto"
+                            title={t.progress}
+                          >
+                            {t.progress}
+                          </div>
+                        )}
                       </td>
                       <td className="py-3.5 px-4 text-right">
                         <span className="font-extrabold text-sm text-slate-900 dark:text-white">
@@ -266,8 +275,17 @@ export const TasksView: React.FC<TasksViewProps> = ({
               </button>
             </div>
 
-            <div className="p-6 space-y-4 overflow-y-auto">
+              <div className="p-6 space-y-4 overflow-y-auto">
               <div className="grid grid-cols-2 gap-3 text-xs">
+                {selectedTaskDetail.progress && (
+                  <div className="p-3 bg-indigo-50 dark:bg-sky-950/40 rounded-xl border border-indigo-100 dark:border-sky-900 col-span-2">
+                    <span className="text-slate-400">运行进度</span>
+                    <div className="font-semibold text-indigo-700 dark:text-sky-300 mt-0.5 flex items-center gap-1.5">
+                      <RefreshCw className="w-3 h-3 animate-spin" />
+                      {selectedTaskDetail.progress}
+                    </div>
+                  </div>
+                )}
                 <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
                   <span className="text-slate-400">开始时间</span>
                   <div className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{selectedTaskDetail.startTime}</div>

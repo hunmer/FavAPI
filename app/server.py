@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import accounts, agents, ai_tag, covers, downloads, fetch, notifications, queries, schedules, settings, tags
+from app.api import accounts, agents, ai_tag, covers, downloads, fetch, follows, notifications, queries, schedules, settings, tags
 from app.database import db
 from app.services import aria2_service, cover_worker, download_worker, scheduler
 from app.web.router import mount_web
@@ -41,6 +41,7 @@ def create_app() -> FastAPI:
     app.include_router(covers.router)
     app.include_router(downloads.router)
     app.include_router(fetch.router)
+    app.include_router(follows.router)
     app.include_router(notifications.router)
     app.include_router(queries.router)
     app.include_router(schedules.router)

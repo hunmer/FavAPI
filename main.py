@@ -4,11 +4,37 @@ import sys
 import threading
 import time
 import atexit
+import subprocess
 from pathlib import Path
 
 
 _single_instance_handle = None
 _single_instance_lock_file = None
+
+
+def _release_single_instance_lock():
+    """释放单实例锁（atexit 与更新重启前调用，后者须先放锁再拉新实例）。"""
+    global _single_instance_handle, _single_instance_lock_file
+    if _single_instance_lock_file is not None:
+        try:
+            import fcntl
+
+            fcntl.flock(_single_instance_lock_file.fileno(), fcntl.LOCK_UN)
+        except OSError:
+            pass
+        try:
+            _single_instance_lock_file.close()
+        except OSError:
+            pass
+        _single_instance_lock_file = None
+    if _single_instance_handle is not None:
+        try:
+            import ctypes
+
+            ctypes.WinDLL("kernel32").CloseHandle(_single_instance_handle)
+        except Exception:
+            pass
+        _single_instance_handle = None
 
 
 def _acquire_single_instance() -> bool:
@@ -39,14 +65,7 @@ def _acquire_single_instance() -> bool:
             return True
 
         _single_instance_lock_file = lock_file
-
-        def _release_unix_lock():
-            try:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
-            finally:
-                lock_file.close()
-
-        atexit.register(_release_unix_lock)
+        atexit.register(_release_single_instance_lock)
         return True
 
     import ctypes
@@ -68,7 +87,7 @@ def _acquire_single_instance() -> bool:
         _single_instance_handle = None
         return False
 
-    atexit.register(lambda: kernel32.CloseHandle(handle))
+    atexit.register(_release_single_instance_lock)
     return True
 
 # Windows 下 stderr 默认 GBK，会导致日志中文在 procm 等采集端乱码
@@ -81,9 +100,10 @@ import uvicorn
 
 from app import config
 
-
 _server: uvicorn.Server | None = None
 _serve_thread: threading.Thread | None = None
+_webview_window = None  # pywebview 窗口，供更新就绪时编程关闭
+_restart_requested = False
 
 
 def _serve_in_thread():
@@ -104,7 +124,21 @@ def _shutdown_server():
         _serve_thread.join(timeout=8)  # 超时则放弃等待，daemon 兜底 + WAL 恢复
 
 
+def _on_update_ready():
+    """自动更新安装就绪（updater 后台线程调用）：优雅退出，让新版生效。"""
+    global _restart_requested
+    _restart_requested = True
+    print("更新已安装，正在退出以便新版生效……", flush=True)
+    _shutdown_server()  # 先释放端口，避免与重启的新实例冲突
+    if _webview_window is not None:
+        _webview_window.destroy()  # 使 webview.start() 返回，主流程进入退出路径
+    # 无窗口模式：should_exit 使 uvicorn.run() 返回，主流程同样进入退出路径
+
+
 def _open_window():
+    global _webview_window
+    if _restart_requested:
+        return  # 更新在开窗前已就绪：无需再开旧版窗口，直接走退出/重启路径
     import webview
 
     url = f"http://{config.HOST}:{config.PORT}"
@@ -117,13 +151,30 @@ def _open_window():
             pass
         time.sleep(0.5)
 
-    webview.create_window("FavAPI", url, width=1280, height=820, min_size=(960, 600))
-    webview.start()  # 阻塞至窗口关闭，daemon 服务线程随之结束
+    _webview_window = webview.create_window(
+        "FavAPI", url, width=1280, height=820, min_size=(960, 600)
+    )
+    webview.start()  # 阻塞至窗口关闭（含更新就绪时的编程关闭）
+    _shutdown_server()
+
+
+def _restart_if_requested():
+    """进程退出前拉起新实例。Windows 由更新批处理负责（其搬运耗时已确保老进程先退出）；
+    macOS 此处重启，但必须先释放单实例锁，否则新实例会被自己拦下。"""
+    if not (_restart_requested and getattr(sys, "frozen", False)):
+        return
+    if sys.platform == "darwin":
+        _release_single_instance_lock()
+        subprocess.Popen([sys.executable])
 
 
 if __name__ == "__main__":
     if not _acquire_single_instance():
         raise SystemExit(0)
+
+    from app.services import updater
+
+    updater.start_background_check(_on_update_ready)
 
     use_window = (
         os.environ.get("FAVAPI_NO_WINDOW") != "1"
@@ -132,6 +183,11 @@ if __name__ == "__main__":
     if use_window:
         _serve_in_thread()
         _open_window()
-        _shutdown_server()
     else:
-        uvicorn.run("app.server:app", host=config.HOST, port=config.PORT)
+        _serve_in_thread()  # 同样走 Server 对象，使 on_update_ready 能优雅停服
+        try:
+            while _serve_thread.is_alive():
+                _serve_thread.join(timeout=1)
+        except KeyboardInterrupt:
+            _shutdown_server()
+    _restart_if_requested()

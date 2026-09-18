@@ -61,6 +61,7 @@ class TaskOut(BaseModel):
     result_count: int | None = None
     new_favorites: int | None = None
     error_message: str | None = None
+    progress: str | None = None  # 运行中进度摘要（终态清空）
     started_at: str | None = None
     finished_at: str | None = None
 

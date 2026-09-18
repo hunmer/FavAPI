@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { Account, BilibiliFolder } from '../../../types';
 import { deleteBilibiliFolder, editBilibiliFolder, syncBilibiliFolders } from '../../../api';
 import {
-  AlertTriangle, CheckSquare, FolderHeart, ListChecks, MoreVertical, Pencil, RefreshCw, Square, Trash2,
+  AlertTriangle, CheckSquare, FolderHeart, ListChecks, MoreVertical, Pencil, RefreshCw, Square, Trash2, UserPlus,
 } from 'lucide-react';
+import { FollowingList } from './FollowingList';
 
 interface FolderPickerProps {
   account: Account;
@@ -20,6 +21,7 @@ const DELETE_INTERVAL_MS = 3000;
  * 收藏夹 Tab 面板：Tab 内展示名下收藏夹列表（点击卡片设为抓取目标），
  * 自建收藏夹卡片右上角 dots 菜单可编辑 / 删除（调 Bilibili folder API）；
  * 头部右侧多选开关可勾选多个收藏夹批量删除，无收藏夹时仍渲染 Tab 头 + 空占位。
+ * douyin 账号另有「关注列表」Tab（拉取关注博主并添加特别关注），与本卡片共用 tabs。
  */
 export const FolderPicker: React.FC<FolderPickerProps> = ({
   account,
@@ -28,6 +30,9 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
   onFoldersChanged,
 }) => {
   const folders = account.folders || [];
+
+  // 卡片内 tabs：收藏夹 / 关注列表（关注列表目前仅 douyin 提供）
+  const [listTab, setListTab] = useState<'folders' | 'following'>('folders');
 
   // dots 菜单与编辑/删除弹窗状态
   const [menuFor, setMenuFor] = useState<string | null>(null);
@@ -145,21 +150,43 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
 
   return (
     <div className="bg-white dark:bg-[#161B26] rounded-[28px] border border-slate-200/80 dark:border-slate-800 shadow-2xs overflow-hidden">
-      {/* Tab Header：右侧多选开关 + 批量删除按钮 */}
+      {/* Tab Header：左=tabs（收藏夹/关注列表），右=多选开关 + 批量删除按钮（仅收藏夹 tab） */}
       <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-6 pt-4 pb-1">
         <div className="flex items-center gap-4">
-          <span className="pb-3 text-sm font-bold border-b-2 border-slate-900 dark:border-slate-100 text-slate-900 dark:text-white flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setListTab('folders')}
+            className={`pb-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
+              listTab === 'folders'
+                ? 'border-slate-900 dark:border-slate-100 text-slate-900 dark:text-white'
+                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+            }`}
+          >
             <FolderHeart className="w-4 h-4 text-indigo-600" />
             收藏夹 ({folders.length})
-          </span>
+          </button>
+          {account.platform === 'douyin' && (
+            <button
+              type="button"
+              onClick={() => setListTab('following')}
+              className={`pb-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-1.5 cursor-pointer ${
+                listTab === 'following'
+                  ? 'border-slate-900 dark:border-slate-100 text-slate-900 dark:text-white'
+                  : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              <UserPlus className="w-4 h-4 text-sky-500" />
+              关注列表
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-2 pb-2">
-          {folders.length > 0 && (
+          {listTab === 'folders' && folders.length > 0 && (
             <span className="text-[11px] text-slate-400 hidden sm:inline-block">
               {multiSelect ? `已选 ${checked.size} 个` : '点击卡片设为抓取目标'}
             </span>
           )}
-          {account.platform === 'bilibili' && (
+          {listTab === 'folders' && account.platform === 'bilibili' && (
             <button
               type="button"
               title={syncing ? '正在同步…' : '从 B 站刷新收藏夹列表'}
@@ -170,7 +197,7 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
               <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
             </button>
           )}
-          {folders.length > 0 && (
+          {listTab === 'folders' && folders.length > 0 && (
             <button
               type="button"
               title={multiSelect ? '退出多选' : '多选管理收藏夹'}
@@ -184,7 +211,7 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
               <ListChecks className="w-4 h-4" />
             </button>
           )}
-          {multiSelect && (
+          {listTab === 'folders' && multiSelect && (
             <button
               type="button"
               title={checked.size ? `删除选中的 ${checked.size} 个收藏夹` : '先勾选要删除的收藏夹'}
@@ -201,8 +228,12 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
         </div>
       </div>
 
-      {/* Tab Content：收藏夹列表网格，或空占位 */}
+      {/* Tab Content：关注列表（douyin）/ 收藏夹列表网格，或空占位 */}
       <div className="p-6">
+        {listTab === 'following' ? (
+          <FollowingList account={account} />
+        ) : (
+        <>
         {opError && !editTarget && !deleteTargets && (
           <p className="mb-2.5 text-[11px] text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950 border border-rose-200 dark:border-rose-800 p-2 rounded-lg">
             {opError}
@@ -308,6 +339,8 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
             <FolderHeart className="w-5 h-5 text-slate-300" />
             <span className="text-[11px] text-slate-400">暂无收藏夹，平台同步后将显示在此</span>
           </div>
+        )}
+        </>
         )}
       </div>
 

@@ -6,3 +6,5 @@ __pycache__/
 .tmp/
 build/
 dist/
+tufup/
+bundles/

@@ -1,6 +1,6 @@
 export type PrimaryTab = 'accounts' | 'tasks' | 'data';
 
-export type NavTab = 'dashboard' | 'accounts' | 'data' | 'tasks' | 'schedule' | 'downloads' | 'settings';
+export type NavTab = 'dashboard' | 'accounts' | 'data' | 'follows' | 'tasks' | 'schedule' | 'downloads' | 'settings';
 
 export interface ScheduledSync {
   id: string;
@@ -73,6 +73,8 @@ export interface TaskRecord {
   newCount: number;
   errorMessage?: string;
   cursor?: string;
+  /** 运行中进度摘要（第 N 批/博主昵称 · 累计 X 条）；终态为空 */
+  progress?: string;
 }
 
 export interface ScrapedItem {

@@ -10,3 +10,4 @@ xhshow
 yt-dlp
 pywebview
 aria2p
+tufup
