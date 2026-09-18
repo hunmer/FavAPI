@@ -456,8 +456,10 @@ class XiaohongshuAdapter(BasePlatformAdapter):
     async def follows_fetch_posts_page(self, cookie_header: dict, sec_uid: str,
                                        cursor=0, count: int = 18) -> dict:
         # cursor 为服务端不透明字符串游标（Mongo ObjectId 风格十六进制，超出 JS
-        # 安全整数不能转 int，契约扩展为 int|str 原样透传）：0/"" = 首页，末页归 0
-        cur = str(cursor).strip() if cursor not in (0, "", None) else ""
+        # 安全整数不能转 int，契约扩展为 int|str 原样透传）：0/""/"0" = 首页
+        # （"0" 是前端首屏 String(0)，接口视其为无效游标会静默返回空列表），末页归 0
+        text = str(cursor or "").strip()
+        cur = "" if text in ("", "0") else text
         batch = await asyncio.to_thread(
             api_client.fetch_user_posted_page, cookie_header, sec_uid, cur)
         for it in batch["items"]:

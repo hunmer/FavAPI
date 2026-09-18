@@ -271,10 +271,11 @@ async def author_posts(sec_uid: str, cursor: int | str = 0, count: int = 18, acc
             detail=f"浏览账号平台 {account['platform']} 与博主平台 {author.get('platform')} 不一致",
         )
     try:
+        # cursor 归一：str 游标原样透传（xiaohongshu），但字符串 "0" 是前端首屏
+        # 默认值（FastAPI smart union 把 ?cursor=0 解析为 str），必须归 0 = 首页
+        cur = cursor if isinstance(cursor, str) and cursor != "0" else max(0, int(cursor))
         batch = await adapter.follows_fetch_posts_page(
-            cookie_header, sec_uid,
-            cursor if isinstance(cursor, str) and cursor else max(0, cursor),
-            max(1, min(count, 50)),
+            cookie_header, sec_uid, cur, max(1, min(count, 50)),
         )
     except Exception as exc:
         logger.exception("拉取博主作品失败：%s", sec_uid)
