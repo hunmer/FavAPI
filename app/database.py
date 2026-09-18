@@ -39,13 +39,11 @@ CREATE TABLE IF NOT EXISTS contents (
     author_id       TEXT,
     author_name     TEXT,
     cover_url       TEXT,
-    cover_file      TEXT,            -- 本地封面文件（covers/ 下相对路径；空 = 未本地化）
+    cover_file      INTEGER DEFAULT 0,   -- 封面是否已本地化（1 = data/covers 已落盘）
     duration        INTEGER,
     statistics      TEXT,
-    raw_data        TEXT,
-    first_seen_at   TEXT,
-    last_seen_at    TEXT,
-    tags            TEXT,             -- AI 打标结果（JSON 数组字符串）
+    published_at    TEXT,                -- 发布日期 YYYY-MM-DD（本地时区；缺失为 NULL）
+    tags            TEXT,                -- AI 打标结果（JSON 数组字符串）
     tagged_at       TEXT,
     UNIQUE(platform, content_id)
 );
@@ -204,6 +202,11 @@ class Database:
             if col not in content_cols:
                 await self.conn.execute(f"ALTER TABLE contents ADD COLUMN {col} TEXT")
 
+        if "raw_data" in content_cols:
+            await self._migrate_contents_v2()
+        elif "published_at" not in content_cols:
+            await self.conn.execute("ALTER TABLE contents ADD COLUMN published_at TEXT")
+
         async with self.conn.execute("PRAGMA table_info(fetch_tasks)") as cur:
             task_cols = [row[1] for row in await cur.fetchall()]
         if "new_favorites" not in task_cols:
@@ -228,6 +231,60 @@ class Database:
                     "INSERT OR IGNORE INTO tag_groups (group_name, tags) VALUES (?, ?)",
                     (group, _json.dumps(tags, ensure_ascii=False)),
                 )
+
+    async def _migrate_contents_v2(self):
+        """contents v2：raw_data 外置为 data/raw_data/{platform}/{id}.json 文件；
+        cover_file 由封面相对路径改为 0/1 标记；移除 first_seen_at / last_seen_at；
+        新增 published_at（发布日期过滤原依赖库内 raw_data 计算）。
+        先导出文件再重建表：中途失败旧表原样保留，重跑幂等。"""
+        from app.services import raw_store
+
+        rows = await self.query_all(
+            "SELECT platform, content_id, raw_data FROM contents"
+            " WHERE raw_data IS NOT NULL AND raw_data != ''"
+        )
+        for r in rows:
+            raw_store.save(r["platform"], r["content_id"], r["raw_data"])
+        await self.conn.executescript("""
+            BEGIN;
+            CREATE TABLE contents_new (
+                content_id      TEXT PRIMARY KEY,
+                platform        TEXT NOT NULL,
+                account_id      TEXT,
+                title           TEXT,
+                description     TEXT,
+                author_id       TEXT,
+                author_name     TEXT,
+                cover_url       TEXT,
+                cover_file      INTEGER DEFAULT 0,
+                duration        INTEGER,
+                statistics      TEXT,
+                published_at    TEXT,
+                tags            TEXT,
+                tagged_at       TEXT,
+                UNIQUE(platform, content_id)
+            );
+            INSERT INTO contents_new (content_id, platform, account_id, title, description,
+                author_id, author_name, cover_url, cover_file, duration, statistics,
+                published_at, tags, tagged_at)
+              SELECT content_id, platform, account_id, title,
+                     CASE WHEN description IS NOT NULL AND description = title
+                          THEN '' ELSE description END,
+                     author_id, author_name, cover_url,
+                     CASE WHEN cover_file IS NOT NULL AND cover_file != '' THEN 1 ELSE 0 END,
+                     duration, statistics,
+                     date(COALESCE(json_extract(raw_data, '$.create_time'),
+                                   json_extract(raw_data, '$.ctime'),
+                                   json_extract(raw_data, '$.createTime')),
+                          'unixepoch', 'localtime'),
+                     tags, tagged_at
+                FROM contents;
+            DROP TABLE contents;
+            ALTER TABLE contents_new RENAME TO contents;
+            CREATE INDEX IF NOT EXISTS idx_contents_platform ON contents(platform);
+            COMMIT;
+        """)
+        await self.conn.executescript("VACUUM;")  # 回收 raw_data 移出后的空闲页
 
     @property
     def conn(self) -> aiosqlite.Connection:

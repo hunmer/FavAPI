@@ -18,12 +18,12 @@ async def get_cover(platform: str, content_id: str):
     if row is None:
         raise HTTPException(status_code=404, detail="内容不存在")
     if row.get("cover_file"):
-        path = cover_worker.covers_dir() / row["cover_file"]
-        if path.is_file():
+        path = cover_worker.cover_path(platform, content_id)
+        if path is not None:
             return FileResponse(path)
         # 文件丢失：清标记走远程兜底，等待补齐
         await db.execute(
-            "UPDATE contents SET cover_file = NULL WHERE platform = ? AND content_id = ?",
+            "UPDATE contents SET cover_file = 0 WHERE platform = ? AND content_id = ?",
             (platform, content_id),
         )
     url = str(row.get("cover_url") or "")

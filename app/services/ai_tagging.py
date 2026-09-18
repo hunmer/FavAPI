@@ -206,7 +206,7 @@ async def _pending_contents(platform: str, limit: int) -> list[dict]:
     return await data_store.db.query_all(
         f"""SELECT content_id, platform, title FROM contents
             WHERE {where} AND title IS NOT NULL AND title != ''
-            ORDER BY last_seen_at DESC LIMIT ?""",
+            ORDER BY rowid DESC LIMIT ?""",
         (*params, limit),
     )
 

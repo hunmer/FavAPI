@@ -505,12 +505,12 @@ class XiaohongshuAdapter(BasePlatformAdapter):
                                     xsec_token: str = "") -> list[dict]:
         """按 note_id 调 feed 详情接口返回可下载直链列表（首项为最高清 mp4）。
 
-        xsec_token 强校验：优先入参，否则从已入库 contents 的 raw_data 读取
+        xsec_token 强校验：优先入参，否则从已入库的 raw_data 文件读取
         （收藏/点赞列表响应自带）；都没有时抛错。每个链接附 headers（UA / Referer）：
         小红书 CDN 直链下载时需与页面请求一致，交给 aria2c 时作为请求头注入。
         """
         note_id = self._note_id_param({"note_id": content_id}, "note_id")
-        token = xsec_token or await self._stored_xsec_token(note_id)
+        token = xsec_token or self._stored_xsec_token(note_id)
         if not token:
             raise ValueError(
                 "详情接口需要 xsec_token：该笔记未在已抓取入库记录中找到 token，"
@@ -533,23 +533,11 @@ class XiaohongshuAdapter(BasePlatformAdapter):
         return result["links"]
 
     @staticmethod
-    async def _stored_xsec_token(note_id: str) -> str:
-        """从已入库 contents 的 raw_data 读取笔记 xsec_token（列表响应自带）。"""
-        from app.database import db
+    def _stored_xsec_token(note_id: str) -> str:
+        """从已入库的 raw_data 文件读取笔记 xsec_token（收藏/点赞列表响应自带）。"""
+        from app.services import raw_store
 
-        rows = await db.query_all(
-            "SELECT raw_data FROM contents WHERE platform = ? AND content_id = ? LIMIT 1",
-            (constants.PLATFORM, note_id),
-        )
-        for row in rows:
-            try:
-                raw = json.loads(row.get("raw_data") or "")
-            except (TypeError, ValueError):
-                continue
-            token = str(raw.get("xsec_token") or "")
-            if token:
-                return token
-        return ""
+        return str(raw_store.load(constants.PLATFORM, note_id).get("xsec_token") or "")
 
     async def _op_cancel_by_date(self, account: AccountContext, params: dict,
                                  on_event, batch: bool) -> dict:

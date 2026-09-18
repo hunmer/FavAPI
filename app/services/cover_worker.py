@@ -53,6 +53,33 @@ def cover_path(platform: str, content_id: str) -> Path | None:
     return next(iter(sorted(folder.glob(f"{_safe_id(content_id)}.*"))), None)
 
 
+def delete_cover_files(rows: list[dict]) -> int:
+    """删除这些内容行（platform/content_id）对应的本地封面文件；返回删除数。"""
+    deleted = 0
+    for r in rows:
+        path = cover_path(r.get("platform"), r.get("content_id"))
+        if path is None:
+            continue
+        try:
+            path.unlink()
+            deleted += 1
+        except OSError:
+            pass  # 文件被占用（如下载中）等，留给下次全量清理
+    return deleted
+
+
+def clear_cover_dir() -> int:
+    """清空整个封面缓存目录（重置收藏夹等全量清理场景）；返回删除的文件数。"""
+    import shutil
+
+    root = covers_dir()
+    if not root.exists():
+        return 0
+    n = sum(1 for p in root.rglob("*") if p.is_file())
+    shutil.rmtree(root, ignore_errors=True)
+    return n
+
+
 async def start():
     global _queue, _workers, _startup_task
     if _workers:
@@ -122,7 +149,7 @@ async def status() -> dict:
         db.query_one("SELECT COUNT(*) AS n FROM contents"
                      " WHERE cover_url IS NOT NULL AND cover_url != ''"),
         db.query_one("SELECT COUNT(*) AS n FROM contents"
-                     " WHERE cover_file IS NOT NULL AND cover_file != ''"),
+                     " WHERE cover_file = 1"),
     )
     total = (total_row or {}).get("n") or 0
     localized = (done_row or {}).get("n") or 0
@@ -145,9 +172,15 @@ async def _run_worker():
 
 
 async def _download_one(platform: str, content_id: str, url: str):
+    row = await db.query_one(
+        "SELECT 1 AS x FROM contents WHERE platform = ? AND content_id = ?", (platform, content_id)
+    )
+    if row is None:
+        return  # 内容已被删除（如重置收藏夹），不再本地化
+
     existing = cover_path(platform, content_id)
     if existing is not None:  # 之前已下载过（如重抓更新了签名链接），补齐标记即可
-        await _mark_localized(platform, content_id, existing)
+        await _mark_localized(platform, content_id)
         return
 
     folder = covers_dir() / _safe_id(platform)
@@ -158,14 +191,14 @@ async def _download_one(platform: str, content_id: str, url: str):
         for old in folder.glob(f"{_safe_id(content_id)}.*"):  # 清掉旧扩展名残留
             if old != dest:
                 old.unlink(missing_ok=True)
-        await _mark_localized(platform, content_id, dest)
+        await _mark_localized(platform, content_id)
         logger.info("封面已本地化 %s/%s", platform, content_id)
 
 
-async def _mark_localized(platform: str, content_id: str, path: Path):
+async def _mark_localized(platform: str, content_id: str):
     await db.execute(
-        "UPDATE contents SET cover_file = ? WHERE platform = ? AND content_id = ?",
-        (f"{_safe_id(platform)}/{path.name}", platform, content_id),
+        "UPDATE contents SET cover_file = 1 WHERE platform = ? AND content_id = ?",
+        (platform, content_id),
     )
 
 
@@ -195,7 +228,7 @@ async def _fetch(url: str, dest: Path) -> bool:
 
 
 async def backfill() -> dict:
-    """核对库内 cover_file 与磁盘实际文件（丢失的清标记），缺失封面入队补齐。"""
+    """核对库内 cover_file 标记与磁盘实际文件（丢失的清标记），缺失封面入队补齐。"""
     rows = await db.query_all(
         "SELECT platform, content_id, cover_url, cover_file FROM contents"
         " WHERE cover_url IS NOT NULL AND cover_url != ''"
@@ -203,10 +236,10 @@ async def backfill() -> dict:
     missing = reset = enqueued = 0
     for r in rows:
         if r.get("cover_file"):
-            if (covers_dir() / r["cover_file"]).is_file():
+            if cover_path(r["platform"], r["content_id"]) is not None:
                 continue
             await db.execute(
-                "UPDATE contents SET cover_file = NULL WHERE platform = ? AND content_id = ?",
+                "UPDATE contents SET cover_file = 0 WHERE platform = ? AND content_id = ?",
                 (r["platform"], r["content_id"]),
             )
             reset += 1

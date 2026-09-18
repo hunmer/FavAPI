@@ -706,10 +706,11 @@ export async function listTags(limit = 100): Promise<{ tags: TagStatRow[]; group
 
 // ---------- 收藏批量删除 ----------
 
-/** 批量/单个删除收藏关系，并联动清理不再被引用的内容主表行（contents）。 */
+/** 批量/单个删除收藏关系，并联动清理不再被引用的内容主表行与封面缓存文件。 */
 export interface DeleteFavoritesResult {
   deleted: number;
   contents_deleted: number;
+  covers_deleted: number;
 }
 
 export async function deleteFavorites(
@@ -734,6 +735,7 @@ export interface TagDeleteResult {
   contents_updated: number;
   favorites_deleted: number;
   contents_deleted: number;
+  covers_deleted: number;
 }
 
 /** 删除标签；deleteFavorites=true 时一并删除含该标签的收藏关系。 */

@@ -216,8 +216,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     if (!window.confirm(`确定重置收藏夹？将删除本地库全部 ${totalItemsCount} 条收藏及对应内容记录（含 AI 标签），平台云端收藏不受影响，该操作不可恢复。`)) return;
     setResettingFavs(true);
     try {
-      const { deleted, contents_deleted } = await clearAllFavorites();
-      onShowToast(`已重置收藏夹，删除 ${deleted} 条收藏关系与 ${contents_deleted} 条内容记录`, 'success');
+      const { deleted, contents_deleted, covers_deleted } = await clearAllFavorites();
+      onShowToast(`已重置收藏夹，删除 ${deleted} 条收藏、${contents_deleted} 条内容记录与 ${covers_deleted} 张封面缓存`, 'success');
     } catch (err: any) {
       onShowToast(`重置失败：${err?.message || '未知错误'}`, 'error');
     } finally {

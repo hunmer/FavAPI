@@ -1,30 +1,46 @@
 """抓取结果与任务记录的持久化。"""
 import asyncio
 import json
+from datetime import datetime
 
 from app.database import db
+from app.services import raw_store
 from app.utils import now_iso
 
 # 作品发布日期（YYYY-MM-DD，本地时区）：各平台发布时间字段不一，均为 epoch 秒。
 # douyin=create_time / bilibili=ctime / wechat=createTime；xiaohongshu 接口不提供（为 NULL）。
-_PUBLISH_DATE_SQL = (
-    "date(COALESCE(json_extract(c.raw_data, '$.create_time'),"
-    " json_extract(c.raw_data, '$.ctime'),"
-    " json_extract(c.raw_data, '$.createTime')), 'unixepoch', 'localtime')"
-)
+_PUBLISH_TS_KEYS = ("create_time", "ctime", "createTime")
+
+
+def _publish_date(raw) -> str | None:
+    """从 raw_data（str/dict）提取发布日期；无有效时间字段返回 None。"""
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw) if raw else {}
+        except (TypeError, json.JSONDecodeError):
+            return None
+    if not isinstance(raw, dict):
+        return None
+    ts = next((raw[k] for k in _PUBLISH_TS_KEYS if raw.get(k)), None)
+    try:
+        return datetime.fromtimestamp(int(ts)).strftime("%Y-%m-%d")
+    except (TypeError, ValueError, OSError, OverflowError):
+        return None
 
 
 # ---------- contents / favorites ----------
 
 async def upsert_contents(platform: str, account_id: str, items: list[dict]):
-    """抓取成功后先写内容主表（存在则更新，保留 first_seen_at）。"""
-    now = now_iso()
+    """抓取成功后先写内容主表（存在则更新）；raw_data 外置为文件，不入库。"""
     for it in items:
+        raw_store.save(platform, it["content_id"], it.get("raw_data"))
+        description = it.get("description")
+        if description and description == it.get("title"):
+            description = ""  # 与 title 重复的 description 不再存
         await db.execute(
             """INSERT INTO contents (content_id, platform, account_id, title, description,
-                 author_id, author_name, cover_url, duration, statistics, raw_data,
-                 first_seen_at, last_seen_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 author_id, author_name, cover_url, duration, statistics, published_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(platform, content_id) DO UPDATE SET
                  account_id = excluded.account_id,
                  title = excluded.title,
@@ -34,12 +50,12 @@ async def upsert_contents(platform: str, account_id: str, items: list[dict]):
                  cover_url = excluded.cover_url,
                  duration = excluded.duration,
                  statistics = excluded.statistics,
-                 raw_data = excluded.raw_data,
-                 last_seen_at = excluded.last_seen_at""",
+                 published_at = excluded.published_at""",
             (
-                it["content_id"], platform, account_id, it.get("title"), it.get("description"),
+                it["content_id"], platform, account_id, it.get("title"), description,
                 it.get("author_id"), it.get("author_name"), it.get("cover_url"),
-                it.get("duration"), it.get("statistics"), it.get("raw_data"), now, now,
+                it.get("duration"), it.get("statistics"),
+                _publish_date(it.get("raw_data")),
             ),
         )
 
@@ -99,31 +115,41 @@ async def save_fetch_result(account: dict, items: list[dict], source: str = "") 
     }
 
 
-async def purge_orphan_contents(ids: list[str] | None = None) -> int:
-    """清理不再被任何收藏关系引用的 contents 行。
+async def purge_orphan_contents(ids: list[str] | None = None) -> dict:
+    """清理不再被任何收藏关系引用的 contents 行，并删除对应封面缓存与 raw_data 文件。
 
     ids 为空列表时直接返回；限定 ids 时只在这些内容中清理（仍被其他账号/
     收藏夹/来源引用的保留）；ids=None 时全库清理（favorites 已清空的场景，
-    等价于清空全部 contents）。分块提交规避 SQLite 变量数上限。
+    等价于清空全部 contents 与封面 / raw_data 目录）。分块提交规避 SQLite 变量数上限。
     """
-    orphan_sql = """DELETE FROM contents WHERE {}NOT EXISTS
-        (SELECT 1 FROM favorites f WHERE f.content_id = contents.content_id)"""
+    from app.services import cover_worker  # 延迟导入，避免模块加载顺序耦合
+
+    orphan_cond = ("NOT EXISTS (SELECT 1 FROM favorites f"
+                   " WHERE f.content_id = contents.content_id)")
     if ids is None:
-        cur = await db.execute(orphan_sql.format(""))
-        return cur.rowcount or 0
-    total = 0
+        cur = await db.execute(f"DELETE FROM contents WHERE {orphan_cond}")
+        covers = await asyncio.to_thread(cover_worker.clear_cover_dir)
+        await asyncio.to_thread(raw_store.clear_raw_dir)
+        return {"contents": cur.rowcount or 0, "covers": covers}
+
+    contents = covers = 0
     for i in range(0, len(ids), 500):
         chunk = ids[i : i + 500]
         ph = ", ".join("?" for _ in chunk)
-        cur = await db.execute(
-            orphan_sql.format(f"content_id IN ({ph}) AND "), tuple(chunk)
+        where = f"content_id IN ({ph}) AND {orphan_cond}"
+        rows = await db.query_all(
+            f"SELECT platform, content_id FROM contents WHERE {where}", tuple(chunk)
         )
-        total += cur.rowcount or 0
-    return total
+        cur = await db.execute(f"DELETE FROM contents WHERE {where}", tuple(chunk))
+        contents += cur.rowcount or 0
+        if rows:
+            covers += await asyncio.to_thread(cover_worker.delete_cover_files, rows)
+            await asyncio.to_thread(raw_store.delete_many, rows)
+    return {"contents": contents, "covers": covers}
 
 
 async def delete_favorites(refs: list[dict]) -> dict:
-    """批量删除收藏关系行，并联动清理不再被引用的 contents 行。
+    """批量删除收藏关系行，并联动清理不再被引用的 contents 行与封面缓存文件。
 
     refs: [{account_id, platform, content_id}]，按三元组精确删除。
     executemany 一次提交（全选数千条时避免逐条往返）。
@@ -133,12 +159,16 @@ async def delete_favorites(refs: list[dict]) -> dict:
         "DELETE FROM favorites WHERE account_id = ? AND platform = ? AND content_id = ?",
         rows,
     )
-    contents_deleted = await purge_orphan_contents([r[2] for r in rows])
-    return {"deleted": cur.rowcount or 0, "contents_deleted": contents_deleted}
+    purged = await purge_orphan_contents([r[2] for r in rows])
+    return {
+        "deleted": cur.rowcount or 0,
+        "contents_deleted": purged["contents"],
+        "covers_deleted": purged["covers"],
+    }
 
 
 async def clear_favorites(account_id: str | None = None) -> dict:
-    """一键清空收藏关系行并联动清理 contents（account_id 为空时清空全部账号）。"""
+    """一键清空收藏关系行，并联动清理 contents 行与封面缓存文件（account_id 为空时清空全部账号）。"""
     if account_id:
         affected = [
             r["content_id"]
@@ -147,12 +177,16 @@ async def clear_favorites(account_id: str | None = None) -> dict:
             )
         ]
         cur = await db.execute("DELETE FROM favorites WHERE account_id = ?", (account_id,))
-        contents_deleted = await purge_orphan_contents(affected)
+        purged = await purge_orphan_contents(affected)
     else:
         cur = await db.execute("DELETE FROM favorites")
-        # favorites 已全部清空，全库清理即清空全部 contents
-        contents_deleted = await purge_orphan_contents()
-    return {"deleted": cur.rowcount or 0, "contents_deleted": contents_deleted}
+        # favorites 已全部清空，全库清理即清空全部 contents 与封面缓存目录
+        purged = await purge_orphan_contents()
+    return {
+        "deleted": cur.rowcount or 0,
+        "contents_deleted": purged["contents"],
+        "covers_deleted": purged["covers"],
+    }
 
 
 _CONTENT_URL_TEMPLATES = {
@@ -238,12 +272,12 @@ async def list_favorites(
         params.append(date_end)
     if pub_start or pub_end:
         # 发布时间缺失的内容（如小红书）在启用发布时间过滤时排除
-        where.append(f"{_PUBLISH_DATE_SQL} IS NOT NULL")
+        where.append("c.published_at IS NOT NULL")
         if pub_start:
-            where.append(f"{_PUBLISH_DATE_SQL} >= ?")
+            where.append("c.published_at >= ?")
             params.append(pub_start)
         if pub_end:
-            where.append(f"{_PUBLISH_DATE_SQL} <= ?")
+            where.append("c.published_at <= ?")
             params.append(pub_end)
     if tags:
         placeholders = ",".join("?" for _ in tags)
@@ -268,7 +302,7 @@ async def list_favorites(
         f"""SELECT f.account_id, f.content_id, f.platform, f.fav_media_id, f.fav_title,
                    f.source, f.collected_at, f.fetched_at,
                    c.title, c.author_name, c.cover_url, c.cover_file, c.duration, c.statistics,
-                   c.raw_data, c.tags, c.tagged_at
+                   c.tags, c.tagged_at
             FROM favorites f LEFT JOIN contents c
               ON c.content_id = f.content_id AND c.platform = f.platform
             {where_sql}
@@ -287,9 +321,7 @@ async def list_favorites(
             tags = json.loads(r.get("tags") or "[]")
         except (TypeError, json.JSONDecodeError):
             tags = []
-        raw = {}
-        try: raw = json.loads(r.get("raw_data") or "{}")
-        except (TypeError, json.JSONDecodeError): pass
+        raw = raw_store.load(r["platform"], r["content_id"])
         source_url = raw.get("url") or raw.get("locationLabel")
         items.append({
             "content_id": r["content_id"],
