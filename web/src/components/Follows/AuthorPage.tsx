@@ -11,6 +11,7 @@ import {
 import * as api from '../../api';
 import { Account } from '../../types';
 import { PlayerModal } from './PlayerModal';
+import { FollowAvatar } from './FollowAvatar';
 
 interface AuthorPageProps {
   secUid: string;
@@ -116,15 +117,11 @@ export const AuthorPage: React.FC<AuthorPageProps> = ({
           >
             <ArrowLeft className="w-4.5 h-4.5" />
           </button>
-          {author?.avatar_url ? (
-            <img
-              src={api.mediaUrl(author.avatar_url)}
-              alt={author?.nickname || ''}
-              className="w-16 h-16 rounded-full object-cover ring-2 ring-slate-200 dark:ring-slate-700 shrink-0"
-            />
-          ) : (
-            <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-sky-500 to-indigo-600 shrink-0" />
-          )}
+          <FollowAvatar
+            secUid={secUid}
+            nickname={author?.nickname}
+            className="w-16 h-16 rounded-full ring-2 ring-slate-200 dark:ring-slate-700"
+          />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-lg font-bold text-slate-900 dark:text-white">

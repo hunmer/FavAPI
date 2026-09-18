@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from 'react';
+import { AnimatePresence } from 'motion/react';
 import { Account } from '../../../types';
 import * as api from '../../../api';
 import { Heart, Loader2, Plus, Search, UserPlus, Users } from 'lucide-react';
+import { GroupEditDialog } from '../../Follows/GroupEditDialog';
 
 interface FollowingListProps {
   account: Account;
@@ -20,6 +22,9 @@ export const FollowingList: React.FC<FollowingListProps> = ({ account }) => {
   const [addingUid, setAddingUid] = useState('');
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
+  // 添加成功后弹出的分组设置（null = 关闭）
+  const [groupEditFor, setGroupEditFor] = useState<{ secUid: string; nickname?: string | null } | null>(null);
+  const [groupOptions, setGroupOptions] = useState<{ group_name: string; count: number }[]>([]);
 
   const load = async () => {
     setLoading(true);
@@ -28,11 +33,12 @@ export const FollowingList: React.FC<FollowingListProps> = ({ account }) => {
       // 已特别关注的 sec_uid 一并拉取，行内标记避免重复添加
       const [res, authors] = await Promise.all([
         api.fetchFollowing(account.id),
-        api.listFollowAuthors().catch(() => ({ authors: [] as api.FollowAuthorRow[] })),
+        api.listFollowAuthors().catch(() => ({ authors: [] as api.FollowAuthorRow[], groups: [] })),
       ]);
       setFollowings(res.followings);
       setTotal(res.total);
       setSpecialUids(new Set(authors.authors.map((a) => a.sec_uid)));
+      setGroupOptions(authors.groups || []);
     } catch (e: any) {
       setError(e.message || '关注列表拉取失败');
     } finally {
@@ -54,6 +60,8 @@ export const FollowingList: React.FC<FollowingListProps> = ({ account }) => {
         follower_count: u.follower_count,
       });
       setSpecialUids((prev) => new Set(prev).add(u.sec_uid));
+      // 添加成功后弹出分组设置（跳过 = 未分组）
+      setGroupEditFor({ secUid: u.sec_uid, nickname: u.nickname });
     } catch (e: any) {
       setError(e.message || '添加特别关注失败');
     } finally {
@@ -138,7 +146,7 @@ export const FollowingList: React.FC<FollowingListProps> = ({ account }) => {
           {followings.length === 0 ? '该账号暂无关注' : '没有匹配的博主'}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2.5">
           {visible.map((f) => {
             const added = specialUids.has(f.sec_uid);
             return (
@@ -148,8 +156,12 @@ export const FollowingList: React.FC<FollowingListProps> = ({ account }) => {
               >
                 {f.avatar_url ? (
                   <img
-                    src={api.mediaUrl(f.avatar_url)}
+                    /* 已特别关注的博主走本地化头像（远程链会过期），未入库的走媒体代理即时展示 */
+                    src={specialUids.has(f.sec_uid) ? api.followAvatarUrl(f.sec_uid) : api.mediaUrl(f.avatar_url)}
                     alt={f.nickname || ''}
+                    onError={(e) => {
+                      e.currentTarget.style.visibility = 'hidden';
+                    }}
                     className="w-10 h-10 rounded-full object-cover shrink-0"
                   />
                 ) : (
@@ -204,6 +216,22 @@ export const FollowingList: React.FC<FollowingListProps> = ({ account }) => {
           添加后可在侧边栏「特别关注」页管理分组并追踪最新作品（播放可标记已读）
         </p>
       )}
+
+      {/* 添加成功后的分组设置弹窗 */}
+      <AnimatePresence>
+        {groupEditFor && (
+          <GroupEditDialog
+            secUid={groupEditFor.secUid}
+            nickname={groupEditFor.nickname}
+            groups={groupOptions}
+            onClose={() => setGroupEditFor(null)}
+            onSaved={(group) => {
+              setGroupOptions([]); // 分组集合已变，下次拉取时刷新
+            }}
+            onError={(msg) => setError(msg)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };

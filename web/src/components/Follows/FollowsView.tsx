@@ -16,6 +16,8 @@ import {
 import * as api from '../../api';
 import { Account } from '../../types';
 import { AuthorPage } from './AuthorPage';
+import { FollowAvatar } from './FollowAvatar';
+import { GroupEditDialog } from './GroupEditDialog';
 
 interface FollowsViewProps {
   accounts: Account[];
@@ -53,12 +55,10 @@ export const FollowsView: React.FC<FollowsViewProps> = ({ accounts, showToast })
   const [followLoading, setFollowLoading] = useState(false);
   const [followings, setFollowings] = useState<api.FollowingUserRow[]>([]);
   const [followQuery, setFollowQuery] = useState('');
-  const [followGroup, setFollowGroup] = useState(''); // 添加时使用的分组
   const [addingUid, setAddingUid] = useState('');
 
-  // 分组编辑弹窗
+  // 分组设置弹窗：添加特别关注成功后弹出指定分组；列表卡片「设置分组」共用
   const [groupEditUid, setGroupEditUid] = useState<api.FollowAuthorRow | null>(null);
-  const [groupEditValue, setGroupEditValue] = useState('');
 
   const reloadAuthors = useCallback(async () => {
     setListLoading(true);
@@ -124,10 +124,14 @@ export const FollowsView: React.FC<FollowsViewProps> = ({ accounts, showToast })
         avatar_url: u.avatar_url || '',
         signature: u.signature || '',
         follower_count: u.follower_count,
-        group_name: followGroup,
       });
       showToast(`已添加「${u.nickname || u.sec_uid.slice(0, 16)}…」为特别关注`);
       await reloadAuthors();
+      // 添加成功后弹出分组设置（跳过 = 未分组）
+      setGroupEditUid({
+        sec_uid: u.sec_uid, platform: 'douyin', nickname: u.nickname || '',
+        group_name: '', follower_count: u.follower_count ?? undefined,
+      } as api.FollowAuthorRow);
     } catch (e: any) {
       showToast(e.message || '添加失败', 'error');
     } finally {
@@ -143,18 +147,6 @@ export const FollowsView: React.FC<FollowsViewProps> = ({ accounts, showToast })
       reloadAuthors();
     } catch (e: any) {
       showToast(e.message || '移除失败', 'error');
-    }
-  };
-
-  const saveGroup = async () => {
-    if (!groupEditUid) return;
-    try {
-      await api.updateFollowAuthor(groupEditUid.sec_uid, { group_name: groupEditValue.trim() });
-      showToast(groupEditValue.trim() ? `已设分组「${groupEditValue.trim()}」` : '已移出分组');
-      setGroupEditUid(null);
-      reloadAuthors();
-    } catch (e: any) {
-      showToast(e.message || '分组保存失败', 'error');
     }
   };
 
@@ -308,15 +300,11 @@ export const FollowsView: React.FC<FollowsViewProps> = ({ accounts, showToast })
                 </span>
               )}
               <div className="flex items-start gap-3">
-                {a.avatar_url ? (
-                  <img
-                    src={api.mediaUrl(a.avatar_url)}
-                    alt={a.nickname || ''}
-                    className="w-12 h-12 rounded-full object-cover ring-2 ring-slate-100 dark:ring-slate-800 shrink-0"
-                  />
-                ) : (
-                  <div className="w-12 h-12 rounded-full bg-gradient-to-tr from-sky-500 to-indigo-600 shrink-0" />
-                )}
+                <FollowAvatar
+                  secUid={a.sec_uid}
+                  nickname={a.nickname}
+                  className="w-12 h-12 rounded-full ring-2 ring-slate-100 dark:ring-slate-800"
+                />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
@@ -341,7 +329,6 @@ export const FollowsView: React.FC<FollowsViewProps> = ({ accounts, showToast })
                   onClick={(e) => {
                     e.stopPropagation();
                     setGroupEditUid(a);
-                    setGroupEditValue(a.group_name || '');
                   }}
                   className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors cursor-pointer"
                 >
@@ -387,22 +374,9 @@ export const FollowsView: React.FC<FollowsViewProps> = ({ accounts, showToast })
             >
               <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3 shrink-0">
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white">关注列表（{followings.length}）</h3>
-                {/* 添加时统一选择的分组 */}
-                <div className="flex items-center gap-1.5 ml-auto">
-                  <span className="text-[11px] text-slate-400">添加到分组</span>
-                  <input
-                    list="follow-group-options"
-                    value={followGroup}
-                    onChange={(e) => setFollowGroup(e.target.value)}
-                    placeholder="未分组"
-                    className="w-28 px-2.5 py-1.5 rounded-lg text-xs bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 outline-none border-0"
-                  />
-                  <datalist id="follow-group-options">
-                    {groups.map((g) => (
-                      <option key={g.group_name} value={g.group_name} />
-                    ))}
-                  </datalist>
-                </div>
+                <span className="text-[11px] text-slate-400 ml-auto hidden sm:inline">
+                  添加后可指定分组
+                </span>
                 <button
                   onClick={() => setFollowOpen(false)}
                   className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white flex items-center justify-center transition-colors cursor-pointer"
@@ -494,51 +468,21 @@ export const FollowsView: React.FC<FollowsViewProps> = ({ accounts, showToast })
         )}
       </AnimatePresence>
 
-      {/* 分组编辑弹窗 */}
+      {/* 分组设置弹窗：添加成功后指定分组 / 卡片「设置分组」共用 */}
       <AnimatePresence>
         {groupEditUid && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
-            onClick={() => setGroupEditUid(null)}
-          >
-            <motion.div
-              initial={{ scale: 0.95 }}
-              animate={{ scale: 1 }}
-              exit={{ scale: 0.95 }}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-sm bg-white dark:bg-[#111622] rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl p-5"
-            >
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                设置「{groupEditUid.nickname || groupEditUid.sec_uid.slice(0, 16)}…」的分组
-              </h3>
-              <input
-                autoFocus
-                list="follow-group-options"
-                value={groupEditValue}
-                onChange={(e) => setGroupEditValue(e.target.value)}
-                placeholder="输入分组名（留空 = 未分组）"
-                onKeyDown={(e) => e.key === 'Enter' && saveGroup()}
-                className="w-full mt-3 px-3.5 py-2.5 rounded-xl text-xs bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 outline-none border-0"
-              />
-              <div className="flex justify-end gap-2 mt-4">
-                <button
-                  onClick={() => setGroupEditUid(null)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={saveGroup}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-500 active:scale-95 transition-all cursor-pointer"
-                >
-                  保存
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
+          <GroupEditDialog
+            secUid={groupEditUid.sec_uid}
+            nickname={groupEditUid.nickname}
+            initialGroup={groupEditUid.group_name || ''}
+            groups={groups}
+            onClose={() => setGroupEditUid(null)}
+            onSaved={(group) => {
+              showToast(group ? `已设分组「${group}」` : '已移出分组');
+              reloadAuthors();
+            }}
+            onError={(msg) => showToast(msg, 'error')}
+          />
         )}
       </AnimatePresence>
     </div>

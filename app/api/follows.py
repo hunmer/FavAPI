@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 
 from curl_cffi import requests as curl_requests
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.database import db
@@ -14,6 +14,13 @@ from app.platforms import registry
 from app.platforms.douyin import api_client as douyin_api
 from app.services import account_manager
 from app.services import data_store
+from app.services import follow_store
+from app.services.follow_store import (
+    MEDIA_UA,
+    avatar_local_path,
+    download_avatar,
+    is_allowed_media_url,
+)
 from app.services.task_executor import friendly_error
 from app.utils import now_iso
 
@@ -23,16 +30,6 @@ router = APIRouter(prefix="/api/v1/follows", tags=["follows"])
 
 # 作品入库来源标记（favorites.source；与收藏/喜欢/稍后再看列表平行）
 SOURCE_SPECIAL = "特别关注"
-
-# 媒体代理域名白名单（抖音 CDN：视频 / 图片 / 音乐）
-_MEDIA_HOST_SUFFIXES = (
-    "douyinvod.com", "douyinpic.com", "douyinstatic.com", "douyin.com", "byteimg.com",
-    "bytecdn.cn", "snssdk.com", "bytedance.com", "zjcdn.com", "volccdn.com",
-    "ipdlab.com", "myqcloud.com",
-)
-
-_MEDIA_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-             "(KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36")
 
 
 # ---------- 模型 ----------
@@ -139,6 +136,9 @@ async def add_follow_author(body: FollowAuthorCreate):
          body.unique_id, body.avatar_url, body.signature, body.follower_count,
          body.group_name, now_iso()),
     )
+    # 头像立即本地化（失败静默：avatar 路由读取时还会按库中 URL 兜底重试）
+    if body.avatar_url:
+        await asyncio.to_thread(download_avatar, sec_uid, body.avatar_url)
     return {"sec_uid": sec_uid, "status": "added"}
 
 
@@ -154,6 +154,9 @@ async def update_follow_author(sec_uid: str, body: FollowAuthorUpdate):
     )
     if cur.rowcount == 0:
         raise HTTPException(status_code=404, detail=f"博主不存在：{sec_uid}")
+    # 头像变更时同步刷新本地缓存（失败静默，读取时兜底重试）
+    if fields.get("avatar_url"):
+        await asyncio.to_thread(download_avatar, sec_uid, fields["avatar_url"])
     return {"sec_uid": sec_uid, "updated": list(fields)}
 
 
@@ -162,7 +165,30 @@ async def delete_follow_author(sec_uid: str):
     cur = await db.execute("DELETE FROM follow_authors WHERE sec_uid = ?", (sec_uid,))
     if cur.rowcount == 0:
         raise HTTPException(status_code=404, detail=f"博主不存在：{sec_uid}")
+    # 顺带清理本地头像文件（缺失静默）
+    path = avatar_local_path(sec_uid)
+    if path is not None:
+        await asyncio.to_thread(path.unlink, True)
     return {"sec_uid": sec_uid, "deleted": True}
+
+
+@router.get("/authors/{sec_uid}/avatar")
+async def follow_author_avatar(sec_uid: str):
+    """博主头像统一入口：本地已落盘回文件；未落盘按库中 avatar_url 下载后返回（一次几 KB）。
+
+    浏览器侧长缓存（文件按博主维度覆盖更新）。
+    """
+    path = avatar_local_path(sec_uid)
+    if path is None:
+        row = await db.query_one(
+            "SELECT avatar_url FROM follow_authors WHERE sec_uid = ?", (sec_uid,)
+        )
+        url = str((row or {}).get("avatar_url") or "")
+        if url.startswith("http"):
+            path = await asyncio.to_thread(download_avatar, sec_uid, url)
+    if path is None:
+        raise HTTPException(status_code=404, detail="博主头像未保存")
+    return FileResponse(path, headers={"Cache-Control": "public, max-age=86400"})
 
 
 # ---------- 关注列表拉取 ----------
@@ -339,14 +365,10 @@ def proxy_media(url: str, request: Request):
     浏览器直连抖音 CDN 会因 referer/UA 被拒，统一走本代理；
     Range 头透传以支持视频进度拖动。同步 def：FastAPI 自动放线程池，不阻塞事件循环。
     """
-    parsed = urlparse(url)
-    host = parsed.hostname or ""
-    if parsed.scheme != "https" or not any(
-        host == s or host.endswith("." + s) for s in _MEDIA_HOST_SUFFIXES
-    ):
+    if not is_allowed_media_url(url):
         raise HTTPException(status_code=403, detail="不允许的媒体域名")
 
-    headers = {"user-agent": _MEDIA_UA, "referer": "https://www.douyin.com/"}
+    headers = {"user-agent": MEDIA_UA, "referer": "https://www.douyin.com/"}
     range_header = request.headers.get("range")
     if range_header:
         headers["range"] = range_header

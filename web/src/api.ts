@@ -1177,3 +1177,7 @@ export function syncFollowPosts(body: { account_id?: string; sec_uids?: string[]
 
 /** 抖音 CDN 媒体经后端代理播放（浏览器直连会被 referer/UA 拦截）。 */
 export const mediaUrl = (url: string) => `${BASE}/follows/media?url=${encodeURIComponent(url)}`;
+
+/** 特别关注博主头像：本地化存储，远程 CDN 原链不直接下发（会过期）。 */
+export const followAvatarUrl = (secUid: string) =>
+  `${BASE}/follows/authors/${encodeURIComponent(secUid)}/avatar`;

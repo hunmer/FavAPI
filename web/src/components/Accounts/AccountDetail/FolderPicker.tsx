@@ -240,7 +240,7 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
           </p>
         )}
         {folders.length > 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2.5">
             {folders.map((f) => {
               const isSelected = selectedMediaId === f.mediaId;
               const isChecked = checked.has(f.mediaId);

@@ -104,7 +104,7 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
         onRequestDeleteAccount={() => setShowDeleteConfirm(true)}
       />
 
-      {/* 双栏网格：左栏=账号信息+主工作区，右栏=平台 API 操作+名下收藏夹 */}
+      {/* 双栏网格：左栏=账号信息+主工作区，右栏=平台 API 操作 */}
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-6 items-start">
         {/* 左栏（3/5）：信息合并卡 + Main Workspace */}
         <div className="space-y-6 xl:col-span-3 min-w-0">
@@ -168,18 +168,19 @@ export const AccountDetail: React.FC<AccountDetailProps> = ({
           </div>
         </div>
 
-        {/* 右栏（2/5）：平台 API 操作 + 名下收藏夹 */}
+        {/* 右栏（2/5）：平台 API 操作 */}
         <div className="space-y-6 xl:col-span-2 min-w-0">
           <PlatformOperations account={account} />
-
-          <FolderPicker
-            account={account}
-            selectedMediaId={selectedFolderMediaId}
-            onSelect={setSelectedFolderMediaId}
-            onFoldersChanged={onFoldersChanged}
-          />
         </div>
       </div>
+
+      {/* 全宽：收藏夹 / 关注列表 Tabs（点击收藏夹卡片设为抓取目标） */}
+      <FolderPicker
+        account={account}
+        selectedMediaId={selectedFolderMediaId}
+        onSelect={setSelectedFolderMediaId}
+        onFoldersChanged={onFoldersChanged}
+      />
 
       {showClearConfirm && (
         <ClearFavoritesModal

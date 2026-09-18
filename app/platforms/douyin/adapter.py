@@ -362,23 +362,52 @@ class DouyinAdapter(BasePlatformAdapter):
 
     async def sync_author_posts(self, account: AccountContext, author_row: dict,
                                 cookie_header: str, count: int) -> list[dict]:
-        """拉取单博主最新 count 条作品（精确截断），并回填 uid/昵称/last_synced_at。
+        """拉取单博主最新 count 条作品（精确截断），并回填 uid/昵称/头像/last_synced_at。
 
         不负责入库：follows /sync 路由与 follow_sync 抓取目标（task 体系统一入库）共用本方法。
         """
+        import json
+
         from app.database import db  # 延迟导入：平台层仅此方法触库
+        from app.services import follow_store
 
         items, _ = await api_client.fetch_post(cookie_header, author_row["sec_uid"], count)
         items = items[:count]  # 单页固定 20 条，按 count 截断保证入库量与配置一致
         author_id = next((it.get("author_id") for it in items if it.get("author_id")), None)
         author_name = next((it.get("author_name") for it in items if it.get("author_name")), None)
+        # 作者头像：作品响应 author 只带 avatar_thumb（100x100），
+        # 高清 URL 以关注列表入库的为准 —— 同步仅在「库中无头像」时用 thumb 兜底，
+        # 并在本地文件缺失时按库中 URL 补下（文件删除/丢失自愈）
+        avatar_url = None
+        for it in items:
+            raw = it.get("raw_data")
+            try:
+                raw = json.loads(raw) if isinstance(raw, str) else (raw or {})
+            except (TypeError, json.JSONDecodeError):
+                raw = {}
+            for key in ("avatar_168x168", "avatar_300x300", "avatar_larger", "avatar_thumb"):
+                urls = ((raw.get("author") or {}).get(key) or {}).get("url_list") or []
+                if urls and str(urls[0]).startswith("http"):
+                    avatar_url = urls[0]
+                    break
+            if avatar_url:
+                break
+        db_avatar = (author_row.get("avatar_url") or "").strip()
         await db.execute(
             """UPDATE follow_authors SET last_synced_at = ?,
                    uid = COALESCE(NULLIF(?, ''), uid),
-                   nickname = COALESCE(NULLIF(?, ''), nickname)
+                   nickname = COALESCE(NULLIF(?, ''), nickname),
+                   avatar_url = COALESCE(NULLIF(?, ''), avatar_url)
                WHERE sec_uid = ?""",
-            (now_iso(), author_id or "", author_name or "", author_row["sec_uid"]),
+            (now_iso(), author_id or "", author_name or "", avatar_url or "",
+             author_row["sec_uid"]),
         )
+        if follow_store.avatar_local_path(author_row["sec_uid"]) is None:
+            source_url = db_avatar or avatar_url
+            if source_url:
+                await asyncio.to_thread(
+                    follow_store.download_avatar, author_row["sec_uid"], source_url
+                )
         return items
 
     async def _fetch_follow_sync(
