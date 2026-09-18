@@ -30,6 +30,9 @@ def main() -> None:
     parser.add_argument("--bundles", type=Path, default=Path("bundles"))
     args = parser.parse_args()
 
+    # git 不跟踪空目录：基线/恢复后的仓库可能缺 targets/，tufup 写归档前须确保存在
+    (args.repo_dir / "targets").mkdir(parents=True, exist_ok=True)
+
     for platform, app_name in PLATFORMS.items():
         bundle_dir = args.bundles / platform / "FavAPI"
         if not (bundle_dir / "FavAPI").exists() and not (bundle_dir / "FavAPI.exe").exists():
