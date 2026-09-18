@@ -20,7 +20,7 @@ from xhshow import Xhshow
 
 from app.services import browser
 from . import constants
-from .parser import parse_collect_page
+from .parser import parse_collect_page, parse_download_links
 from ..base import LoginExpiredError
 
 logger = logging.getLogger("favapi.xiaohongshu.api")
@@ -50,12 +50,17 @@ async def profile_cookies(profile_path: str) -> dict[str, str]:
 
 
 def _check(data: dict) -> dict:
-    """响应 code 检查；非 0 抛 RuntimeError（300011 单独提示）。"""
+    """响应 code 检查；非 0 抛 RuntimeError（300011/300031 单独提示）。"""
     code = data.get("code")
     if code == 300011:
         raise RuntimeError(
             "接口返回 300011 账号异常：多为签名与 cookie 环境不一致或触发风控，"
             "请稍后重试；反复出现请重新扫码登录刷新登录态"
+        )
+    if code == 300031:
+        raise RuntimeError(
+            "接口返回 300031 笔记无法浏览：xsec_token 缺失或已失效（HTTP 461），"
+            "请重新抓取列表刷新笔记 token 或手动填写"
         )
     if code != 0:
         raise RuntimeError(f"小红书接口返回错误 code={code} msg={data.get('msg')}")
@@ -88,6 +93,9 @@ def _signed_post(cookies: dict[str, str], url: str, payload: dict) -> dict:
     body 必须用 xhshow.build_json_body 序列化（紧凑、不转义中文），
     与签名的 content string（uri + 紧凑 JSON）逐字节一致；curl_cffi 的
     json= 用默认分隔符（带空格），直接用会签名不匹配被拒。
+
+    非 200 但带 JSON 错误体的响应（feed 详情无效 token 的 461）优先按
+    code/msg 映射错误，否则才按 HTTP 状态抛。
     """
     sign = _signer.sign_headers_post(url, cookies=cookies, payload=payload)
     response = requests.post(
@@ -100,8 +108,12 @@ def _signed_post(cookies: dict[str, str], url: str, payload: dict) -> dict:
         },
         impersonate="chrome", timeout=20,
     )
-    response.raise_for_status()
-    return _check(response.json())
+    try:
+        data = response.json()
+    except Exception:
+        response.raise_for_status()
+        raise RuntimeError(f"小红书接口响应非 JSON（HTTP {response.status_code}）")
+    return _check(data)
 
 
 def fetch_me(cookies: dict[str, str]) -> dict:
@@ -110,6 +122,39 @@ def fetch_me(cookies: dict[str, str]) -> dict:
     if data.get("guest") or not data.get("user_id"):
         return {}
     return data
+
+
+def fetch_note_detail(cookies: dict[str, str], note_id: str, xsec_token: str) -> dict:
+    """按 note_id 调 feed 详情接口并解析可下载直链（同步阻塞，异步侧 to_thread 调用）。
+
+    xsec_token 强校验（空/失效 → 461 code=300031）：来自收藏/点赞列表响应
+    notes[].xsec_token（已随 raw_data 入库）；xsec_source 实测不校验，固定 pc_feed。
+    返回 {"note_id", "links": [{url, label, ext, kind, width, height, size}],
+          "author_name", "author_id"}；links 为空抛 RuntimeError。
+    """
+    data = _signed_post(cookies, constants.NOTE_DETAIL_URL, {
+        "source_note_id": note_id,
+        "image_formats": ["jpg", "webp", "avif"],
+        "extra": {"need_body_topic": "1"},
+        "xsec_source": "pc_feed",
+        "xsec_token": xsec_token,
+    })
+    links = parse_download_links(data)
+    if not links:
+        raise RuntimeError("详情响应无可下载内容（笔记可能已删除或设为私密）")
+    note = {}
+    for item in (data.get("data") or {}).get("items") or []:
+        card = item.get("note_card") or {}
+        if card.get("note_id"):
+            note = card
+            break
+    user = note.get("user") or {}
+    return {
+        "note_id": note_id,
+        "links": links,
+        "author_name": user.get("nickname"),
+        "author_id": str(user.get("user_id") or ""),
+    }
 
 
 def fetch_note_page(cookies: dict[str, str], url: str, user_id: str,

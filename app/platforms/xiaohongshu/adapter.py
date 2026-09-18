@@ -5,6 +5,7 @@ xhshow 纯算签名 + curl_cffi 直连（见 api_client.py），无需页面参�
 浏览器模拟实现已移除，method 入口保留供未来平台分发。
 """
 import asyncio
+import json
 import logging
 import time
 
@@ -68,6 +69,7 @@ class XiaohongshuAdapter(BasePlatformAdapter):
     implemented = True
     supported_actions = ("list_favorites",)
     api_fetch_implemented = True  # API 直连：xhshow 纯算签名 + curl_cffi（浏览器模拟已移除）
+    download_api_implemented = True  # 支持按 note_id 解析下载直链（平台下载 → aria2c）
     fetch_targets = (
         FetchTarget(
             action="list_favorites", name="抓取收藏列表",
@@ -179,6 +181,23 @@ class XiaohongshuAdapter(BasePlatformAdapter):
                     key="note_oid", label="笔记 ID", type="text", required=True,
                     placeholder="例如：6aa3e227000000002503650b",
                     help="即笔记 id（接口字段名 note_oid）",
+                ),
+            ),
+        ),
+        ApiOperation(
+            op_id="resolve_download_urls",
+            name="解析下载直链",
+            description="按笔记 ID 调详情接口返回可下载直链列表（只读，供平台下载/aria2c 使用）",
+            params=(
+                ApiOperationParam(
+                    key="note_id", label="笔记 ID", type="text", required=True,
+                    placeholder="例如：6aa3e227000000002503650b",
+                    help="24 位十六进制笔记 id，可在笔记链接中获取",
+                ),
+                ApiOperationParam(
+                    key="xsec_token", label="xsec_token（可选）", type="text",
+                    help="详情接口强校验 token；留空自动从已抓取入库的记录读取，"
+                         "未入库时需手动填写（笔记链接 ?xsec_token= 参数）",
                 ),
             ),
         ),
@@ -414,6 +433,10 @@ class XiaohongshuAdapter(BasePlatformAdapter):
             return await self._op_like_note(account, params, like=True)
         if op_id == "dislike_note":
             return await self._op_like_note(account, params, like=False)
+        if op_id == "resolve_download_urls":
+            note_id = self._note_id_param(params, "note_id")
+            token = str((params or {}).get("xsec_token") or "").strip()
+            return await self.resolve_download_urls(account, note_id, xsec_token=token)
         if op_id == "cancel_collect_by_date":
             return await self._op_cancel_by_date(account, params, on_event, batch=True)
         if op_id == "cancel_like_by_date":
@@ -477,6 +500,56 @@ class XiaohongshuAdapter(BasePlatformAdapter):
         fn = api_client.like_note if like else api_client.dislike_note
         data = await asyncio.to_thread(fn, cookies, note_oid)
         return {"note_oid": note_oid, "liked": like, "raw": data}
+
+    async def resolve_download_urls(self, account: AccountContext, content_id: str,
+                                    xsec_token: str = "") -> list[dict]:
+        """按 note_id 调 feed 详情接口返回可下载直链列表（首项为最高清 mp4）。
+
+        xsec_token 强校验：优先入参，否则从已入库 contents 的 raw_data 读取
+        （收藏/点赞列表响应自带）；都没有时抛错。每个链接附 headers（UA / Referer）：
+        小红书 CDN 直链下载时需与页面请求一致，交给 aria2c 时作为请求头注入。
+        """
+        note_id = self._note_id_param({"note_id": content_id}, "note_id")
+        token = xsec_token or await self._stored_xsec_token(note_id)
+        if not token:
+            raise ValueError(
+                "详情接口需要 xsec_token：该笔记未在已抓取入库记录中找到 token，"
+                "请先抓取收藏/点赞列表入库，或手动填写（笔记链接 ?xsec_token= 参数）"
+            )
+        cookies = await api_client.profile_cookies(account.profile_path)
+        logger.info("[%s] 解析下载直链：note_id=%s", account.account_id, note_id)
+        result = await asyncio.to_thread(api_client.fetch_note_detail, cookies, note_id, token)
+        headers = {
+            "user-agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                           "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"),
+            "referer": f"https://www.xiaohongshu.com/explore/{note_id}",
+        }
+        for link in result["links"]:
+            if link.get("url"):
+                link["headers"] = headers
+            # 作者信息随链接下发：下载分类模板 {authorName}/{authorId} 变量来源
+            link.setdefault("author_name", result.get("author_name"))
+            link.setdefault("author_id", result.get("author_id"))
+        return result["links"]
+
+    @staticmethod
+    async def _stored_xsec_token(note_id: str) -> str:
+        """从已入库 contents 的 raw_data 读取笔记 xsec_token（列表响应自带）。"""
+        from app.database import db
+
+        rows = await db.query_all(
+            "SELECT raw_data FROM contents WHERE platform = ? AND content_id = ? LIMIT 1",
+            (constants.PLATFORM, note_id),
+        )
+        for row in rows:
+            try:
+                raw = json.loads(row.get("raw_data") or "")
+            except (TypeError, ValueError):
+                continue
+            token = str(raw.get("xsec_token") or "")
+            if token:
+                return token
+        return ""
 
     async def _op_cancel_by_date(self, account: AccountContext, params: dict,
                                  on_event, batch: bool) -> dict:

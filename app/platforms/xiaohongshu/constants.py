@@ -19,6 +19,10 @@ LIKE_PAGE_URL = "https://edith.xiaohongshu.com/api/sns/web/v1/note/like/page"
 API_PAGE_COUNT = 30            # API 直连每页条数（与浏览器抓包一致）
 API_PAGE_INTERVAL_SEC = 1.2    # 翻页间隔（小红书风控较严，慢于抖音）
 
+# 笔记详情接口（POST JSON；xsec_token 强校验——空/错 token → 461 code=300031，
+# token 来自收藏/点赞列表响应 notes[].xsec_token；xsec_source 实测不校验，固定 pc_feed）
+NOTE_DETAIL_URL = "https://edith.xiaohongshu.com/api/sns/web/v1/feed"
+
 # 写操作接口（POST JSON，body 字段名各异见 api_client.py；签名与读接口同链路）
 COLLECT_NOTE_URL = "https://edith.xiaohongshu.com/api/sns/web/v1/note/collect"
 UNCOLLECT_NOTE_URL = "https://edith.xiaohongshu.com/api/sns/web/v1/note/uncollect"

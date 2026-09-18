@@ -96,3 +96,66 @@ def parse_collect_page(data: dict) -> dict:
         "has_more": bool(payload.get("has_more")),
         "total": 0,  # 接口不返回总数
     }
+
+
+def parse_download_links(data: dict) -> list[dict]:
+    """feed 详情响应 → 可下载直链列表（首项为推荐地址）。
+
+    视频笔记：video.media.stream 按编解码分组，分组键随构建混淆（实测 EF4/EF5），
+    按 format=="mp4" 取完整可下载文件（fmp4/m4s 为无音轨 DASH 分段，不采用），
+    多档按高度降序（首项最高清）；图文笔记：逐张原图直链 + 末尾附文案
+    （kind=text，无 url，由调用方直接落盘 txt）。
+    """
+    items = (data.get("data") or {}).get("items") or []
+    note = next((it.get("note_card") or {} for it in items if it.get("note_card")), {})
+    if not note.get("note_id"):
+        return []
+    if note.get("type") == "video" and note.get("video"):
+        return _parse_video_links(note["video"])
+    return _parse_image_links(note)
+
+
+def _parse_video_links(video: dict) -> list[dict]:
+    stream = ((video.get("media") or {}).get("stream")) or {}
+    links: list[dict] = []
+    for streams in stream.values():
+        if not isinstance(streams, list):
+            continue
+        for s in streams:
+            if not isinstance(s, dict):
+                continue
+            url = str(s.get("master_url") or "")
+            if s.get("format") != "mp4" or not url.startswith("http"):
+                continue
+            height = _as_int(s.get("height")) or 0
+            label = f"视频 {height}p" if height else "视频"
+            quality = str(s.get("quality_type") or "").strip()
+            if quality:
+                label += f"（{quality}）"
+            links.append({
+                "url": url, "label": label, "ext": "mp4", "kind": "video",
+                "width": _as_int(s.get("width")) or 0, "height": height,
+                "size": _as_int(s.get("size")) or 0,
+            })
+    links.sort(key=lambda l: l["height"], reverse=True)
+    seen: set[str] = set()
+    return [l for l in links if not (l["url"] in seen or seen.add(l["url"]))]
+
+
+def _parse_image_links(note: dict) -> list[dict]:
+    images = note.get("image_list") or []
+    links: list[dict] = []
+    for i, img in enumerate(images, start=1):
+        url = str(img.get("url_default") or img.get("url") or "")
+        if not url.startswith("http"):
+            continue
+        links.append({
+            "url": url, "label": f"图片 {i}/{len(images)}", "kind": "image",
+            "ext": "jpg",  # CDN 路径无扩展名；请求 image_formats 已含 jpg
+            "width": _as_int(img.get("width")) or 0,
+            "height": _as_int(img.get("height")) or 0,
+        })
+    text = f"{note.get('title') or ''}\n{note.get('desc') or ''}".strip()
+    if text:
+        links.append({"kind": "text", "text": text, "label": "文案"})
+    return links
