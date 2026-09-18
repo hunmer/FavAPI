@@ -152,7 +152,8 @@ def parse_arc_search(data: dict) -> dict:
             "description": v.get("description") or None,
             "author_id": str(v.get("mid") or ""),
             "author_name": v.get("author"),
-            "cover_url": v.get("pic"),
+            # pic 部分场景下发 http://（媒体代理白名单偏 https），统一升级
+            "cover_url": (v.get("pic") or "").replace("http://", "https://", 1) or None,
             "duration": _length_seconds(v.get("length")),
             "statistics": json.dumps(
                 {

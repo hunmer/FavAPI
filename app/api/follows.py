@@ -24,6 +24,7 @@ from app.services.follow_store import (
     download_avatar,
     is_allowed_media_url,
     media_referer,
+    upgrade_media_url,
 )
 from app.services.task_executor import friendly_error
 from app.utils import now_iso
@@ -489,6 +490,7 @@ def proxy_media(url: str, request: Request):
     """
     if not is_allowed_media_url(url):
         raise HTTPException(status_code=403, detail="不允许的媒体域名")
+    url = upgrade_media_url(url)
 
     headers = {"user-agent": MEDIA_UA}
     referer = media_referer(url)

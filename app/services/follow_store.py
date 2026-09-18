@@ -39,12 +39,21 @@ _AVATAR_EXTS = (".jpeg", ".jpg", ".png", ".webp")
 
 
 def is_allowed_media_url(url: str) -> bool:
-    """URL 是否在媒体 CDN 域白名单内（https 且主机名后缀匹配）。"""
+    """URL 是否在媒体 CDN 域白名单内（主机名后缀匹配）。
+
+    http 也放行：部分平台接口仍下发 http 链接（如 B 站投稿封面 pic 字段），
+    实际上游请求由 upgrade_media_url 统一升 https。
+    """
     parsed = urlparse(url or "")
     host = parsed.hostname or ""
-    return parsed.scheme == "https" and any(
+    return parsed.scheme in ("http", "https") and any(
         host == s or host.endswith("." + s) for s in MEDIA_HOST_SUFFIXES
     )
+
+
+def upgrade_media_url(url: str) -> str:
+    """白名单域的 http 链接升级 https（各平台 CDN 均支持，避免明文上游请求）。"""
+    return "https://" + url[len("http://"):] if url.startswith("http://") else url
 
 
 def media_referer(url: str) -> str:
@@ -73,6 +82,7 @@ def download_avatar(sec_uid: str, url: str) -> Path | None:
     """
     if not is_allowed_media_url(url):
         return None
+    url = upgrade_media_url(url)
     try:
         headers = {"user-agent": MEDIA_UA}
         referer = media_referer(url)
