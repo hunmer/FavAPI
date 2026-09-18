@@ -56,10 +56,29 @@ bash scripts/build_portable.sh    # 产物：dist/FavAPI/（含 chromium 内核�
 ```
 
 - **双击 `FavAPI` 直接弹出原生窗口**（pywebview / macOS WKWebView）承载 Web 控制台，关闭窗口即优雅退出（停调度器与下载工作器后落盘）
-- `FAVAPI_NO_WINDOW=1 ./FavAPI` 退回纯服务模式（行为同 `python main.py`）
+- `FAVAPI_NO_WINDOW=1 ./FavAPI` 退回纯服务模式（行为同 `python main.py`）；单实例锁防止重复拉起
 - 便携包自带 Chromium（`pw-browsers/`），不依赖用户机器的浏览器缓存；`data/`、`platforms/` 均在包目录内，整目录拷走即用
 - 便携包内仍需系统 Node.js（快手功能）；macOS 拷到其他机器若被 Gatekeeper 拦截，先执行 `xattr -cr FavAPI`
 - 源码运行默认不开窗口；`FAVAPI_WINDOW=1 python main.py` 强制开窗
+
+### 自动更新（tufup / TUF，v0.2.0 起）
+
+便携包启动时后台检查更新（`FAVAPI_NO_UPDATE=1` 可禁用）：从 GitHub Pages 上的 TUF 仓库拉取签名元数据，发现新版本即下载增量补丁安装，优雅退出并自动重启；`data/` 等用户数据不受影响，更新失败不影响当前版本运行。
+
+发版流程（CI 全自动）：
+
+```bash
+# 1. 改 app/version.py 的 __version__
+# 2. commit 并打 tag
+git tag v0.3.0 && git push origin v0.3.0
+# CI 自动：双平台构建 → Release 发布全量包 → TUF 仓库签名发布到 GitHub Pages
+# 已安装的便携包下次启动即自动更新到新版本
+```
+
+说明与约束：
+- TUF 签名密钥在 `tufup/keystore/`（已 gitignore，**务必备份**，丢失则无法再签发更新；已存 GitHub Secrets 供 CI 使用）
+- chromium（`pw-browsers/`）不参与增量更新，由 Release 全量包首次分发；Playwright 升级需重新下载全量包
+- v0.1.0 及更早的便携包无更新客户端，需手动下载新版本
 
 ## HTTP API 摘要
 
