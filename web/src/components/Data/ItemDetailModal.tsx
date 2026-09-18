@@ -102,7 +102,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose,
         {/* Cover preview: 跟随图片原始比例，不裁切；宽屏撑满弹窗固定高，contain 居中于黑底 */}
         <div className="relative bg-slate-900 lg:w-1/2 lg:shrink-0">
           {item.coverUrl ? <img
-            src={item.coverUrl}
+            src={api.coverApiUrl(item.platform, item.id)}
             alt=""
             className="w-full h-auto max-h-[40vh] lg:h-full lg:max-h-none object-contain"
             referrerPolicy="no-referrer"

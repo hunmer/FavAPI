@@ -68,6 +68,13 @@ async def save_fetch_result(account: dict, items: list[dict], source: str = "") 
         existing_ids.update(r["content_id"] for r in rows)
 
     await upsert_contents(platform, account_id, items)
+
+    # 封面本地化：新入库封面交后台队列下载（已缓存/在队列中的自动跳过）
+    from app.services import cover_worker
+    for it in items:
+        if it.get("cover_url"):
+            cover_worker.enqueue(platform, it["content_id"], it["cover_url"])
+
     now = now_iso()
     for it in items:
         await db.execute(
@@ -224,8 +231,8 @@ async def list_favorites(
     rows = await db.query_all(
         f"""SELECT f.account_id, f.content_id, f.platform, f.fav_media_id, f.fav_title,
                    f.source, f.collected_at, f.fetched_at,
-                   c.title, c.author_name, c.cover_url, c.duration, c.statistics, c.raw_data,
-                   c.tags, c.tagged_at
+                   c.title, c.author_name, c.cover_url, c.cover_file, c.duration, c.statistics,
+                   c.raw_data, c.tags, c.tagged_at
             FROM favorites f LEFT JOIN contents c
               ON c.content_id = f.content_id AND c.platform = f.platform
             {where_sql}
@@ -254,7 +261,10 @@ async def list_favorites(
             "platform": r["platform"],
             "title": r.get("title"),
             "author_name": r.get("author_name"),
-            "cover_url": r.get("cover_url"),
+            "cover_url": (
+                f"/api/v1/covers/{r['platform']}/{r['content_id']}"
+                if r.get("cover_file") else r.get("cover_url")
+            ),
             "duration": r.get("duration"),
             "statistics": statistics,
             "fav_media_id": r.get("fav_media_id") or None,

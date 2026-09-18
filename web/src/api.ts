@@ -888,6 +888,26 @@ export async function deleteDownload(id: string) {
   return request(`/downloads/${id}`, { method: 'DELETE' });
 }
 
+// ---------- 封面图本地化 ----------
+
+/** 封面统一读取地址：本地已缓存回文件、未缓存由后端 307 跳远程原图（并自动入队本地化）。 */
+export function coverApiUrl(platform: string, contentId: string): string {
+  return `/api/v1/covers/${encodeURIComponent(platform)}/${encodeURIComponent(contentId)}`;
+}
+
+export interface CoverBackfillResult {
+  total: number;      // 有封面链接的内容总数
+  missing: number;    // 本地缓存缺失数
+  reset: number;      // 标记存在但文件丢失、已重置标记数
+  enqueued: number;   // 本次提交后台队列数
+  queue_size: number;
+}
+
+/** 核对封面本地化状态入库，并把缺失封面提交后台队列补齐（防远程链接过期）。 */
+export async function backfillCovers(): Promise<CoverBackfillResult> {
+  return request('/covers/backfill', { method: 'POST' });
+}
+
 // ---------- 下载工具链检测（yt-dlp / videodl） ----------
 
 export interface ToolchainStatus {

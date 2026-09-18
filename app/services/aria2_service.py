@@ -204,3 +204,25 @@ def remove(gid: str) -> bool:
         return True
     except Exception:
         return False
+
+
+async def wait_bare(gid: str, timeout: float = 120) -> bool:
+    """等待任务到终态（不关联 downloads 表），供封面等静默下载复用。"""
+    api = _aria2p_api()
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while True:
+        await asyncio.sleep(POLL_INTERVAL)
+        try:
+            d = await asyncio.to_thread(api.get_download, gid)
+        except Exception:
+            if loop.time() > deadline:
+                return False
+            continue  # RPC 瞬断：下一轮重试
+        if d.status == "complete":
+            return True
+        if d.status in ("removed", "error"):
+            return False
+        if loop.time() > deadline:
+            remove(gid)
+            return False

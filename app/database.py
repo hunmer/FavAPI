@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS contents (
     author_id       TEXT,
     author_name     TEXT,
     cover_url       TEXT,
+    cover_file      TEXT,            -- 本地封面文件（covers/ 下相对路径；空 = 未本地化）
     duration        INTEGER,
     statistics      TEXT,
     raw_data        TEXT,
@@ -199,7 +200,7 @@ class Database:
 
         async with self.conn.execute("PRAGMA table_info(contents)") as cur:
             content_cols = [row[1] for row in await cur.fetchall()]
-        for col in ("tags", "tagged_at"):
+        for col in ("tags", "tagged_at", "cover_file"):
             if col not in content_cols:
                 await self.conn.execute(f"ALTER TABLE contents ADD COLUMN {col} TEXT")
 

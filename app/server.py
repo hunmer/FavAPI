@@ -4,9 +4,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import accounts, agents, ai_tag, downloads, fetch, notifications, queries, schedules, settings, tags
+from app.api import accounts, agents, ai_tag, covers, downloads, fetch, notifications, queries, schedules, settings, tags
 from app.database import db
-from app.services import aria2_service, download_worker, scheduler
+from app.services import aria2_service, cover_worker, download_worker, scheduler
 from app.web.router import mount_web
 
 # 让 favapi.* 调试日志输出到 stderr（procm 会同时采集 stdout/stderr）
@@ -18,7 +18,9 @@ async def lifespan(app: FastAPI):
     await db.connect()
     await scheduler.start()
     await download_worker.start()
+    await cover_worker.start()
     yield
+    await cover_worker.stop()
     await download_worker.stop()
     await aria2_service.shutdown()
     await scheduler.stop()
@@ -36,6 +38,7 @@ def create_app() -> FastAPI:
     app.include_router(accounts.platforms_router)
     app.include_router(agents.router)
     app.include_router(ai_tag.router)
+    app.include_router(covers.router)
     app.include_router(downloads.router)
     app.include_router(fetch.router)
     app.include_router(notifications.router)

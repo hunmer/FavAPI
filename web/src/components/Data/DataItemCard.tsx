@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ScrapedItem } from '../../types';
 import { PLATFORMS } from '../../data/mockFavData';
+import { coverApiUrl } from '../../api';
 import { CheckCircle2, ExternalLink, ImageOff, MoreVertical, ThumbsUp } from 'lucide-react';
 import { SiteIcon, usePlatformInfo } from '../SiteIcon';
 import { ItemActionMenu } from './ItemActionMenu';
@@ -67,7 +68,8 @@ export const DataItemCard: React.FC<DataItemCardProps> = ({
       <div className="relative aspect-video w-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
         {item.coverUrl ? (
           <img
-            src={item.coverUrl}
+            /* 封面统一走后端接口：已本地化回本地文件，未本地化由后端跳转远程原图 */
+            src={coverApiUrl(item.platform, item.id)}
             alt={item.title}
             className={`w-full h-full object-cover group-hover:scale-104 transition-transform duration-300 ${selected ? 'opacity-80' : ''}`}
             referrerPolicy="no-referrer"

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Database, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ScrapedItem } from '../../types';
+import { coverApiUrl } from '../../api';
 import { DataItemCard } from './DataItemCard';
 
 /**
@@ -161,7 +162,7 @@ export const BrowserContent: React.FC<{
                   )}
                   <td className="py-2.5 px-4">
                     <img
-                      src={item.coverUrl}
+                      src={coverApiUrl(item.platform, item.id)}
                       alt=""
                       className="w-14 h-9 rounded-lg object-cover bg-slate-200 shrink-0"
                       referrerPolicy="no-referrer"

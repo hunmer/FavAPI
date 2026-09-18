@@ -1,6 +1,7 @@
 import React from 'react';
 import { ScrapedItem } from '../../types';
 import { PLATFORMS } from '../../data/platforms';
+import { coverApiUrl } from '../../api';
 import { Heart, Star, ExternalLink, Folder } from 'lucide-react';
 
 interface RecentCollectionCardProps {
@@ -20,7 +21,7 @@ export const RecentCollectionCard: React.FC<RecentCollectionCardProps> = ({
         {/* Cover Image Container */}
         <div className="relative aspect-video rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 mb-3.5">
           <img
-            src={item.coverUrl}
+            src={coverApiUrl(item.platform, item.id)}
             alt={item.title}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           />

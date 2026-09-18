@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { ScrapedItem } from '../../types';
 import { PLATFORMS } from '../../data/platforms';
+import { coverApiUrl } from '../../api';
 
 interface CalendarCardProps {
   scrapedItems?: ScrapedItem[];
@@ -195,7 +196,7 @@ export const CalendarCard: React.FC<CalendarCardProps> = ({
                 <div className="relative w-20 h-14 rounded-xl overflow-hidden bg-slate-200 dark:bg-slate-700 shrink-0">
                   {item.coverUrl ? (
                     <img
-                      src={item.coverUrl}
+                      src={coverApiUrl(item.platform, item.id)}
                       alt={item.title}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       referrerPolicy="no-referrer"

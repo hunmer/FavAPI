@@ -20,9 +20,10 @@ import {
   Zap,
   Save,
   Maximize2,
-  Frame
+  Frame,
+  ImageDown
 } from 'lucide-react';
-import { AgentConfigRow, AgentTestResult, clearDownloadLogs, DownloaderId, DOWNLOAD_QUALITIES, ToolchainStatus, fetchAppSettings, fetchToolchain, qualityLabel, updateAppSettings, uploadAvatar } from '../../api';
+import { AgentConfigRow, AgentTestResult, backfillCovers, clearDownloadLogs, DownloaderId, DOWNLOAD_QUALITIES, ToolchainStatus, fetchAppSettings, fetchToolchain, qualityLabel, updateAppSettings, uploadAvatar } from '../../api';
 import { TerminalDialog } from '../TerminalDialog';
 
 interface SettingsViewProps {
@@ -204,6 +205,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       onShowToast(`清理失败：${err?.message || '未知错误'}`, 'error');
     } finally {
       setClearingLogs(false);
+    }
+  };
+
+  // ---------- 封面图本地化补齐 ----------
+  const [coverChecking, setCoverChecking] = useState(false);
+
+  const handleCoverBackfill = async () => {
+    if (coverChecking) return;
+    setCoverChecking(true);
+    try {
+      const r = await backfillCovers();
+      if (r.missing === 0) {
+        onShowToast(`全部 ${r.total} 张封面均已本地化，无需补齐`, 'success');
+      } else {
+        onShowToast(`发现 ${r.missing} 张缺失封面，已提交 ${r.enqueued} 张到后台下载队列`, 'success');
+      }
+    } catch (err: any) {
+      onShowToast(`封面补齐失败：${err?.message || '未知错误'}`, 'error');
+    } finally {
+      setCoverChecking(false);
     }
   };
 
@@ -702,6 +723,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             >
               <Trash2 className="w-3.5 h-3.5" />
               {clearingLogs ? '清理中...' : '清空下载日志'}
+            </button>
+          </div>
+
+          {/* 封面图本地化补齐 */}
+          <div className="flex items-center justify-between gap-3 pt-4 border-t border-slate-50 dark:border-slate-800/80">
+            <div>
+              <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">封面图本地化补齐</div>
+              <div className="text-[11px] text-slate-400">检查封面本地缓存状态并更新到数据库，缺失的由后台队列自动下载，避免图片链接过期</div>
+            </div>
+            <button
+              type="button"
+              onClick={handleCoverBackfill}
+              disabled={coverChecking}
+              className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 border border-sky-100 dark:border-sky-900 hover:bg-sky-100 dark:hover:bg-sky-900/40 transition-colors flex items-center gap-1.5 shrink-0 disabled:opacity-50 cursor-pointer"
+            >
+              {coverChecking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ImageDown className="w-3.5 h-3.5" />}
+              {coverChecking ? '检查中...' : '检查并补齐封面'}
             </button>
           </div>
         </div>
