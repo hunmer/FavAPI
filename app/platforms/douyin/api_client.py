@@ -310,7 +310,13 @@ def fetch_aweme_detail(cookie_header: str, aweme_id: str) -> dict:
     links = parse_download_links(data)
     if not links:
         raise RuntimeError("详情响应无可下载内容（作品可能已删除或设为私密）")
-    return {"aweme_id": aweme_id, "links": links}
+    author = data.get("aweme_detail", {}).get("author") or {}
+    return {
+        "aweme_id": aweme_id,
+        "links": links,
+        "author_name": author.get("nickname"),
+        "author_id": str(author.get("sec_uid") or author.get("uid") or ""),
+    }
 
 
 def fetch_like_page(cookie_header: str, sec_user_id: str, max_cursor: int = 0,

@@ -458,6 +458,9 @@ class DouyinAdapter(BasePlatformAdapter):
         for link in result["links"]:
             if link.get("url"):
                 link["headers"] = headers
+            # 作者信息随链接下发：下载分类模板 {authorName}/{authorId} 变量来源
+            link.setdefault("author_name", result.get("author_name"))
+            link.setdefault("author_id", result.get("author_id"))
         return result["links"]
 
     async def login(self, account: AccountContext, timeout: float | None = None) -> bool:

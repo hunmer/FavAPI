@@ -67,6 +67,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [requestTimeout, setRequestTimeout] = useState(30);
   const [downloadDir, setDownloadDir] = useState('');
   const [downloadConcurrency, setDownloadConcurrency] = useState(1);
+  const [downloadCategory, setDownloadCategory] = useState('{platform}');
   const [downloadQuality, setDownloadQuality] = useState('auto');
   const [aria2RpcPort, setAria2RpcPort] = useState(6800);
   const [aria2Connections, setAria2Connections] = useState(8);
@@ -81,6 +82,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     request_timeout: 30,
     download_dir: '',
     download_concurrency: 1,
+    download_category: '{platform}',
     download_quality: 'auto',
     aria2_rpc_port: 6800,
     aria2_connections: 8,
@@ -95,6 +97,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         setRequestTimeout(s.request_timeout);
         setDownloadDir(s.download_dir ?? '');
         setDownloadConcurrency(s.download_concurrency ?? 1);
+        setDownloadCategory(s.download_category ?? '{platform}');
         setDownloadQuality(s.download_quality ?? 'auto');
         setAria2RpcPort(s.aria2_rpc_port ?? 6800);
         setAria2Connections(s.aria2_connections ?? 8);
@@ -105,6 +108,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           request_timeout: s.request_timeout,
           download_dir: (s.download_dir ?? '').trim(),
           download_concurrency: s.download_concurrency ?? 1,
+          download_category: (s.download_category ?? '{platform}').trim(),
           download_quality: s.download_quality ?? 'auto',
           aria2_rpc_port: s.aria2_rpc_port ?? 6800,
           aria2_connections: s.aria2_connections ?? 8,
@@ -125,6 +129,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       requestTimeout === base.request_timeout &&
       downloadDir.trim() === base.download_dir &&
       downloadConcurrency === base.download_concurrency &&
+      downloadCategory.trim() === base.download_category &&
       downloadQuality === base.download_quality &&
       aria2RpcPort === base.aria2_rpc_port &&
       aria2Connections === base.aria2_connections
@@ -139,6 +144,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         request_timeout: requestTimeout,
         download_dir: downloadDir.trim(),
         download_concurrency: downloadConcurrency,
+        download_category: downloadCategory.trim(),
         download_quality: downloadQuality,
         aria2_rpc_port: aria2RpcPort,
         aria2_connections: aria2Connections,
@@ -147,7 +153,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         .catch((err: any) => onShowToast(`设置保存失败：${err?.message || '未知错误'}`, 'error'));
     }, 800);
     return () => window.clearTimeout(timer);
-  }, [settingsLoaded, profilePath, headlessMode, requestInterval, requestTimeout, downloadDir, downloadConcurrency, downloadQuality, aria2RpcPort, aria2Connections]);
+  }, [settingsLoaded, profilePath, headlessMode, requestInterval, requestTimeout, downloadDir, downloadConcurrency, downloadCategory, downloadQuality, aria2RpcPort, aria2Connections]);
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -533,6 +539,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <h4 className="text-sm font-bold text-slate-900 dark:text-white">收藏下载设置</h4>
               <p className="text-[11px] text-slate-400">
                 下载队列的保存位置与并发执行数（yt-dlp / videodl 任务按平台分子目录存放）
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-4 pt-2 border-t border-slate-50 dark:border-slate-800/80">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                下载分类目录
+                <span className="ml-1.5 font-normal text-slate-400">相对下载根目录的子路径，可用变量拼目录结构</span>
+              </label>
+              <input
+                type="text"
+                value={downloadCategory}
+                onChange={(e) => setDownloadCategory(e.target.value)}
+                placeholder="例如 {platform}/{authorName} 或 {platform}/作者-{authorId}"
+                className="px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-800 dark:text-slate-100 focus:bg-white dark:focus:bg-slate-900 focus:border-sky-400 outline-none transition-all"
+              />
+              <p className="text-[10px] text-slate-400 font-mono">
+                可用变量：{'{platform}'}（平台）{'{id}'}（作品 ID）{'{title}'}（标题）{'{ext}'}（扩展名）{'{authorName}'}（作者名，平台下载时可用）{'{authorId}'}（作者 ID）；未知变量按空处理；留空 = {'{platform}'}
               </p>
             </div>
           </div>

@@ -190,7 +190,8 @@ async def _execute(row: dict):
     if row["downloader"] == "aria2c":
         return await _execute_aria2(row)
     download_id, url, platform = row["download_id"], row["url"], row.get("platform") or ""
-    out_dir = downloads_root() / (platform or "misc")
+    out_dir = downloads_root() / _category_dir(
+        platform, str(row.get("content_id") or ""), row.get("title") or "")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     base = _resolve_command(row["downloader"])
@@ -288,6 +289,32 @@ def _safe_filename(title: str, content_id: str, ext: str) -> str:
     return f"{_safe_name(title, content_id)}.{ext or 'mp4'}"
 
 
+def _category_dir(platform: str, content_id: str, title: str, link: dict | None = None) -> Path:
+    """下载分类目录：按设置 download_category 模板渲染（相对 downloads 根的子路径）。
+
+    变量：{platform} {id} {title} {ext} {authorName} {authorId}；
+    author 信息由平台解析直链时附带（link 项），未知/空变量置空并剔除空段，
+    禁止 . / .. 越界；模板为空回落 {platform}。
+    """
+    values = {
+        "platform": platform or "misc",
+        "id": content_id,
+        "title": _safe_name(title, content_id),
+        "ext": (link or {}).get("ext") or "",
+        "authorName": _safe_name(str((link or {}).get("author_name") or ""), ""),
+        "authorId": _safe_name(str((link or {}).get("author_id") or ""), ""),
+    }
+    template = str(load_settings().get("download_category") or "").strip() or "{platform}"
+
+    def _sub(match: re.Match) -> str:
+        return values.get(match.group(1)) or ""
+
+    rendered = re.sub(r"\{(\w+)\}", _sub, template)
+    parts = [_safe_name(p, "") for p in re.split(r"[\\/]+", rendered)]
+    parts = [p for p in parts if p and p not in (".", "..")]
+    return Path(*parts) if parts else Path(values["platform"])
+
+
 def _pick_link_by_quality(links: list[dict], quality: str | None) -> dict:
     """按清晰度选直链：auto / 无匹配回落首个（平台推荐）。
 
@@ -348,7 +375,8 @@ async def _execute_aria2(row: dict):
         return await _execute_note(row, links)
 
     best = _pick_link_by_quality(links, row.get("quality"))
-    out_dir = downloads_root() / (platform or "misc")
+    out_dir = downloads_root() / _category_dir(
+        platform, content_id, row.get("title") or "", best)
     out_dir.mkdir(parents=True, exist_ok=True)
     filename = _safe_filename(row.get("title") or "", content_id, str(best.get("ext") or "mp4"))
     await download_store.update_download(
@@ -396,7 +424,10 @@ async def _execute_note(row: dict, links: list[dict]):
     platform = row.get("platform") or ""
     content_id = str(row.get("content_id") or "")
     folder = _safe_name(row.get("title") or "", content_id)
-    out_dir = downloads_root() / (platform or "misc") / folder
+    # 图文多文件：分类目录下再套一层作品子目录（图片序列 + txt）
+    first_link = next((l for l in links if l.get("url")), {})
+    out_dir = downloads_root() / _category_dir(
+        platform, content_id, row.get("title") or "", first_link) / folder
     out_dir.mkdir(parents=True, exist_ok=True)
 
     for link in links:

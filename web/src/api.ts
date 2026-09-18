@@ -976,6 +976,7 @@ export interface AppSettings {
   request_timeout: number;
   download_dir: string;        // 下载根目录，空 = 默认 data/downloads
   download_concurrency: number; // 并发下载数 1-3
+  download_category?: string;  // 下载分类目录模板（{platform}/{authorName}…）
   download_quality?: string;   // 平台下载默认清晰度（auto = 平台推荐）
   aria2_rpc_port?: number;     // aria2c RPC 端口
   aria2_connections?: number;  // aria2c 单任务连接分片数

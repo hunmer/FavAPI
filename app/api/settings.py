@@ -31,6 +31,7 @@ class SettingsUpdate(BaseModel):
     request_timeout: int | None = Field(default=None, ge=1, le=600)
     download_dir: str | None = None          # 下载根目录，空 = 默认 data/downloads
     download_concurrency: int | None = Field(default=None, ge=1, le=3)
+    download_category: str | None = None     # 下载分类目录模板（{platform}/{authorName}…）
     download_quality: str | None = None      # 平台下载默认清晰度（auto = 平台推荐）
     aria2_rpc_port: int | None = Field(default=None, ge=1024, le=65535)
     aria2_connections: int | None = Field(default=None, ge=1, le=16)
@@ -46,6 +47,8 @@ async def update_settings(body: SettingsUpdate):
     patch = body.model_dump(exclude_none=True)
     if "download_quality" in patch and patch["download_quality"] not in QUALITY_OPTIONS:
         raise HTTPException(400, f"download_quality 仅支持 {' / '.join(QUALITY_OPTIONS)}")
+    if "download_category" in patch:
+        patch["download_category"] = patch["download_category"].strip()
     if "profile_path" in patch and not patch["profile_path"].strip():
         raise HTTPException(400, "存储路径不能为空")
     if "download_dir" in patch:

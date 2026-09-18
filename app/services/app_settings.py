@@ -16,6 +16,7 @@ DEFAULT_SETTINGS = {
     "request_timeout": 30,
     "download_dir": "",            # 下载根目录，空 = data/downloads
     "download_concurrency": 1,     # 并发下载数
+    "download_category": "{platform}",  # 下载分类目录模板（变量：platform/id/title/authorName/authorId/ext）
     "download_quality": "auto",    # 平台下载默认清晰度（auto = 平台推荐）
     "aria2_rpc_port": 6800,        # aria2c RPC 端口
     "aria2_connections": 8,        # aria2c 单任务连接分片数
