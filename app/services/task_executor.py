@@ -36,7 +36,10 @@ def friendly_error(exc: Exception) -> str:
     return msg
 
 
-def _item_summaries(items: list[dict], platform: str) -> list[dict]:
+def _item_summaries(
+    items: list[dict], platform: str, existing_ids: set[str] | None = None
+) -> list[dict]:
+    existing_ids = existing_ids or set()
     return [
         {
             "content_id": it["content_id"],
@@ -47,6 +50,7 @@ def _item_summaries(items: list[dict], platform: str) -> list[dict]:
             "duration": it.get("duration"),
             "fav_title": it.get("fav_title") or None,
             "collected_at": it.get("collected_at"),
+            "is_new": it["content_id"] not in existing_ids,
         }
         for it in items[:_MAX_ITEMS_IN_RESPONSE]
     ]
@@ -158,7 +162,7 @@ async def _run_task(task_id: str, account: dict, action: str, params: dict) -> d
             "new_favorites": summary["new_favorites"],
             "cursor": result.cursor,
             "has_more": result.has_more,
-            "items": _item_summaries(result.items, account["platform"]),
+            "items": _item_summaries(result.items, account["platform"], summary.get("existing_ids")),
         }
         if result.meta:
             payload["meta"] = result.meta
@@ -236,7 +240,7 @@ async def stream_fetch_events(task_id: str, account: dict, adapter, action: str,
             "page": batch.get("page"),
             "new_count": len(fresh),
             "total_fetched": batch.get("total_fetched") or len(seen),
-            "items": _item_summaries(fresh, account["platform"]),
+            "items": _item_summaries(fresh, account["platform"], summary.get("existing_ids")),
         })
 
     async def _worker():

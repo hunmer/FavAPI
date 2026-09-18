@@ -97,6 +97,8 @@ export interface ScrapedItem {
   description?: string;
   /** 入库来源（收藏列表 / 喜欢列表 / 稍后再看列表…）；空 = 收藏列表 */
   sourceName?: string;
+  /** 抓取流条目是否为本次新增（false = 库中已存在，即跳过项）；缺省视为新增 */
+  isNew?: boolean;
 }
 
 /** 抓取目标表单的一个输入项（后端 /platforms.fetch_targets[].params 下发）。 */

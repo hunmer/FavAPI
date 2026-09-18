@@ -123,10 +123,11 @@ class FavoriteItem(BaseModel):
 class DownloadCreate(BaseModel):
     content_id: str
     platform: str
-    account_id: str = ""    # 来源账号（yt-dlp 下载时携带其登录 Cookies）
+    account_id: str = ""    # 来源账号（yt-dlp / 平台下载时携带其登录 Cookies）
     title: str = ""
     url: str = ""           # 缺省时按平台模板用 content_id 生成
-    downloader: str = "yt-dlp"  # yt-dlp / videodl
+    downloader: str = "yt-dlp"  # yt-dlp / videodl / aria2c（平台下载）
+    quality: str = "auto"   # 平台下载清晰度（auto = 平台推荐；其他为高度如 1080）
 
 
 class DownloadOut(BaseModel):
@@ -137,6 +138,7 @@ class DownloadOut(BaseModel):
     title: str | None = None
     url: str
     downloader: str
+    quality: str | None = None
     status: str
     progress: str | None = None
     output_path: str | None = None

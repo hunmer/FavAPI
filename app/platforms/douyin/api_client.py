@@ -309,7 +309,7 @@ def fetch_aweme_detail(cookie_header: str, aweme_id: str) -> dict:
         )
     links = parse_download_links(data)
     if not links:
-        raise RuntimeError("详情响应无可下载直链（视频可能已删除、私密或为图文）")
+        raise RuntimeError("详情响应无可下载内容（作品可能已删除或设为私密）")
     return {"aweme_id": aweme_id, "links": links}
 
 

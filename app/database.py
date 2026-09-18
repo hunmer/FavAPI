@@ -201,6 +201,8 @@ class Database:
             dl_cols = [row[1] for row in await cur.fetchall()]
         if dl_cols and "account_id" not in dl_cols:
             await self.conn.execute("ALTER TABLE downloads ADD COLUMN account_id TEXT")
+        if dl_cols and "quality" not in dl_cols:
+            await self.conn.execute("ALTER TABLE downloads ADD COLUMN quality TEXT")
 
         # 标签分组：首次启动物化内置体系，此后编辑/新建分组均以库为准
         from app.taxonomy import BUILTIN_TAG_GROUPS

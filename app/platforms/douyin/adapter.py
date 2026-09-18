@@ -456,7 +456,8 @@ class DouyinAdapter(BasePlatformAdapter):
         logger.info("[%s] 解析下载直链：aweme_id=%s", account.account_id, aweme_id)
         result = await asyncio.to_thread(api_client.fetch_aweme_detail, cookie_header, aweme_id)
         for link in result["links"]:
-            link["headers"] = headers
+            if link.get("url"):
+                link["headers"] = headers
         return result["links"]
 
     async def login(self, account: AccountContext, timeout: float | None = None) -> bool:

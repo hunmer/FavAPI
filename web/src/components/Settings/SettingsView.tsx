@@ -22,7 +22,7 @@ import {
   Maximize2,
   Frame
 } from 'lucide-react';
-import { AgentConfigRow, AgentTestResult, clearDownloadLogs, DownloaderId, ToolchainStatus, fetchAppSettings, fetchToolchain, updateAppSettings, uploadAvatar } from '../../api';
+import { AgentConfigRow, AgentTestResult, clearDownloadLogs, DownloaderId, DOWNLOAD_QUALITIES, ToolchainStatus, fetchAppSettings, fetchToolchain, qualityLabel, updateAppSettings, uploadAvatar } from '../../api';
 import { TerminalDialog } from '../TerminalDialog';
 
 interface SettingsViewProps {
@@ -67,6 +67,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [requestTimeout, setRequestTimeout] = useState(30);
   const [downloadDir, setDownloadDir] = useState('');
   const [downloadConcurrency, setDownloadConcurrency] = useState(1);
+  const [downloadQuality, setDownloadQuality] = useState('auto');
+  const [aria2RpcPort, setAria2RpcPort] = useState(6800);
+  const [aria2Connections, setAria2Connections] = useState(8);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   // loaded 之前的 state 变化来自初始加载，不触发自动保存
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -78,6 +81,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     request_timeout: 30,
     download_dir: '',
     download_concurrency: 1,
+    download_quality: 'auto',
+    aria2_rpc_port: 6800,
+    aria2_connections: 8,
   });
 
   useEffect(() => {
@@ -89,6 +95,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         setRequestTimeout(s.request_timeout);
         setDownloadDir(s.download_dir ?? '');
         setDownloadConcurrency(s.download_concurrency ?? 1);
+        setDownloadQuality(s.download_quality ?? 'auto');
+        setAria2RpcPort(s.aria2_rpc_port ?? 6800);
+        setAria2Connections(s.aria2_connections ?? 8);
         baselineRef.current = {
           profile_path: s.profile_path,
           headless: s.headless,
@@ -96,6 +105,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           request_timeout: s.request_timeout,
           download_dir: (s.download_dir ?? '').trim(),
           download_concurrency: s.download_concurrency ?? 1,
+          download_quality: s.download_quality ?? 'auto',
+          aria2_rpc_port: s.aria2_rpc_port ?? 6800,
+          aria2_connections: s.aria2_connections ?? 8,
         };
       })
       .catch(() => {})
@@ -112,7 +124,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       requestInterval === base.request_interval &&
       requestTimeout === base.request_timeout &&
       downloadDir.trim() === base.download_dir &&
-      downloadConcurrency === base.download_concurrency
+      downloadConcurrency === base.download_concurrency &&
+      downloadQuality === base.download_quality &&
+      aria2RpcPort === base.aria2_rpc_port &&
+      aria2Connections === base.aria2_connections
     ) {
       return; // 值与加载时一致（未做任何修改），不保存
     }
@@ -124,12 +139,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         request_timeout: requestTimeout,
         download_dir: downloadDir.trim(),
         download_concurrency: downloadConcurrency,
+        download_quality: downloadQuality,
+        aria2_rpc_port: aria2RpcPort,
+        aria2_connections: aria2Connections,
       })
         .then(() => onShowToast('设置已自动保存', 'success'))
         .catch((err: any) => onShowToast(`设置保存失败：${err?.message || '未知错误'}`, 'error'));
     }, 800);
     return () => window.clearTimeout(timer);
-  }, [settingsLoaded, profilePath, headlessMode, requestInterval, requestTimeout, downloadDir, downloadConcurrency]);
+  }, [settingsLoaded, profilePath, headlessMode, requestInterval, requestTimeout, downloadDir, downloadConcurrency, downloadQuality, aria2RpcPort, aria2Connections]);
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -552,6 +570,56 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                下载清晰度
+                <span className="ml-1.5 font-normal text-slate-400">平台下载默认档位，下载弹窗可临时改</span>
+              </label>
+              <select
+                value={downloadQuality}
+                onChange={(e) => setDownloadQuality(e.target.value)}
+                className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-400 cursor-pointer w-fit"
+                title="auto = 平台推荐画质；指定高度时无精确档回落不超标的最高档"
+              >
+                {DOWNLOAD_QUALITIES.map((q) => (
+                  <option key={q} value={q}>{qualityLabel(q)}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* aria2c（平台下载引擎）设置 */}
+          <div className="flex flex-col sm:flex-row sm:items-end gap-4 pt-4 border-t border-slate-50 dark:border-slate-800/80">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                aria2c RPC 端口
+                <span className="ml-1.5 font-normal text-slate-400">本机已有 aria2 服务时直接复用</span>
+              </label>
+              <input
+                type="number"
+                value={aria2RpcPort}
+                onChange={(e) => setAria2RpcPort(parseInt(e.target.value) || 6800)}
+                min={1024}
+                max={65535}
+                className="px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-800 dark:text-slate-100 focus:bg-white dark:focus:bg-slate-900 focus:border-sky-400 outline-none w-32"
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                单任务连接数
+                <span className="ml-1.5 font-normal text-slate-400">多连接分片加速（1-16）</span>
+              </label>
+              <input
+                type="number"
+                value={aria2Connections}
+                onChange={(e) => setAria2Connections(parseInt(e.target.value) || 8)}
+                min={1}
+                max={16}
+                className="px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-800 dark:text-slate-100 focus:bg-white dark:focus:bg-slate-900 focus:border-sky-400 outline-none w-32"
+              />
             </div>
           </div>
 

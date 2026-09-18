@@ -13,17 +13,18 @@ def content_url(platform: str, content_id: str) -> str:
 
 async def create_download(platform: str, content_id: str, title: str = "",
                           url: str = "", downloader: str = "yt-dlp",
-                          account_id: str = "") -> dict:
+                          account_id: str = "", quality: str = "auto") -> dict:
     if downloader not in DOWNLOADERS:
         raise ValueError(f"downloader 仅支持 {' / '.join(DOWNLOADERS)}")
     url = url.strip() or content_url(platform, content_id)
     if not url:
         raise ValueError(f"平台 {platform} 无原站地址模板，请显式传入 url")
 
-    # 幂等：同 url + downloader 已在队列中（未完成）则直接返回已有任务
+    # 幂等：同 url + downloader + quality 已在队列中（未完成）则直接返回已有任务
     row = await db.query_one(
-        "SELECT * FROM downloads WHERE url = ? AND downloader = ? AND status IN ('pending', 'running', 'paused')",
-        (url, downloader),
+        "SELECT * FROM downloads WHERE url = ? AND downloader = ? AND IFNULL(quality,'auto') = ?"
+        " AND status IN ('pending', 'running', 'paused')",
+        (url, downloader, quality or "auto"),
     )
     if row:
         return row
@@ -36,6 +37,7 @@ async def create_download(platform: str, content_id: str, title: str = "",
         "title": title,
         "url": url,
         "downloader": downloader,
+        "quality": quality or "auto",
         "status": "pending",
         "progress": None,
         "output_path": None,
@@ -46,9 +48,9 @@ async def create_download(platform: str, content_id: str, title: str = "",
     }
     await db.execute(
         """INSERT INTO downloads (download_id, platform, content_id, account_id, title, url, downloader,
-               status, progress, output_path, error_message, created_at, started_at, finished_at)
+               quality, status, progress, output_path, error_message, created_at, started_at, finished_at)
            VALUES (:download_id, :platform, :content_id, :account_id, :title, :url, :downloader,
-                   :status, :progress, :output_path, :error_message, :created_at, :started_at, :finished_at)""",
+               :quality, :status, :progress, :output_path, :error_message, :created_at, :started_at, :finished_at)""",
         row,
     )
     return row

@@ -48,12 +48,24 @@ async def save_fetch_result(account: dict, items: list[dict], source: str = "") 
     """PRD 写入策略：upsert contents → 写 favorites 关系。返回统计。
 
     source 为本次抓取的入库来源标记（favorites.source，空 = 收藏列表）。
+    existing_ids：本批中 favorites 已有的 content_id（供前端区分新增/已存在）。
     """
     account_id, platform = account["account_id"], account["platform"]
     before = await db.query_one(
         "SELECT COUNT(*) AS n FROM favorites WHERE account_id = ? AND platform = ?",
         (account_id, platform),
     )
+
+    existing_ids: set[str] = set()
+    for start in range(0, len(items), 500):  # IN 子句分块，避开 SQLite 变量数上限
+        chunk = items[start:start + 500]
+        placeholders = ",".join("?" * len(chunk))
+        rows = await db.query_all(
+            f"SELECT content_id FROM favorites "
+            f"WHERE account_id = ? AND platform = ? AND content_id IN ({placeholders})",
+            (account_id, platform, *(it["content_id"] for it in chunk)),
+        )
+        existing_ids.update(r["content_id"] for r in rows)
 
     await upsert_contents(platform, account_id, items)
     now = now_iso()
@@ -76,6 +88,7 @@ async def save_fetch_result(account: dict, items: list[dict], source: str = "") 
     return {
         "result_count": len(items),
         "new_favorites": (after["n"] if after else 0) - (before["n"] if before else 0),
+        "existing_ids": existing_ids,
     }
 
 

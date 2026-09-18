@@ -16,8 +16,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose,
   const [input, setInput] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // 下载队列：downloader 选择 + 入队状态（切换内容时复位）
+  // 下载队列：downloader / quality 选择 + 入队状态（切换内容时复位）
   const [downloader, setDownloader] = useState<DownloaderId>('yt-dlp');
+  const [quality, setQuality] = useState('auto');
   const [adding, setAdding] = useState(false);
   const [added, setAdded] = useState(false);
   // 该条目平台是否支持「平台下载」（解析直链 → aria2c），支持时默认选中
@@ -27,6 +28,9 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose,
     api.fetchPlatformDownloadSet().then((set) => {
       if (!stale) setPlatformDownload(set.has(item.platform));
     });
+    api.fetchAppSettings()
+      .then((s) => { if (!stale) setQuality(s.download_quality || 'auto'); })
+      .catch(() => {});
     setDownloader('yt-dlp');
     setAdding(false);
     setAdded(false);
@@ -49,6 +53,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose,
         title: item.title,
         url: item.url.startsWith('http') ? item.url : '',
         downloader,
+        quality,
       });
       setAdded(true);
     } catch (err: any) {
@@ -263,6 +268,17 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose,
                 {platformDownload && <option value="aria2c">平台下载 (aria2c)</option>}
                 <option value="yt-dlp">yt-dlp</option>
                 <option value="videodl">videodl</option>
+              </select>
+              <select
+                value={quality}
+                onChange={(e) => setQuality(e.target.value)}
+                disabled={added}
+                className="px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-400 cursor-pointer disabled:opacity-60"
+                title="平台下载的清晰度（其他下载器忽略此项）"
+              >
+                {api.DOWNLOAD_QUALITIES.map((q) => (
+                  <option key={q} value={q}>{api.qualityLabel(q)}</option>
+                ))}
               </select>
               <button
                 type="button"

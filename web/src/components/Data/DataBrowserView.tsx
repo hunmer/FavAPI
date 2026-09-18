@@ -301,8 +301,13 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
   const [downloadSubmitting, setDownloadSubmitting] = useState(false);
   // 提供「平台下载」能力的平台集合（决定弹窗是否显示平台下载选项并默认选中）
   const [platformDownloadSet, setPlatformDownloadSet] = useState<Set<string>>(new Set());
+  // 默认清晰度（设置页「下载清晰度」，缺省 auto）
+  const [defaultQuality, setDefaultQuality] = useState('auto');
   useEffect(() => {
     api.fetchPlatformDownloadSet().then(setPlatformDownloadSet);
+    api.fetchAppSettings()
+      .then((s) => setDefaultQuality(s.download_quality || 'auto'))
+      .catch(() => {});
   }, []);
 
   const downloadItem = (item: ScrapedItem) => {
@@ -313,7 +318,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
     setDownloadConfirm({ items: [item] });
   };
 
-  const confirmDownload = async (downloader: api.DownloaderId) => {
+  const confirmDownload = async (downloader: api.DownloaderId, quality: string) => {
     if (!downloadConfirm || downloadSubmitting) return;
     setDownloadSubmitting(true);
     const results = await Promise.allSettled(
@@ -327,6 +332,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
             title: i.title,
             url: i.url,
             downloader,
+            quality,
           }),
         ),
     );
@@ -716,6 +722,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
             downloadConfirm.items.length > 0 &&
             downloadConfirm.items.every((i) => platformDownloadSet.has(i.platform))
           }
+          defaultQuality={defaultQuality}
           confirming={downloadSubmitting}
           onConfirm={confirmDownload}
           onClose={() => !downloadSubmitting && setDownloadConfirm(null)}

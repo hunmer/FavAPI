@@ -1,20 +1,19 @@
 """aria2c 下载服务：管理本地 aria2c RPC 进程，通过 aria2p 提交/跟踪/移除任务。
 
 aria2c 二进制由系统提供（PATH 中查找）；aria2p 为纯 Python RPC 客户端（pip install aria2p）。
-RPC 固定监听 127.0.0.1:6800：先探测已有服务（用户自启的 aria2 也直接复用），
-没有才由本服务拉起子进程，随应用退出终止。
+RPC 监听 127.0.0.1（端口取设置 aria2_rpc_port，默认 6800）：先探测该端口已有服务
+（用户自启的 aria2 也直接复用），没有才由本服务拉起子进程，随应用退出终止。
 """
 import asyncio
 import logging
 import shutil
 
+from app.services.app_settings import load_settings
 from app.services.download_worker import downloads_root
 from app.utils import now_iso
 
 logger = logging.getLogger("favapi.aria2")
 
-RPC_HOST = "127.0.0.1"
-RPC_PORT = 6800
 POLL_INTERVAL = 1.0          # 任务状态轮询间隔（秒）
 _INSTALL_HINT = (
     "未找到 aria2c 可执行文件，请先安装："
@@ -23,22 +22,40 @@ _INSTALL_HINT = (
 )
 
 _proc: asyncio.subprocess.Process | None = None
-_client = None  # aria2p.API，懒加载单例
+_proc_port: int | None = None   # 自管子进程的监听端口（设置改端口后自动重启）
+_client = None                  # aria2p.API，懒加载单例
+_client_port: int | None = None
 
 
 def installed() -> bool:
     return shutil.which("aria2c") is not None
 
 
+def _rpc_port() -> int:
+    try:
+        return int(load_settings().get("aria2_rpc_port") or 6800)
+    except (TypeError, ValueError):
+        return 6800
+
+
+def _connections() -> int:
+    try:
+        return max(1, min(16, int(load_settings().get("aria2_connections") or 8)))
+    except (TypeError, ValueError):
+        return 8
+
+
 def _aria2p_api():
-    """构建 aria2p 客户端（不发起连接；import 失败说明 pip 包未装）。"""
-    global _client
-    if _client is None:
+    """构建 aria2p 客户端（不发起连接；import 失败说明 pip 包未装）。端口变化时重建。"""
+    global _client, _client_port
+    port = _rpc_port()
+    if _client is None or _client_port != port:
         try:
             import aria2p
         except ImportError as exc:
             raise RuntimeError("未安装 aria2p（Python RPC 客户端）：pip install aria2p") from exc
-        _client = aria2p.API(aria2p.Client(host=f"http://{RPC_HOST}", port=RPC_PORT, secret=""))
+        _client = aria2p.API(aria2p.Client(host="http://127.0.0.1", port=port, secret=""))
+        _client_port = port
     return _client
 
 
@@ -51,34 +68,41 @@ def _rpc_alive() -> bool:
 
 
 async def ensure_rpc():
-    """确保 RPC 可用：已有服务直接复用，否则拉起 aria2c 子进程。"""
-    global _proc
+    """确保 RPC 可用：已有服务直接复用，否则拉起 aria2c 子进程。
+
+    自管子进程在设置端口变更后自动重启；复用的外部服务不会被动重启。
+    """
+    global _proc, _proc_port
     if _rpc_alive():
         return _aria2p_api()
     if not installed():
         raise RuntimeError(_INSTALL_HINT)
     if _proc is not None and _proc.returncode is None:
-        _proc.kill()  # 进程还在但 RPC 不通：重启
+        _proc.kill()  # 进程还在但 RPC 不通（或端口已改）：重启
+        await _proc.wait()
+        _proc = None
+    port = _rpc_port()
     log_dir = downloads_root() / ".logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     log = (log_dir / "aria2c.log").open("a", encoding="utf-8")
-    log.write(f"\n===== [{now_iso()}] 启动 aria2c RPC（端口 {RPC_PORT}）=====\n")
+    log.write(f"\n===== [{now_iso()}] 启动 aria2c RPC（端口 {port}）=====\n")
     log.flush()
     _proc = await asyncio.create_subprocess_exec(
         "aria2c",
-        "--enable-rpc", f"--rpc-listen-port={RPC_PORT}",
+        "--enable-rpc", f"--rpc-listen-port={port}",
         f"--dir={downloads_root()}",
         "--continue=true", "--allow-overwrite=true", "--auto-file-renaming=false",
         "--console-log-level=warn",
         stdout=log, stderr=asyncio.subprocess.STDOUT,
     )
-    logger.info("aria2c RPC 子进程已启动（pid=%s，端口 %s）", _proc.pid, RPC_PORT)
+    _proc_port = port
+    logger.info("aria2c RPC 子进程已启动（pid=%s，端口 %s）", _proc.pid, port)
     for _ in range(20):  # 最多等 5s RPC 就绪（端口被其他程序占用时会失败）
         await asyncio.sleep(0.25)
         if _rpc_alive():
             return _aria2p_api()
     raise RuntimeError(
-        f"aria2c RPC 启动失败（端口 {RPC_PORT} 可能被占用），详见 {log_dir / 'aria2c.log'}"
+        f"aria2c RPC 启动失败（端口 {port} 可能被占用），详见 {log_dir / 'aria2c.log'}"
     )
 
 
@@ -114,7 +138,14 @@ def _to_aria2_options(headers: dict) -> dict:
 async def add(url: str, out_dir, filename: str, headers: dict | None = None) -> str:
     """提交一个下载（返回 gid）。目录/文件名由调用方决定，headers 携带平台下载头。"""
     api = await ensure_rpc()
-    options = {"dir": str(out_dir), "out": filename, **_to_aria2_options(headers or {})}
+    connections = _connections()
+    options = {
+        "dir": str(out_dir), "out": filename,
+        # 多连接分片加速（连接数取设置 aria2_connections）
+        "split": str(connections), "max-connection-per-server": str(connections),
+        "min-split-size": "1M",
+        **_to_aria2_options(headers or {}),
+    }
     download = await asyncio.to_thread(api.add_uris, [url], options=options)
     logger.info("aria2 任务已提交：gid=%s out=%s", download.gid, out_dir / filename)
     return download.gid

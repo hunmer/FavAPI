@@ -435,6 +435,7 @@ export function App() {
     platform: account.platform,
     accountId: account.id,
     accountName: account.name,
+    isNew: it.is_new !== false,
   });
 
   const handleTriggerScrape = async (req: ScrapeRequest) => {

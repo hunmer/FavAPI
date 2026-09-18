@@ -567,7 +567,7 @@ export async function fetchAsync(platform: string, accountId: string, req: Scrap
 export interface StreamEvent {
   type: 'task' | 'items' | 'done' | 'error';
   task_id?: string;
-  items?: Array<{ content_id: string; title?: string; author_name?: string; cover_url?: string | null; url?: string | null; duration?: number; fav_title?: string | null; collected_at?: string }>;
+  items?: Array<{ content_id: string; title?: string; author_name?: string; cover_url?: string | null; url?: string | null; duration?: number; fav_title?: string | null; collected_at?: string; is_new?: boolean }>;
   new_count?: number;
   total_fetched?: number;
   result_count?: number;
@@ -816,6 +816,13 @@ export async function tagStream(
 
 export type DownloaderId = 'yt-dlp' | 'videodl' | 'aria2c';
 
+/** 平台下载清晰度档位（与后端 QUALITY_OPTIONS 一致） */
+export const DOWNLOAD_QUALITIES = ['auto', '2160', '1440', '1080', '720', '540', '480'] as const;
+
+export function qualityLabel(q: string): string {
+  return q === 'auto' ? 'auto（推荐）' : `${q}p`;
+}
+
 export interface DownloadRow {
   download_id: string;
   platform?: PlatformId | null;
@@ -824,6 +831,7 @@ export interface DownloadRow {
   title?: string | null;
   url: string;
   downloader: DownloaderId;
+  quality?: string | null;
   status: 'pending' | 'running' | 'success' | 'failed' | 'canceled' | 'paused';
   progress?: string | null;
   output_path?: string | null;
@@ -845,6 +853,7 @@ export async function createDownload(body: {
   title?: string;
   url?: string;
   downloader?: DownloaderId;
+  quality?: string;
 }): Promise<DownloadRow> {
   return request('/downloads', { method: 'POST', body: JSON.stringify(body) });
 }
@@ -967,6 +976,9 @@ export interface AppSettings {
   request_timeout: number;
   download_dir: string;        // 下载根目录，空 = 默认 data/downloads
   download_concurrency: number; // 并发下载数 1-3
+  download_quality?: string;   // 平台下载默认清晰度（auto = 平台推荐）
+  aria2_rpc_port?: number;     // aria2c RPC 端口
+  aria2_connections?: number;  // aria2c 单任务连接分片数
 }
 
 export function fetchAppSettings(): Promise<AppSettings> {

@@ -214,3 +214,36 @@ class CancelCollectWindowTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PickLinkByQualityTest(unittest.TestCase):
+    LINKS = [
+        {"url": "u-default", "label": "默认画质 2144p", "height": 2144},
+        {"url": "u-1080", "label": "1080_1_1 2144p", "height": 2144},
+        {"url": "u-720", "label": "normal_720_0 720p", "height": 720},
+        {"url": "u-480", "label": "normal_480_0 480p", "height": 480},
+    ]
+
+    def _pick(self, quality):
+        from app.services.download_worker import _pick_link_by_quality
+        return _pick_link_by_quality(self.LINKS, quality)["url"]
+
+    def test_auto_and_missing_fall_back_to_first(self):
+        self.assertEqual(self._pick("auto"), "u-default")
+        self.assertEqual(self._pick(None), "u-default")
+        self.assertEqual(self._pick(""), "u-default")
+        self.assertEqual(self._pick("abc"), "u-default")  # 非数字回落
+
+    def test_exact_match_wins(self):
+        self.assertEqual(self._pick("720"), "u-720")
+
+    def test_lower_nearest_when_no_exact(self):
+        self.assertEqual(self._pick("1080"), "u-720")   # 无 1080 档 → 不超标的最高档 720
+
+    def test_target_below_all_falls_back_to_first(self):
+        self.assertEqual(self._pick("360"), "u-default")  # 全部高于目标 → 推荐画质
+
+    def test_empty_links_raise(self):
+        from app.services.download_worker import _pick_link_by_quality
+        with self.assertRaises(ValueError):
+            _pick_link_by_quality([], "auto")

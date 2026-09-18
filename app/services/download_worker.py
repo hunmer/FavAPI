@@ -33,7 +33,7 @@ _PLATFORM_COOKIE_DOMAINS = {
 
 _task: asyncio.Task | None = None
 _running: dict[str, asyncio.subprocess.Process] = {}   # download_id -> 正在执行的子进程
-_aria2_gids: dict[str, str] = {}                       # download_id -> aria2 任务 gid
+_aria2_gids: dict[str, list[str]] = {}                 # download_id -> aria2 任务 gid 列表（图文多张）
 
 
 def downloads_root() -> Path:
@@ -278,10 +278,37 @@ async def _execute(row: dict):
             cookies_file.unlink(missing_ok=True)
 
 
-def _safe_filename(title: str, content_id: str, ext: str) -> str:
-    """标题 → 合法文件名（截断 + 去除 Windows 非法字符），空标题回落 content_id。"""
+def _safe_name(title: str, content_id: str) -> str:
+    """标题 → 合法文件/目录名（截断 + 去除 Windows 非法字符），空标题回落 content_id。"""
     name = re.sub(r'[\\/:*?"<>|\r\n\t]+', " ", str(title or "").strip())[:80].strip(" .")
-    return f"{name or content_id}.{ext or 'mp4'}"
+    return name or content_id
+
+
+def _safe_filename(title: str, content_id: str, ext: str) -> str:
+    return f"{_safe_name(title, content_id)}.{ext or 'mp4'}"
+
+
+def _pick_link_by_quality(links: list[dict], quality: str | None) -> dict:
+    """按清晰度选直链：auto / 无匹配回落首个（平台推荐）。
+
+    指定高度时：优先精确匹配；无精确档取不超标的最高一档（同高度取首个 = 推荐 CDN）。
+    """
+    if not links:
+        raise ValueError("直链列表为空")
+    if not quality or quality == "auto":
+        return links[0]
+    try:
+        target = int(quality)
+    except ValueError:
+        return links[0]
+    heights = [(int(l.get("height") or 0), i) for i, l in enumerate(links)]
+    exact = next((links[i] for h, i in heights if h == target), None)
+    if exact:
+        return exact
+    lower = [(h, i) for h, i in heights if 0 < h < target]
+    if lower:
+        return links[max(lower)[1]]
+    return links[0]
 
 
 async def _execute_aria2(row: dict):
@@ -316,18 +343,23 @@ async def _execute_aria2(row: dict):
         logger.warning("任务 %s 直链解析失败：%s", download_id, exc)
         return await _fail(f"解析下载直链失败：{exc}")
 
-    best = links[0]
+    # 图文（note）：逐张图片 + 文案 txt，落独立子目录
+    if any(l.get("kind") == "image" for l in links):
+        return await _execute_note(row, links)
+
+    best = _pick_link_by_quality(links, row.get("quality"))
     out_dir = downloads_root() / (platform or "misc")
     out_dir.mkdir(parents=True, exist_ok=True)
     filename = _safe_filename(row.get("title") or "", content_id, str(best.get("ext") or "mp4"))
-    await download_store.update_download(download_id, progress="已解析直链，提交 aria2c 下载...")
+    await download_store.update_download(
+        download_id, progress=f"已解析直链（{best.get('label') or row.get('quality') or 'auto'}），提交 aria2c 下载...")
 
     try:
         gid = await aria2_service.add(
             best["url"], out_dir, filename, best.get("headers") or {})
     except Exception as exc:
         return await _fail(f"提交 aria2c 失败：{exc}")
-    _aria2_gids[download_id] = gid
+    _aria2_gids[download_id] = [gid]
     _append_log(download_id, f"[{now_iso()}] aria2 gid={gid} 画质={best.get('label')} url={best['url']}")
 
     async def _progress(text: str):
@@ -356,28 +388,112 @@ async def _execute_aria2(row: dict):
         logger.warning("平台下载失败 %s：%s", download_id, message)
 
 
+async def _execute_note(row: dict, links: list[dict]):
+    """图文下载：独立子目录，逐张图片提交 aria2c，文案（kind=text）落盘 txt。"""
+    from app.services import aria2_service
+
+    download_id = row["download_id"]
+    platform = row.get("platform") or ""
+    content_id = str(row.get("content_id") or "")
+    folder = _safe_name(row.get("title") or "", content_id)
+    out_dir = downloads_root() / (platform or "misc") / folder
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    for link in links:
+        text = str(link.get("text") or "").strip()
+        if link.get("kind") == "text" and text:
+            (out_dir / f"{folder}.txt").write_text(text + "\n", encoding="utf-8")
+            _append_log(download_id, f"[{now_iso()}] 文案已保存：{folder}.txt")
+            break
+
+    image_links = [l for l in links if l.get("kind") == "image" and l.get("url")]
+    if not image_links:
+        await download_store.update_download(
+            download_id, status="failed", output_path=str(out_dir),
+            error_message="图文无可用图片链接", finished_at=now_iso())
+        return
+
+    await download_store.update_download(
+        download_id, progress=f"图文共 {len(image_links)} 张，提交 aria2c 下载...")
+    entries: list[tuple[str, str]] = []  # (gid, filename)
+    try:
+        for idx, link in enumerate(image_links, start=1):
+            filename = f"{idx:02d}.{link.get('ext') or 'jpeg'}"
+            gid = await aria2_service.add(
+                link["url"], out_dir, filename, link.get("headers") or {})
+            entries.append((gid, filename))
+            _append_log(download_id, f"[{now_iso()}] aria2 gid={gid} {link.get('label')} -> {filename}")
+    except Exception as exc:
+        for gid, _ in entries:
+            aria2_service.remove(gid)
+        message = f"提交 aria2c 失败：{exc}"
+        _append_log(download_id, f"[{now_iso()}] {message}")
+        await download_store.update_download(
+            download_id, status="failed", output_path=str(out_dir),
+            error_message=message, finished_at=now_iso())
+        return
+
+    _aria2_gids[download_id] = [gid for gid, _ in entries]
+    ok_count, errors = 0, []
+    for i, (gid, filename) in enumerate(entries, start=1):
+        async def _progress(text: str, i=i):
+            await download_store.update_download(
+                download_id, progress=f"图片 {i}/{len(entries)}：{text}")
+
+        ok, message = await aria2_service.wait(download_id, gid, on_update=_progress)
+        if ok:
+            ok_count += 1
+            continue
+        cur = await download_store.get_download(download_id)
+        if cur and cur["status"] in ("canceled", "paused"):
+            _aria2_gids.pop(download_id, None)
+            _append_log(download_id, f"[{now_iso()}] 任务被终止（{cur['status']}）")
+            return
+        errors.append(f"{filename}: {message or '下载失败'}")
+    _aria2_gids.pop(download_id, None)
+
+    if ok_count == len(entries):
+        await download_store.update_download(
+            download_id, status="success", progress=f"图文下载完成（{ok_count} 张）",
+            output_path=str(out_dir), finished_at=now_iso(),
+        )
+        _append_log(download_id, f"[{now_iso()}] 图文下载完成：{out_dir}（{ok_count} 张）")
+        logger.info("图文下载完成 %s：%s（%d 张）", download_id, out_dir, ok_count)
+    else:
+        message = f"{ok_count}/{len(entries)} 张成功；" + "；".join(errors)[:400]
+        await download_store.update_download(
+            download_id, status="failed", output_path=str(out_dir),
+            error_message=message, finished_at=now_iso(),
+        )
+        _append_log(download_id, f"[{now_iso()}] 图文下载失败：{message}")
+        logger.warning("图文下载失败 %s：%s", download_id, message)
+
+
 async def terminate(download_id: str) -> bool:
     """终止正在执行的子进程（状态由调用方决定：暂停或取消）。"""
     proc = _running.get(download_id)
     if proc is None:
-        gid = _aria2_gids.get(download_id)
-        if gid is None:
-            return False
-        from app.services import aria2_service
-        return aria2_service.remove(gid)
+        return _remove_aria2_tasks(download_id)
     proc.kill()
     return True
+
+
+def _remove_aria2_tasks(download_id: str) -> bool:
+    """移除该任务登记的全部 aria2 下载（视频单 gid / 图文多 gid）。"""
+    from app.services import aria2_service
+
+    gids = _aria2_gids.get(download_id)
+    if not gids:
+        return False
+    _aria2_gids.pop(download_id, None)
+    return any(aria2_service.remove(gid) for gid in gids)
 
 
 async def cancel(download_id: str) -> bool:
     """取消正在执行的任务（标记 canceled 并杀掉子进程）。"""
     proc = _running.get(download_id)
     if proc is None:
-        gid = _aria2_gids.get(download_id)
-        if gid is None:
-            return False
-        from app.services import aria2_service
-        return aria2_service.remove(gid)
+        return _remove_aria2_tasks(download_id)
     await download_store.update_download(
         download_id, status="canceled", progress="已取消", finished_at=now_iso()
     )

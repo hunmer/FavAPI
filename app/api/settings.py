@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app.config import DATA_DIR
-from app.services.app_settings import load_settings, save_settings
+from app.services.app_settings import QUALITY_OPTIONS, load_settings, save_settings
 
 logger = logging.getLogger("favapi.settings")
 
@@ -31,6 +31,9 @@ class SettingsUpdate(BaseModel):
     request_timeout: int | None = Field(default=None, ge=1, le=600)
     download_dir: str | None = None          # 下载根目录，空 = 默认 data/downloads
     download_concurrency: int | None = Field(default=None, ge=1, le=3)
+    download_quality: str | None = None      # 平台下载默认清晰度（auto = 平台推荐）
+    aria2_rpc_port: int | None = Field(default=None, ge=1024, le=65535)
+    aria2_connections: int | None = Field(default=None, ge=1, le=16)
 
 
 @router.get("")
@@ -41,6 +44,8 @@ async def get_settings():
 @router.put("")
 async def update_settings(body: SettingsUpdate):
     patch = body.model_dump(exclude_none=True)
+    if "download_quality" in patch and patch["download_quality"] not in QUALITY_OPTIONS:
+        raise HTTPException(400, f"download_quality 仅支持 {' / '.join(QUALITY_OPTIONS)}")
     if "profile_path" in patch and not patch["profile_path"].strip():
         raise HTTPException(400, "存储路径不能为空")
     if "download_dir" in patch:

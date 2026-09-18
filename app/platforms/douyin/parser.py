@@ -1,5 +1,6 @@
 """抖音 listcollection 响应 → 通用 content 行的解析。"""
 import json
+import re
 from datetime import datetime
 
 
@@ -90,12 +91,18 @@ def parse_like_list(data: dict) -> dict:
 def parse_download_links(data: dict) -> list[dict]:
     """aweme/detail 响应 → 可下载直链列表（首项为推荐地址）。
 
-    依次收 play_addr（默认画质）与 bit_rate 各档（多码率），按 URL 去重；
+    视频：依次收 play_addr（默认画质）与 bit_rate 各档（多码率），按 URL 去重；
     老版地址带 playwm（带水印标记），统一替换为 play 以取无水源。
+    图文（aweme_type=68 / images 非空）：逐张原图链接（kind=image）+ 末尾附文案
+    （kind=text，无 url，由调用方直接落盘 txt）。
     """
     aweme = data.get("aweme_detail") or {}
     if not aweme.get("aweme_id"):
         return []
+    images = aweme.get("images") or []
+    if images or _as_int(aweme.get("aweme_type")) == 68:
+        return _parse_note_links(aweme, images)
+
     video = aweme.get("video") or {}
     links: list[dict] = []
     seen: set[str] = set()
@@ -112,7 +119,7 @@ def parse_download_links(data: dict) -> list[dict]:
                 continue
             seen.add(url)
             links.append({
-                "url": url, "label": label, "ext": "mp4",
+                "url": url, "label": label, "ext": "mp4", "kind": "video",
                 "width": width, "height": height, "size": size,
             })
 
@@ -120,6 +127,28 @@ def parse_download_links(data: dict) -> list[dict]:
     for br in video.get("bit_rate") or []:
         gear = str(br.get("gear_name") or "").rstrip("_0") or "多码率"
         _push(br.get("play_addr"), gear)
+    return links
+
+
+def _parse_note_links(aweme: dict, images: list) -> list[dict]:
+    """图文 note → 原图直链列表 + 文案项。"""
+    links: list[dict] = []
+    total = len(images)
+    for i, img in enumerate(images, start=1):
+        urls = (img.get("download_url_list") or []) + (img.get("url_list") or [])
+        url = next((str(u) for u in urls if str(u or "").startswith("http")), None)
+        if not url:
+            continue
+        m = re.search(r"\.(jpe?g|png|webp|heic)(?:[?~]|$)", url, re.I)
+        links.append({
+            "url": url, "label": f"图片 {i}/{total}", "kind": "image",
+            "ext": m.group(1).lower() if m else "jpeg",
+            "width": _as_int(img.get("width")) or 0,
+            "height": _as_int(img.get("height")) or 0,
+        })
+    desc = str(aweme.get("desc") or "").strip()
+    if desc:
+        links.append({"kind": "text", "text": desc, "label": "文案"})
     return links
 
 

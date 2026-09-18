@@ -115,7 +115,8 @@ async def list_downloads():
 async def create_download(body: DownloadCreate):
     try:
         row = await download_store.create_download(
-            body.platform, body.content_id, body.title, body.url, body.downloader, body.account_id
+            body.platform, body.content_id, body.title, body.url, body.downloader,
+            body.account_id, body.quality
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

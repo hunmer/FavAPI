@@ -224,7 +224,10 @@ class BasePlatformAdapter(ABC):
     async def resolve_download_urls(self, account: AccountContext, content_id: str) -> list[dict]:
         """按视频 ID 解析可下载直链列表（可选实现，供 aria2c 平台下载）。
 
-        返回 [{"url": 直链, "label": 清晰度描述, "ext": 扩展名, "size": 字节数}]，
-        首个元素视为推荐地址；未实现的平台抛 NotImplementedError。
+        每项 {"url": 直链, "label": 描述, "ext": 扩展名, "size": 字节数, "kind": 类型,
+              "width"/"height": 可选分辨率, "headers": 可选下载请求头}；
+        kind 取 "video"（默认，走清晰度选链）/"image"（图文逐张全下）/"text"
+        （无 url，text 字段为文案，调用方直接落盘 txt）。首个视频项视为推荐地址；
+        未实现的平台抛 NotImplementedError。
         """
         raise NotImplementedError(f"{self.display_name} 未实现下载直链解析")

@@ -134,6 +134,41 @@ def test_parse_download_links_empty():
     assert parse_download_links({"aweme_detail": {}}) == []
 
 
+def _note_detail(aweme_id="7677255242896343545"):
+    images = [
+        {"uri": f"tos-cn-i/img-{i}", "width": 1672, "height": 941,
+         "url_list": [f"https://p3-pc-sign.douyinpic.com/tos/img-{i}~tplv-dy.jpeg"],
+         "download_url_list": [f"https://p3-pc-sign.douyinpic.com/tos/img-{i}.webp?x-expires=1"]}
+        for i in (1, 2, 3)
+    ]
+    return {"status_code": 0, "aweme_detail": {
+        "aweme_id": aweme_id, "aweme_type": 68, "desc": "3D人物4视图提示词。\n第二行文案",
+        "images": images, "video": {"play_addr": {"url_list": ["https://slideshow.mp4"]}},
+    }}
+
+
+def test_parse_note_download_links():
+    from app.platforms.douyin.parser import parse_download_links
+
+    links = parse_download_links(_note_detail())
+    # 图文优先 download_url_list；视频轮播地址不进入列表
+    assert [l["kind"] for l in links] == ["image", "image", "image", "text"]
+    assert links[0]["url"].endswith(".webp?x-expires=1")
+    assert links[0]["ext"] == "webp" and links[0]["label"] == "图片 1/3"
+    assert links[1]["url"] == "https://p3-pc-sign.douyinpic.com/tos/img-2.webp?x-expires=1"
+    # 文案项无 url，text 为去空白的 desc
+    assert links[-1]["text"] == "3D人物4视图提示词。\n第二行文案"
+
+
+def test_parse_note_without_desc_has_no_text_item():
+    from app.platforms.douyin.parser import parse_download_links
+
+    detail = _note_detail()
+    detail["aweme_detail"]["desc"] = "   "
+    links = parse_download_links(detail)
+    assert [l["kind"] for l in links] == ["image", "image", "image"]
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     failed = 0
