@@ -173,8 +173,7 @@ jobs:
           fi
 
       - name: Add bundles and publish
-        run: python scripts/tufup_publish.py --version "${GITHUB_REF_NAME#v}" \
-             --repo-dir repository --keys-dir keystore --bundles bundles
+        run: python scripts/tufup_publish.py --version "${GITHUB_REF_NAME#v}" --repo-dir repository --keys-dir keystore --bundles bundles
 
       - name: Deploy to gh-pages
         env:
