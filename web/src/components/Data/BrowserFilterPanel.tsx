@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   Search,
   X,
-  Folder,
   ChevronDown,
   User,
   Clock,
@@ -31,21 +30,17 @@ const FilterClearBtn: React.FC<{ onClick: () => void; title: string }> = ({ onCl
   </button>
 );
 
-/** 左侧过滤面板（自 DataBrowserView 抽离）：搜索/账号/收藏夹/来源/作者/入库与发布日期/AI 标签分组 */
+/** 左侧过滤面板（自 DataBrowserView 抽离）：搜索/账号/来源/作者/入库与发布日期/AI 标签分组 */
 export const BrowserFilterPanel: React.FC<{
   accounts: Account[];
   accountCounts: Map<string, number>;
   totalAll: number;
   totalCount: number;
   selectedAccountId: string;
-  /** 切换账号（同时重置收藏夹与作者过滤，由父组件组合处理） */
+  /** 切换账号（同时重置来源与作者过滤，由父组件组合处理） */
   onSelectAccount: (id: string) => void;
   searchQuery: string;
   onSearchQueryChange: (q: string) => void;
-  folderFacets: Array<[string, number]>;
-  selectedFolder: string;
-  /** 切换收藏夹（同时重置作者过滤） */
-  onSelectFolder: (folder: string) => void;
   sourceFacets: Array<[string, number]>;
   selectedSource: string;
   onSelectSource: (source: string) => void;
@@ -81,9 +76,6 @@ export const BrowserFilterPanel: React.FC<{
   onSelectAccount,
   searchQuery,
   onSearchQueryChange,
-  folderFacets,
-  selectedFolder,
-  onSelectFolder,
   sourceFacets,
   selectedSource,
   onSelectSource,
@@ -111,8 +103,7 @@ export const BrowserFilterPanel: React.FC<{
   hasActiveFilters,
   onClearAllFilters,
 }) => {
-  // 收藏夹/来源/作者折叠列表与分组折叠纯 UI 状态，仅面板内使用
-  const [folderListOpen, setFolderListOpen] = useState(false);
+  // 来源/作者折叠列表与分组折叠纯 UI 状态，仅面板内使用
   const [sourceListOpen, setSourceListOpen] = useState(false);
   const [authorListOpen, setAuthorListOpen] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
@@ -165,76 +156,6 @@ export const BrowserFilterPanel: React.FC<{
             ]}
           />
         </div>
-
-        {/* Folder selector（与账号选择器同款折叠列表） */}
-        {folderFacets.length > 0 && (
-          <div className="flex flex-col gap-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">收藏夹</span>
-              {selectedFolder !== 'all' && (
-                <FilterClearBtn title="清除收藏夹过滤" onClick={() => onSelectFolder('all')} />
-              )}
-            </div>
-            <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setFolderListOpen((v) => !v)}
-                className="w-full px-3 py-2 flex items-center justify-between gap-2 text-xs font-medium text-slate-800 dark:text-slate-200 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-              >
-                <span className="flex items-center gap-1.5 min-w-0">
-                  <Folder
-                    className={`w-3.5 h-3.5 shrink-0 ${selectedFolder === 'all' ? 'text-slate-400' : 'text-amber-500'}`}
-                  />
-                  <span className="truncate">
-                    {selectedFolder === 'all' ? '全部收藏夹' : selectedFolder}
-                  </span>
-                </span>
-                <ChevronDown
-                  className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform ${folderListOpen ? 'rotate-180' : ''}`}
-                />
-              </button>
-              {folderListOpen && (
-                <div className="border-t border-slate-100 dark:border-slate-700 max-h-52 overflow-y-auto bg-white dark:bg-slate-800">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onSelectFolder('all');
-                      setFolderListOpen(false);
-                    }}
-                    className={`w-full px-3 py-2 flex items-center gap-1.5 text-xs cursor-pointer transition-colors ${
-                      selectedFolder === 'all'
-                        ? 'bg-violet-50 dark:bg-violet-950 text-violet-700 dark:text-violet-400 font-semibold'
-                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
-                    }`}
-                  >
-                    <Folder className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                    <span className="truncate">全部收藏夹</span>
-                  </button>
-                  {folderFacets.map(([name, count]) => (
-                    <button
-                      key={name}
-                      type="button"
-                      onClick={() => {
-                        onSelectFolder(name);
-                        setFolderListOpen(false);
-                      }}
-                      className={`w-full px-3 py-2 flex items-center gap-1.5 text-xs cursor-pointer transition-colors ${
-                        selectedFolder === name
-                          ? 'bg-violet-50 dark:bg-violet-950 text-violet-700 dark:text-violet-400 font-semibold'
-                          : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
-                      }`}
-                    >
-                      <Folder className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                      <span className="truncate">
-                        {name} ({count})
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* Source selector（入库来源：收藏/喜欢/稍后再看列表，存在非默认来源时显示） */}
         {sourceFacets.some(([name]) => name !== '收藏列表') && (

@@ -128,7 +128,7 @@ export const PlayerModal: React.FC<PlayerModalProps> = ({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-black/50 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
       onClick={onClose}
     >
       <motion.div
@@ -137,21 +137,21 @@ export const PlayerModal: React.FC<PlayerModalProps> = ({
         exit={{ scale: 0.94, y: 16 }}
         transition={{ type: 'spring', stiffness: 320, damping: 30 }}
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-6xl max-h-[92vh] bg-[#0F1117] rounded-3xl border border-slate-800 shadow-2xl overflow-hidden flex flex-col"
+        className="w-full max-w-6xl max-h-[92vh] bg-white dark:bg-[#0F1117] rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col"
       >
         {/* 顶栏：标题 + 关闭 */}
-        <div className="flex items-start justify-between gap-3 px-5 py-3.5 border-b border-slate-800/80 shrink-0">
+        <div className="flex items-start justify-between gap-3 px-5 py-3.5 border-b border-slate-100 dark:border-slate-800/80 shrink-0">
           <div className="min-w-0">
-            <p className="text-sm font-bold text-white truncate">
+            <p className="text-sm font-bold text-slate-900 dark:text-white truncate">
               {info?.desc?.split('\n')[0] || info?.desc || fallbackTitle || `作品 ${awemeId}`}
             </p>
             {info?.author?.nickname && (
-              <p className="text-[11px] text-slate-400 mt-0.5">@{info.author.nickname}</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">@{info.author.nickname}</p>
             )}
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-slate-800/80 text-slate-300 hover:text-white hover:bg-slate-700 flex items-center justify-center shrink-0 transition-colors cursor-pointer"
+            className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800/80 text-slate-500 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center justify-center shrink-0 transition-colors cursor-pointer"
             aria-label="关闭"
           >
             <X className="w-4 h-4" />
@@ -161,14 +161,14 @@ export const PlayerModal: React.FC<PlayerModalProps> = ({
         {/* 主体：左播放区 + 右侧信息栏 */}
         <div className="flex-1 min-h-0 flex">
           {/* 播放区 */}
-          <div className="flex-1 min-w-0 flex items-center justify-center bg-black/40 p-3 relative">
+          <div className="flex-1 min-w-0 flex items-center justify-center bg-slate-100 dark:bg-black/40 p-3 relative">
             {error ? (
-              <div className="flex flex-col items-center gap-2 py-16 text-slate-400">
+              <div className="flex flex-col items-center gap-2 py-16 text-slate-500 dark:text-slate-400">
                 <AlertCircle className="w-10 h-10 text-rose-500" />
                 <p className="text-xs">{error}</p>
               </div>
             ) : !info ? (
-              <div className="flex flex-col items-center gap-2 py-16 text-slate-400">
+              <div className="flex flex-col items-center gap-2 py-16 text-slate-500 dark:text-slate-400">
                 <Loader2 className="w-8 h-8 animate-spin" />
                 <p className="text-xs">正在获取作品信息…</p>
               </div>
@@ -248,14 +248,16 @@ export const PlayerModal: React.FC<PlayerModalProps> = ({
           </div>
 
           {/* 右侧栏：tabs */}
-          <aside className="w-72 shrink-0 border-l border-slate-800/80 flex flex-col min-h-0">
+          <aside className="w-72 shrink-0 border-l border-slate-100 dark:border-slate-800/80 flex flex-col min-h-0">
             <div className="flex items-center gap-1 px-3 pt-3 shrink-0">
               {TABS.map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
                   onClick={() => setTab(id)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                    tab === id ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-slate-200'
+                    tab === id
+                      ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                   }`}
                 >
                   <Icon className="w-3.5 h-3.5" />
@@ -280,11 +282,11 @@ export const PlayerModal: React.FC<PlayerModalProps> = ({
                         { icon: Star, cls: 'text-amber-500', label: '收藏', value: fmtCount(stats.collect_count) },
                         { icon: Share2, cls: 'text-emerald-500', label: '分享', value: fmtCount(stats.share_count) },
                       ].map(({ icon: Icon, cls, label, value }) => (
-                        <div key={label} className="rounded-xl bg-slate-800/40 px-3 py-2.5 flex items-center gap-2.5">
+                        <div key={label} className="rounded-xl bg-slate-100 dark:bg-slate-800/40 px-3 py-2.5 flex items-center gap-2.5">
                           <Icon className={`w-4 h-4 shrink-0 ${cls}`} />
                           <div className="min-w-0">
-                            <p className="text-sm font-bold text-white leading-none">{value}</p>
-                            <p className="text-[10px] text-slate-500 mt-1">{label}</p>
+                            <p className="text-sm font-bold text-slate-900 dark:text-white leading-none">{value}</p>
+                            <p className="text-[10px] text-slate-500 dark:text-slate-500 mt-1">{label}</p>
                           </div>
                         </div>
                       ))}
@@ -307,7 +309,7 @@ export const PlayerModal: React.FC<PlayerModalProps> = ({
                       {metaRows.map(({ label, value }) => (
                         <div key={label} className="flex items-start gap-2 text-xs">
                           <span className="text-slate-500 shrink-0">{label}</span>
-                          <span className="text-slate-300 break-all min-w-0">{value}</span>
+                          <span className="text-slate-700 dark:text-slate-300 break-all min-w-0">{value}</span>
                         </div>
                       ))}
                     </div>
@@ -316,7 +318,7 @@ export const PlayerModal: React.FC<PlayerModalProps> = ({
                     {info.desc && (
                       <div className="space-y-1.5">
                         <p className="text-[11px] font-semibold text-slate-500">文案</p>
-                        <p className="text-xs text-slate-300 whitespace-pre-wrap break-words leading-relaxed">
+                        <p className="text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words leading-relaxed">
                           {info.desc}
                         </p>
                       </div>

@@ -120,16 +120,13 @@ export const DataItemCard: React.FC<DataItemCardProps> = ({
           </div>
         )}
 
-        {/* Top-right: Folder name + 入库来源（喜欢/稍后再看等非收藏列表来源） */}
+        {/* Top-right: 入库来源（喜欢/稍后再看/特别关注…；收藏列表为默认来源不显示） */}
         <div className="absolute top-2.5 right-2.5 flex items-center gap-1 max-w-[75%]">
           {item.sourceName && item.sourceName !== '收藏列表' && (
-            <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-indigo-600/85 text-white backdrop-blur-xs truncate">
+            <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-indigo-600/85 text-white backdrop-blur-xs truncate max-w-[120px] block">
               {item.sourceName}
             </span>
           )}
-          <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-black/60 text-white/90 backdrop-blur-xs truncate max-w-[120px] block">
-            {item.folderName}
-          </span>
         </div>
 
         {/* Bottom metrics on cover: Duration & Likes/Views */}
