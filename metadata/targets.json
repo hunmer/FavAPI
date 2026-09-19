@@ -2,12 +2,12 @@
  "signatures": [
   {
    "keyid": "fe81569c169c84e4931cb302686f1f853aaa67278f347bc17f3168536bea8b00",
-   "sig": "4904ea90ba1977a868120557819bfa279f2087938c9d8e45a2d943977d30ef1dae1b822d4ab11d66752fe593b66239ead0ff7253225ad20d139ae9a2c8387807"
+   "sig": "1de10ae20d1b6a07756227b7fb1264dcfd46fcad4ad8f4689306b877e1a9d0b0943c3fc3de54611ac6adef3af50f3cbe96fd1271bd13077ea8f41a934391ce09"
   }
  ],
  "signed": {
   "_type": "targets",
-  "expires": "2027-09-18T17:41:19Z",
+  "expires": "2027-09-19T06:39:04Z",
   "spec_version": "1.0.31",
   "targets": {
    "FavAPI-macos-arm64-0.2.0.tar.gz": {
@@ -21,8 +21,34 @@
      "sha256": "ca1a768785917aec22f845b97babaecc29d7b82010305bbabdfe5b8b8c6551bd"
     },
     "length": 71323497
+   },
+   "FavAPI-macos-arm64-0.2.1.patch": {
+    "custom": {
+     "tufup": {
+      "tar_hash": "2275e87f437bf02896011ade74395fa8605f1dbf599c13b20bb77aa9079f56e1",
+      "tar_hash_algorithm": "sha256",
+      "tar_size": 203827200
+     },
+     "user": null
+    },
+    "hashes": {
+     "sha256": "bff076382643d7c67be5e1707b20b8448b342e366ea5d1df91607f80b586fcde"
+    },
+    "length": 444077
+   },
+   "FavAPI-macos-arm64-0.2.1.tar.gz": {
+    "custom": {
+     "tufup": {
+      "required": false
+     },
+     "user": null
+    },
+    "hashes": {
+     "sha256": "769547619d13545779d781befca7c3e6fa0ca5e55aceeb4c8edaa3e4938e8be5"
+    },
+    "length": 71448618
    }
   },
-  "version": 2
+  "version": 3
  }
 }
