@@ -20,6 +20,7 @@ import {
   ArrowDown,
   ArrowUpDown,
   ListFilter,
+  Plus,
 } from 'lucide-react';
 import { Popover } from '../Popover';
 import { confirmDialog } from '../AlertDialog';
@@ -35,6 +36,36 @@ const STATUS_META: Record<DownloadRow['status'], { label: string; cls: string }>
 
 const STATUS_KEYS = Object.keys(STATUS_META) as DownloadRow['status'][];
 const DOWNLOADER_KEYS: DownloaderId[] = ['yt-dlp', 'videodl', 'aria2c'];
+
+/** 链接 → (platform, content_id) 识别规则，按序匹配；id 形态与收藏入库的 content_id 保持一致。
+ *  未命中（短链 / 直链）回落空 platform，由 yt-dlp 通用下载自行跟随跳转。 */
+const URL_PATTERNS: { platform: string; re: RegExp }[] = [
+  { platform: 'bilibili', re: /bilibili\.com\/video\/(BV[0-9A-Za-z]{10})/ },
+  { platform: 'douyin', re: /douyin\.com\/video\/(\d+)/ },
+  { platform: 'xiaohongshu', re: /xiaohongshu\.com\/(?:explore|discovery\/item)\/([0-9a-fA-F]+)/ },
+  { platform: 'kuaishou', re: /kuaishou\.com\/short-video\/([0-9A-Za-z]+)/ },
+  { platform: 'tiktok', re: /tiktok\.com\/@[\w.-]+\/video\/(\d+)/ },
+  { platform: 'threads', re: /threads\.(?:net|com)\/(?:@[\w.-]+\/post|share)\/([0-9A-Za-z]+)/ },
+  { platform: 'instagram', re: /instagram\.com\/(?:p|reel|reels|tv)\/([0-9A-Za-z_-]+)/ },
+  { platform: 'youtube', re: /(?:youtube\.com\/(?:watch\?.*v=|shorts\/|live\/)|youtu\.be\/)([0-9A-Za-z_-]{11})/ },
+  { platform: 'youtube', re: /youtube\.com\/playlist\?.*list=([0-9A-Za-z_-]+)/ },
+];
+
+function matchDownloadUrl(url: string): { platform: string; contentId: string } | null {
+  for (const { platform, re } of URL_PATTERNS) {
+    const m = url.match(re);
+    if (m) return { platform, contentId: m[1] };
+  }
+  return null;
+}
+
+/** 引擎对已识别平台的依赖：yt-dlp 通用；videodl / aria2c 依赖后端平台客户端 / 适配器。
+ *  instagram 的 URL 只含 shortcode（平台下载需数字 pk）、youtube 未实现平台下载，均不列入。 */
+const ENGINE_PLATFORMS: Record<DownloaderId, Set<string> | null> = {
+  'yt-dlp': null,
+  videodl: new Set(['bilibili', 'douyin', 'xiaohongshu']),
+  aria2c: new Set(['bilibili', 'douyin', 'xiaohongshu', 'kuaishou', 'tiktok', 'threads']),
+};
 
 /** 重试确认弹窗（单条/批量共用）：可选择下载引擎；批量时可选「保持原引擎」 */
 const RetryConfirmModal: React.FC<{
@@ -108,6 +139,121 @@ const RetryConfirmModal: React.FC<{
           >
             {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             {busy ? '提交中...' : `重新入队${single ? '' : ` (${rows.length})`}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/** 添加下载弹窗：粘贴多条 URL（换行 / 空格分隔，自动去重），逐条入队 */
+const AddDownloadModal: React.FC<{
+  busy: boolean;
+  onConfirm: (urls: string[], downloader: DownloaderId) => void;
+  onClose: () => void;
+}> = ({ busy, onConfirm, onClose }) => {
+  const [text, setText] = useState('');
+  const [downloader, setDownloader] = useState<DownloaderId>('yt-dlp');
+  const urls = useMemo(
+    () => Array.from(new Set(text.split(/\s+/).map((s) => s.trim()).filter(Boolean))),
+    [text],
+  );
+  const invalidCount = urls.filter((u) => !/^https?:\/\//i.test(u)).length;
+  const recognized = useMemo(() => {
+    const counter = new Map<string, number>();
+    for (const u of urls) {
+      const hit = matchDownloadUrl(u);
+      if (hit) counter.set(hit.platform, (counter.get(hit.platform) || 0) + 1);
+    }
+    return counter;
+  }, [urls]);
+  /** 非 yt-dlp 引擎：列出无法走该引擎的链接（未识别平台或平台不受支持） */
+  const unsupported = useMemo(() => {
+    const ok = ENGINE_PLATFORMS[downloader];
+    if (!ok) return [];
+    return urls.filter((u) => {
+      const hit = matchDownloadUrl(u);
+      return !hit || !ok.has(hit.platform);
+    });
+  }, [urls, downloader]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[70] bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 anim-backdrop-enter"
+      onClick={() => !busy && onClose()}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="anim-modal-enter bg-white dark:bg-[#161B26] w-full max-w-md rounded-[28px] p-6 shadow-2xl border border-slate-100 dark:border-slate-800 space-y-4"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-sky-50 dark:bg-sky-950 text-sky-600 dark:text-sky-400 flex items-center justify-center shrink-0">
+            <Plus className="w-5 h-5" />
+          </div>
+          <h3 className="text-base font-bold text-slate-900 dark:text-white">添加下载</h3>
+        </div>
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          disabled={busy}
+          autoFocus
+          rows={7}
+          placeholder={'每行一条链接（空格分隔也可），例如：\nhttps://www.youtube.com/watch?v=xxxx\nhttps://example.com/file.zip'}
+          className="w-full px-3.5 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/60 text-xs text-slate-800 dark:text-slate-200 font-mono placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-sky-400 resize-y disabled:opacity-60"
+        />
+        <div className="flex items-center justify-between gap-2">
+          <p className={`text-[11px] font-semibold ${invalidCount ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400 dark:text-slate-500'}`}>
+            {urls.length === 0
+              ? '支持换行或空格分隔，自动去重；短链与直链由后端解析平台'
+              : invalidCount
+                ? `${invalidCount} 条不是 http(s) 链接，请修正后再提交`
+                : (() => {
+                    const known = [...recognized.entries()].map(([p, n]) => `${p}×${n}`).join('、');
+                    const unknown = urls.length - [...recognized.values()].reduce((a, b) => a + b, 0);
+                    const parts = [`共 ${urls.length} 条`];
+                    if (known) parts.push(`平台链接：${known}`);
+                    if (unknown) parts.push(`直链/短链 ${unknown} 条`);
+                    return parts.join('，');
+                  })()}
+          </p>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">下载引擎</span>
+            <select
+              value={downloader}
+              onChange={(e) => setDownloader(e.target.value as DownloaderId)}
+              disabled={busy}
+              className="px-2.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-400 cursor-pointer disabled:opacity-60"
+              title="选择下载引擎"
+            >
+              <option value="yt-dlp">yt-dlp（通用）</option>
+              <option value="videodl">videodl</option>
+              <option value="aria2c">aria2c（平台下载）</option>
+            </select>
+          </div>
+        </div>
+        {unsupported.length > 0 && (
+          <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">
+            {unsupported.length} 条链接不支持该引擎（需已识别平台：
+            {[...(ENGINE_PLATFORMS[downloader] || [])].join('、')}），请改用 yt-dlp 或移除后提交
+          </p>
+        )}
+        <div className="flex items-center justify-end gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold transition-colors disabled:opacity-50 cursor-pointer"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            onClick={() => onConfirm(urls, downloader)}
+            disabled={busy || urls.length === 0 || invalidCount > 0 || unsupported.length > 0}
+            className="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 disabled:opacity-60 text-white text-xs font-bold inline-flex items-center gap-1.5 transition-colors active:scale-95 cursor-pointer"
+          >
+            {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            {busy ? '提交中...' : `添加下载${urls.length ? ` (${urls.length})` : ''}`}
           </button>
         </div>
       </div>
@@ -267,6 +413,8 @@ export const DownloadsView: React.FC = () => {
   const [logRow, setLogRow] = useState<DownloadRow | null>(null);
   const [retryRows, setRetryRows] = useState<DownloadRow[] | null>(null);
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addBusy, setAddBusy] = useState(false);
   /** 创建时间排序：null = 后端默认（最新在前）→ 升序 → 降序 → 默认 */
   const [sortAsc, setSortAsc] = useState<boolean | null>(null);
   const [statusFilter, setStatusFilter] = useState<DownloadRow['status'] | null>(null);
@@ -368,6 +516,30 @@ export const DownloadsView: React.FC = () => {
   const retryableRows = rows.filter((r) => r.status === 'failed' || r.status === 'canceled' || r.status === 'paused');
   const successRows = rows.filter((r) => r.status === 'success');
 
+  /** 添加下载：正则识别出平台的链接携带 platform + content_id 入队（与收藏入队等价，
+   *  可注入账号 Cookies、可切平台下载）；短链 / 直链回落空 platform 走 yt-dlp 通用下载 */
+  const handleAddConfirm = async (urls: string[], downloader: DownloaderId) => {
+    setAddBusy(true);
+    try {
+      const results = await Promise.allSettled(
+        urls.map((url) => {
+          const hit = matchDownloadUrl(url);
+          return api.createDownload(
+            hit
+              ? { platform: hit.platform, content_id: hit.contentId, url, downloader }
+              : { platform: '', content_id: '', url, downloader },
+          );
+        }),
+      );
+      const failedCount = results.filter((r) => r.status === 'rejected').length;
+      setError(failedCount ? `【添加下载】${failedCount} / ${results.length} 条 URL 入队失败` : '');
+    } finally {
+      setAddBusy(false);
+      setAddOpen(false);
+      reload();
+    }
+  };
+
   const handleRetryConfirm = async (downloader: DownloaderId | null) => {
     if (!retryRows) return;
     const targets = retryRows;
@@ -415,10 +587,18 @@ export const DownloadsView: React.FC = () => {
             下载队列
           </h2>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            在「收藏数据」详情弹窗中添加下载任务，后端按队列串行执行，3 秒自动刷新。
+            点击「添加下载」粘贴链接，或在「收藏数据」详情中入队；后端串行执行，3 秒自动刷新。
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={() => setAddOpen(true)}
+            className="px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold shadow-2xs inline-flex items-center gap-1.5 transition-colors active:scale-95 cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            添加下载
+          </button>
           <button
             type="button"
             onClick={() => setRetryRows(retryableRows)}
@@ -445,14 +625,6 @@ export const DownloadsView: React.FC = () => {
           >
             <Trash2 className="w-3.5 h-3.5" />
             清空全部{rows.length > 0 && ` (${rows.length})`}
-          </button>
-          <button
-            type="button"
-            onClick={reload}
-            className="px-3 py-2 rounded-xl bg-white dark:bg-[#161B26] border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs font-semibold shadow-2xs inline-flex items-center gap-1.5 transition-colors cursor-pointer"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            手动刷新
           </button>
         </div>
       </div>
@@ -490,7 +662,7 @@ export const DownloadsView: React.FC = () => {
         {loaded && rows.length === 0 ? (
           <div className="py-16 flex flex-col items-center gap-3 text-slate-400 dark:text-slate-500">
             <Download className="w-10 h-10 opacity-40" />
-            <p className="text-xs">队列为空：到「收藏数据」打开内容详情，点击「加入下载队列」</p>
+            <p className="text-xs">队列为空：点击右上角「添加下载」粘贴链接，或到「收藏数据」详情入队</p>
           </div>
         ) : sortedRows.length === 0 ? (
           <div className="py-16 flex flex-col items-center gap-3 text-slate-400 dark:text-slate-500">
@@ -725,6 +897,14 @@ export const DownloadsView: React.FC = () => {
           busy={bulkBusy}
           onConfirm={handleRetryConfirm}
           onClose={() => !bulkBusy && setRetryRows(null)}
+        />
+      )}
+
+      {addOpen && (
+        <AddDownloadModal
+          busy={addBusy}
+          onConfirm={handleAddConfirm}
+          onClose={() => !addBusy && setAddOpen(false)}
         />
       )}
     </div>

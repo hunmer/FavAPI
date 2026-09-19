@@ -21,12 +21,13 @@ import { CookiesModal } from './components/Accounts/CookiesModal';
 import { TasksView } from './components/Tasks/TasksView';
 import { DataBrowserView } from './components/Data/DataBrowserView';
 import { FollowsSyncButton } from './components/Follows/FollowsSyncButton';
+import { AddFollowsDialog } from './components/Follows/AddFollowsDialog';
 import { FollowsView } from './components/Follows/FollowsView';
 import { ScheduleView } from './components/Schedule/ScheduleView';
 import { DownloadsView } from './components/Downloads/DownloadsView';
 import { NewDownloadModal } from './components/Downloads/NewDownloadModal';
 import { SettingsView } from './components/Settings/SettingsView';
-import { CheckCircle2, AlertCircle, Download as DownloadIcon, Info } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Download as DownloadIcon, Info, UserPlus } from 'lucide-react';
 import { DevInspector } from './components/DevInspector';
 import { AlertDialogHost } from './components/AlertDialog';
 import { AnimatePresence, motion } from 'motion/react';
@@ -87,6 +88,8 @@ export function App() {
   const [profileRefresh, setProfileRefresh] = useState<api.ProfileRefreshProgress | null>(null);
   /** 特别关注一键更新完成信号（Header 按钮 → FollowsView 刷新未读数） */
   const [followsSyncTick, setFollowsSyncTick] = useState(0);
+  // 特别关注页 Header「添加关注」弹窗
+  const [addFollowsOpen, setAddFollowsOpen] = useState(false);
   /** 下载页 Header「新建下载」弹窗 */
   const [newDownloadOpen, setNewDownloadOpen] = useState(false);
 
@@ -677,13 +680,23 @@ export function App() {
           <Header
             activeTab={activeTab}
             runningFetch={runningFetch}
-            // 页面专属操作：特别关注页注入一键更新；下载页注入新建下载
+            // 页面专属操作：特别关注页注入添加关注 + 一键更新；下载页注入新建下载
             actions={
               activeTab === 'follows' ? (
-                <FollowsSyncButton
-                  showToast={showToast}
-                  onDone={() => setFollowsSyncTick((t) => t + 1)}
-                />
+                <>
+                  <button
+                    onClick={() => setAddFollowsOpen(true)}
+                    title="粘贴博主主页链接批量添加特别关注"
+                    className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-all bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-950 active:scale-95 cursor-pointer"
+                  >
+                    <UserPlus className="w-3.5 h-3.5 shrink-0" />
+                    <span className="hidden sm:inline whitespace-nowrap">添加关注</span>
+                  </button>
+                  <FollowsSyncButton
+                    showToast={showToast}
+                    onDone={() => setFollowsSyncTick((t) => t + 1)}
+                  />
+                </>
               ) : activeTab === 'downloads' ? (
                 <button
                   onClick={() => setNewDownloadOpen(true)}
@@ -875,6 +888,16 @@ export function App() {
           accounts={accounts}
           showToast={showToast}
           onClose={() => setNewDownloadOpen(false)}
+        />
+      )}
+
+      {/* 特别关注页 Header「添加关注」弹窗（复用 syncTick 通道触发列表刷新） */}
+      {addFollowsOpen && (
+        <AddFollowsDialog
+          accounts={accounts}
+          showToast={showToast}
+          onClose={() => setAddFollowsOpen(false)}
+          onAdded={() => setFollowsSyncTick((t) => t + 1)}
         />
       )}
 

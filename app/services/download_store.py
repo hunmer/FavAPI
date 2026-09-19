@@ -94,10 +94,11 @@ async def requeue_stale_running() -> int:
 
 
 async def reset_download(download_id: str, downloader: str | None = None) -> dict | None:
-    """失败/取消/暂停后重新入队；downloader 非空时顺带切换下载器。"""
+    """失败/取消/暂停后重新入队；downloader 非空时顺带切换下载器（None = 保持原值）。"""
     return await update_download(
         download_id, status="pending", progress=None, error_message=None,
-        started_at=None, finished_at=None, downloader=downloader,
+        started_at=None, finished_at=None,
+        **({"downloader": downloader} if downloader else {}),
     )
 
 

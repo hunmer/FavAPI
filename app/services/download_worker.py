@@ -112,11 +112,17 @@ def _resolve_command(downloader: str) -> list[str] | None:
 
 async def _write_cookies_file(download_id: str, account_id: str | None, platform: str) -> Path | None:
     """把账号 cookie 快照写成 Netscape 格式供 yt-dlp 使用（无快照/无匹配域名返回 None）。"""
-    if not account_id:
-        return None
     from app.services import account_manager
 
-    account = await account_manager.get_account(account_id)
+    account = None
+    if account_id:
+        account = await account_manager.get_account(account_id)
+    elif platform:
+        # 手动添加的任务未指定账号：按平台挑最新一个有 cookies 快照的账号
+        for acc in await account_manager.list_accounts():
+            if acc.get("platform") == platform and ((acc.get("extra") or {}).get("cookies") or {}).get("cookies"):
+                account = acc
+                break
     if account is None:
         return None
     cookies = ((account.get("extra") or {}).get("cookies") or {}).get("cookies") or []

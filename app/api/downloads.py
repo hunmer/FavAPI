@@ -5,7 +5,9 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
+import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
@@ -17,6 +19,62 @@ router = APIRouter(prefix="/api/v1/downloads", tags=["downloads"])
 # downloader -> PyPI 包名（videodl 的发布包名为 videofetch；aria2c 二进制为系统安装，
 # pip 层面只管理其 RPC 客户端 aria2p）
 TOOLCHAIN = {"yt-dlp": "yt-dlp", "videodl": "videofetch", "aria2c": "aria2p"}
+
+# 链接 → (platform, content_id) 识别规则，与前端 DownloadsView 的 URL_PATTERNS 同源；
+# 额外覆盖短链跳转后的落地页形态（如 iesdouyin.com/share/video/xxx）
+PLATFORM_URL_PATTERNS: list[tuple[str, re.Pattern]] = [
+    ("bilibili", re.compile(r"bilibili\.com/video/(BV[0-9A-Za-z]{10})")),
+    ("douyin", re.compile(r"(?:douyin|iesdouyin)\.com/(?:share/)?video/(\d+)")),
+    ("xiaohongshu", re.compile(r"xiaohongshu\.com/(?:explore|discovery/item)/([0-9a-fA-F]+)")),
+    ("kuaishou", re.compile(r"kuaishou\.com/short-video/([0-9A-Za-z]+)")),
+    ("tiktok", re.compile(r"tiktok\.com/@[\w.-]+/video/(\d+)")),
+    ("threads", re.compile(r"threads\.(?:net|com)/(?:@[\w.-]+/post|share)/([0-9A-Za-z]+)")),
+    ("instagram", re.compile(r"instagram\.com/(?:p|reel|reels|tv)/([0-9A-Za-z_-]+)")),
+    ("youtube", re.compile(r"(?:youtube\.com/(?:watch\?.*v=|shorts/|live/)|youtu\.be/)([0-9A-Za-z_-]{11})")),
+    ("youtube", re.compile(r"youtube\.com/playlist\?.*list=([0-9A-Za-z_-]+)")),
+]
+
+# 已知短链域名：跟随 302 跳转后可被上面的正则识别；普通直链不发请求
+SHORTLINK_HOSTS = ("v.douyin.com", "b23.tv", "xhslink.com", "vm.tiktok.com", "vt.tiktok.com")
+
+_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+       "(KHTML, like Gecko) Chrome/125.0 Safari/537.36")
+
+
+def parse_url_meta(url: str) -> tuple[str, str] | None:
+    for platform, pattern in PLATFORM_URL_PATTERNS:
+        m = pattern.search(url)
+        if m:
+            return platform, m.group(1)
+    return None
+
+
+async def resolve_url_meta(url: str) -> tuple[str, str] | None:
+    """从链接提取 platform / content_id；已知短链域名先跳转取最终地址再提取。
+
+    解析失败（网络异常 / 落地页无 ID）返回 None，调用方回落裸 URL 走 yt-dlp。
+    """
+    host = (urlparse(url).hostname or "").lower()
+    if any(host == h or host.endswith("." + h) for h in SHORTLINK_HOSTS):
+        final_url = None
+        try:
+            async with httpx.AsyncClient(timeout=10, follow_redirects=True,
+                                         headers={"User-Agent": _UA}) as client:
+                # HEAD 拿跳转链即可；个别短链服务不支持 HEAD 再用 GET 兜底
+                for method in (client.head, client.get):
+                    try:
+                        resp = await method(url)
+                        if resp.status_code < 400:
+                            final_url = str(resp.url)
+                            break
+                    except httpx.HTTPError:
+                        continue
+        except httpx.HTTPError:
+            return None
+        if final_url:
+            return parse_url_meta(final_url)
+        return None
+    return parse_url_meta(url)
 
 
 async def _get_or_404(download_id: str) -> dict:
@@ -113,6 +171,12 @@ async def list_downloads():
 
 @router.post("", status_code=201)
 async def create_download(body: DownloadCreate):
+    # 裸 URL / 短链入队：提取或跳转解析出 platform + content_id，
+    # 使任务与收藏入队等价（可携带平台 Cookies、可切平台下载）
+    if not body.platform:
+        meta = await resolve_url_meta(body.url)
+        if meta:
+            body.platform, body.content_id = meta
     try:
         row = await download_store.create_download(
             body.platform, body.content_id, body.title, body.url, body.downloader,

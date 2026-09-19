@@ -19,6 +19,7 @@ import { AuthorPage } from './AuthorPage';
 import { FollowAvatar } from './FollowAvatar';
 import { GroupEditDialog } from './GroupEditDialog';
 import { confirmDialog } from '../AlertDialog';
+import { SiteIcon } from '../SiteIcon';
 
 interface FollowsViewProps {
   accounts: Account[];
@@ -232,7 +233,8 @@ export const FollowsView: React.FC<FollowsViewProps> = ({ accounts, showToast, s
                       {a.nickname || a.sec_uid.slice(0, 20) + '…'}
                     </h3>
                     {platformMeta && (
-                      <span className={`shrink-0 px-1.5 py-px rounded text-[9px] font-semibold border ${platformMeta.badgeBg}`}>
+                      <span className={`shrink-0 inline-flex items-center gap-1 px-1.5 py-px rounded text-[9px] font-semibold border ${platformMeta.badgeBg}`}>
+                        <SiteIcon platform={a.platform} name={platformMeta.name} className="w-3 h-3" />
                         {platformMeta.name.split(' ')[0]}
                       </span>
                     )}
