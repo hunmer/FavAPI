@@ -700,6 +700,7 @@ export function App() {
             <AnimatePresence mode="wait" initial={false}>
               <motion.div
                 key={activeTab}
+                className="h-full"
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8, transition: { duration: 0.2, ease: VIEW_EASE_OUT } }}
@@ -762,7 +763,7 @@ export function App() {
 
             {/* View 3: 收藏数据 */}
             {activeTab === 'data' && (
-              <div className="p-4 sm:p-6 lg:p-8">
+              <div className="h-full p-4 sm:p-6 lg:p-8 flex flex-col">
                 <DataBrowserView
                   accounts={accounts}
                   externalSearchQuery={searchQuery}

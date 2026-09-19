@@ -110,7 +110,7 @@ export const BrowserFilterPanel: React.FC<{
 
   return (
     <aside className="w-full lg:w-60 xl:w-64 shrink-0 lg:self-stretch">
-      <div className="lg:sticky lg:top-4 lg:max-h-[calc(96vh-7rem)] bg-white dark:bg-[#161B26] rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col overflow-hidden">
+      <div className="lg:sticky lg:top-4 lg:max-h-full bg-white dark:bg-[#161B26] rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col overflow-hidden">
         <div className="lg:overflow-y-auto p-4 flex flex-col gap-4">
         {/* Search */}
         <div className="relative">

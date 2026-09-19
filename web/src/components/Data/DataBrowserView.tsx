@@ -646,7 +646,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
   };
 
   return (
-    <div id="data-browser-view" className="flex flex-col lg:flex-row gap-6 items-start">
+    <div id="data-browser-view" className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0">
       {/* 左：过滤面板 */}
       <BrowserFilterPanel
         accounts={accounts}
@@ -689,8 +689,8 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
         onClearAllFilters={clearAllFilters}
       />
 
-      {/* 右：内容区（桌面端固定填满可用高度，列表内部滚动，翻页钉底） */}
-      <div className="flex-1 min-w-0 w-full flex flex-col gap-6 lg:h-[calc(96vh-7rem)]">
+      {/* 右：内容区（桌面端由外层高度链拉伸填满，列表内部滚动，翻页钉底） */}
+      <div className="flex-1 min-w-0 w-full flex flex-col gap-6 min-h-0">
         <BrowserToolbar
           listLoading={listLoading}
           viewMode={viewMode}
