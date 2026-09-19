@@ -6,10 +6,11 @@ follows_* 能力方法（见 platforms/base.py；douyin / bilibili 已实现）�
 """
 import asyncio
 import logging
+from urllib.parse import quote
 
 from curl_cffi import requests as curl_requests
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.database import db
@@ -188,10 +189,11 @@ async def delete_follow_author(sec_uid: str):
     cur = await db.execute("DELETE FROM follow_authors WHERE sec_uid = ?", (sec_uid,))
     if cur.rowcount == 0:
         raise HTTPException(status_code=404, detail=f"博主不存在：{sec_uid}")
-    # 顺带清理本地头像文件（缺失静默）
+    # 顺带清理本地头像与作品快照/缩略图文件（缺失静默）
     path = avatar_local_path(sec_uid)
     if path is not None:
         await asyncio.to_thread(path.unlink, True)
+    await asyncio.to_thread(follow_store.delete_author_assets, sec_uid)
     return {"sec_uid": sec_uid, "deleted": True}
 
 
@@ -249,6 +251,28 @@ async def fetch_following(account_id: str, count: int = 0):
 
 # ---------- 博主主页作品 ----------
 
+# 同一博主快照合并的串行锁（防快速翻页并发写坏 JSON）
+_persist_locks: dict[str, asyncio.Lock] = {}
+
+
+async def _persist_posts_page(platform: str, sec_uid: str, items: list[dict],
+                              first_page: bool) -> None:
+    """浏览抓到的作品页后台落盘：{sec_uid}.json 快照合并 + 逐张缩略图本地化（失败仅记日志）。"""
+    lock = _persist_locks.setdefault(sec_uid, asyncio.Lock())
+    async with lock:
+        try:
+            await asyncio.to_thread(
+                follow_store.save_posts_page, platform, sec_uid, items, first_page)
+        except Exception:
+            logger.exception("博主作品快照落盘失败：%s", sec_uid)
+        for it in items:
+            url = str(it.get("cover_url") or "")
+            if (it.get("content_id") and url.startswith("http")
+                    and follow_store.follow_cover_path(platform, it["content_id"]) is None):
+                await asyncio.to_thread(
+                    follow_store.download_follow_cover, platform, it["content_id"], url)
+
+
 @router.get("/authors/{sec_uid}/posts")
 async def author_posts(sec_uid: str, cursor: int | str = 0, count: int = 18, account_id: str = ""):
     """实时拉取博主主页作品（一页；cursor 0 = 首页，末页返回 0），附已读状态。
@@ -304,6 +328,12 @@ async def author_posts(sec_uid: str, cursor: int | str = 0, count: int = 18, acc
         }
         for it in batch["items"] if it.get("content_id")
     ]
+    # 抓取到的作品页后台落盘：JSON 快照 + 缩略图本地化（不阻塞响应）
+    platform = (author or {}).get("platform") or "douyin"
+    asyncio.create_task(_persist_posts_page(
+        platform, sec_uid, [{k: v for k, v in it.items() if k != "read"} for it in items],
+        cur == 0,
+    ))
     return {
         "sec_uid": sec_uid,
         "author": {k: author[k] for k in ("platform", "nickname", "avatar_url", "signature",
@@ -312,6 +342,30 @@ async def author_posts(sec_uid: str, cursor: int | str = 0, count: int = 18, acc
         "cursor": batch["cursor"],
         "has_more": batch["has_more"],
     }
+
+
+@router.get("/authors/{sec_uid}/posts/{content_id}/cover")
+async def author_post_cover(sec_uid: str, content_id: str):
+    """作品缩略图统一入口：本地已落盘回文件；未落盘按快照里的 cover_url
+    307 跳媒体代理兜底显示，并顺手入队本地化（下次即回本地文件）。
+
+    浏览器侧长缓存（文件按作品维度覆盖更新）。
+    """
+    author = await db.query_one(
+        "SELECT platform FROM follow_authors WHERE sec_uid = ?", (sec_uid,)
+    )
+    platform = (author or {}).get("platform") or "douyin"
+    path = follow_store.follow_cover_path(platform, content_id)
+    if path is not None:
+        return FileResponse(path, headers={"Cache-Control": "public, max-age=86400"})
+    snapshot = await asyncio.to_thread(follow_store.load_posts, sec_uid)
+    url = next((str(it.get("cover_url") or "") for it in snapshot.get("items", [])
+                if it.get("content_id") == content_id), "")
+    if url.startswith("http") and is_allowed_media_url(url):
+        asyncio.create_task(asyncio.to_thread(
+            follow_store.download_follow_cover, platform, content_id, url))
+        return RedirectResponse(f"/api/v1/follows/media?url={quote(url, safe='')}")
+    raise HTTPException(status_code=404, detail="作品缩略图未保存")
 
 
 # ---------- 播放详情 / 已读 ----------

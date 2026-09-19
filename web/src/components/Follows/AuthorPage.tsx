@@ -227,7 +227,7 @@ export const AuthorPage: React.FC<AuthorPageProps> = ({
               <div className="relative aspect-video bg-slate-100 dark:bg-slate-800 overflow-hidden">
                 {it.cover_url ? (
                   <img
-                    src={api.mediaUrl(it.cover_url)}
+                    src={api.followPostCoverUrl(secUid, it.content_id)}
                     alt={it.title || ''}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     loading="lazy"

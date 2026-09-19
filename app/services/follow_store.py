@@ -3,6 +3,7 @@
 follows API 层与各平台 adapter（同步作品回填头像）共用，避免 platforms → api 反向依赖。
 """
 
+import json
 import logging
 import re
 import time
@@ -12,6 +13,7 @@ from urllib.parse import urlparse
 from curl_cffi import requests as curl_requests
 
 from app import config
+from app.utils import now_iso as _now_iso
 
 logger = logging.getLogger("favapi.follows")
 
@@ -80,6 +82,14 @@ MEDIA_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 
 # 添加博主时落盘一份，前端统一走 /follows/authors/{sec_uid}/avatar 读本地
 AVATAR_DIR = config.DATA_DIR / "follow_avatars"
 _AVATAR_EXTS = (".jpeg", ".jpg", ".png", ".webp")
+
+# 博主主页作品快照（data/follow_posts/{sec_uid}.json）：浏览抓到的作品分页实时
+# 合并落盘；缩略图本地化到 data/follow_covers/{platform}/{content_id}.{ext}，
+# 前端统一走 /follows/authors/{sec_uid}/posts/{content_id}/cover 读本地
+FOLLOW_POSTS_DIR = config.DATA_DIR / "follow_posts"
+FOLLOW_COVERS_DIR = config.DATA_DIR / "follow_covers"
+# 快照里每条作品保留的字段（与 /follows/authors/{sec_uid}/posts 响应行一致，不含 read）
+POSTS_ITEM_FIELDS = ("content_id", "title", "cover_url", "duration", "published_at", "url")
 
 
 def is_allowed_media_url(url: str) -> bool:
@@ -194,11 +204,8 @@ def avatar_local_path(sec_uid: str) -> Path | None:
     return None
 
 
-def download_avatar(sec_uid: str, url: str) -> Path | None:
-    """下载博主头像落盘并返回路径（同步阻塞，异步侧 to_thread 调用）。
-
-    域名白名单与媒体代理一致；成功前清理旧扩展名文件（content-type 可能变化）。
-    """
+def _fetch_media(url: str) -> tuple[bytes, str] | None:
+    """按 CDN 域规则（UA/referer/cookie/代理）拉一张图片 → (内容, 扩展名)；失败 None。"""
     if not is_allowed_media_url(url):
         return None
     url = upgrade_media_url(url)
@@ -218,12 +225,137 @@ def download_avatar(sec_uid: str, url: str) -> Path | None:
             return None
         ctype = (resp.headers.get("content-type") or "").lower()
         ext = ".png" if "png" in ctype else ".webp" if "webp" in ctype else ".jpeg"
-        AVATAR_DIR.mkdir(parents=True, exist_ok=True)
-        for old in AVATAR_DIR.glob(f"{sec_uid}.*"):
-            old.unlink(missing_ok=True)
-        path = AVATAR_DIR / f"{sec_uid}{ext}"
-        path.write_bytes(resp.content)
-        return path
+        return resp.content, ext
     except Exception:
-        logger.warning("博主头像下载失败：%s", sec_uid, exc_info=True)
+        logger.warning("媒体图片下载失败：%s", url, exc_info=True)
         return None
+
+
+def download_avatar(sec_uid: str, url: str) -> Path | None:
+    """下载博主头像落盘并返回路径（同步阻塞，异步侧 to_thread 调用）。
+
+    域名白名单与媒体代理一致；成功前清理旧扩展名文件（content-type 可能变化）。
+    """
+    media = _fetch_media(url)
+    if media is None:
+        return None
+    content, ext = media
+    AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+    for old in AVATAR_DIR.glob(f"{sec_uid}.*"):
+        old.unlink(missing_ok=True)
+    path = AVATAR_DIR / f"{sec_uid}{ext}"
+    path.write_bytes(content)
+    return path
+
+
+# ---------- 博主主页作品快照与缩略图 ----------
+
+def _safe_id(value: str) -> str:
+    return re.sub(r"[^\w.-]+", "_", str(value).strip())[:120] or "_"
+
+
+def posts_json_path(sec_uid: str) -> Path | None:
+    """博主作品快照 JSON 路径；sec_uid 字符白名单校验防路径穿越。"""
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", sec_uid or ""):
+        return None
+    return FOLLOW_POSTS_DIR / f"{sec_uid}.json"
+
+
+def load_posts(sec_uid: str) -> dict:
+    """读取博主作品快照（缺失/损坏回空结构 {items: []}）。"""
+    path = posts_json_path(sec_uid)
+    if path is None or not path.is_file():
+        return {"items": []}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data.get("items"), list) else {"items": []}
+    except (OSError, json.JSONDecodeError):
+        logger.warning("博主作品快照读取失败：%s", sec_uid, exc_info=True)
+        return {"items": []}
+
+
+def save_posts_page(platform: str, sec_uid: str, items: list[dict], first_page: bool) -> None:
+    """把浏览到的一页作品合并进博主快照 JSON（同步阻塞，异步侧 to_thread 调用）。
+
+    按 content_id 去重更新（刷新签名链接等）；新作品首页抓到插最前（作者新发），
+    翻页抓到追加末尾（更早历史），保持整体新→旧顺序。临时文件 + replace 原子写。
+    """
+    if not items:
+        return
+    path = posts_json_path(sec_uid)
+    if path is None:
+        return
+    data = load_posts(sec_uid)
+    merged: dict[str, dict] = {}
+    for it in data.get("items", []):
+        if it.get("content_id"):
+            merged[it["content_id"]] = it
+    new_ids: list[str] = []
+    for it in items:
+        cid = str(it.get("content_id") or "")
+        if not cid:
+            continue
+        row = {k: it.get(k) for k in POSTS_ITEM_FIELDS}
+        if cid in merged:
+            merged[cid].update(row)
+        else:
+            merged[cid] = row
+            new_ids.append(cid)
+    new_set = set(new_ids)
+    old_rows = [r for cid, r in merged.items() if cid not in new_set]
+    new_rows = [merged[cid] for cid in new_ids]
+    ordered = new_rows + old_rows if first_page else old_rows + new_rows
+    payload = {
+        "sec_uid": sec_uid, "platform": platform, "updated_at": _now_iso(), "items": ordered,
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp.replace(path)
+
+
+def follow_cover_path(platform: str, content_id: str) -> Path | None:
+    """已落盘的作品缩略图路径（按 content_id 前缀匹配任意扩展名）；无则 None。"""
+    folder = FOLLOW_COVERS_DIR / _safe_id(platform)
+    if not folder.exists():
+        return None
+    return next(iter(sorted(folder.glob(f"{_safe_id(content_id)}.*"))), None)
+
+
+def download_follow_cover(platform: str, content_id: str, url: str) -> Path | None:
+    """下载作品缩略图落盘并返回路径（同步阻塞，异步侧 to_thread 调用）。"""
+    media = _fetch_media(url)
+    if media is None:
+        return None
+    content, ext = media
+    folder = FOLLOW_COVERS_DIR / _safe_id(platform)
+    folder.mkdir(parents=True, exist_ok=True)
+    base = _safe_id(content_id)
+    for old in folder.glob(f"{base}.*"):
+        old.unlink(missing_ok=True)
+    path = folder / f"{base}{ext}"
+    path.write_bytes(content)
+    return path
+
+
+def delete_author_assets(sec_uid: str) -> int:
+    """删除博主时清理其作品快照 JSON 与已本地化的缩略图；返回删除的文件数。"""
+    data = load_posts(sec_uid)
+    platform = str(data.get("platform") or "")
+    deleted = 0
+    for it in data.get("items", []):
+        cover = follow_cover_path(platform, str(it.get("content_id") or ""))
+        if cover is not None:
+            try:
+                cover.unlink()
+                deleted += 1
+            except OSError:
+                pass  # 文件被占用等，残留无害
+    path = posts_json_path(sec_uid)
+    if path is not None:
+        try:
+            path.unlink(missing_ok=True)
+            deleted += 1
+        except OSError:
+            pass
+    return deleted

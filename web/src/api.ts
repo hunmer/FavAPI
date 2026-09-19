@@ -1246,6 +1246,10 @@ export async function syncFollowPostsStream(
 /** 抖音 CDN 媒体经后端代理播放（浏览器直连会被 referer/UA 拦截）。 */
 export const mediaUrl = (url: string) => `${BASE}/follows/media?url=${encodeURIComponent(url)}`;
 
+/** 博主作品缩略图：后端本地化存储；缺文件时后端 307 走媒体代理兜底并顺手落盘。 */
+export const followPostCoverUrl = (secUid: string, contentId: string) =>
+  `${BASE}/follows/authors/${encodeURIComponent(secUid)}/posts/${encodeURIComponent(contentId)}/cover`;
+
 /** 特别关注博主头像：本地化存储，远程 CDN 原链不直接下发（会过期）。 */
 export const followAvatarUrl = (secUid: string) =>
   `${BASE}/follows/authors/${encodeURIComponent(secUid)}/avatar`;

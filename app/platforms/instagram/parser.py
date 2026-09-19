@@ -206,8 +206,9 @@ def parse_play_info(media: dict) -> dict:
     """作品详情媒体对象 → PlayerModal 播放信息统一结构。
 
     duration 单位秒（video_duration）；statistics 附 play_count；
-    视频 video_versions 取 type=101 的 mp4（102/103 为同链分片变体），
-    图文 carousel_media 逐张（单图无该字段，用 media 本体）。
+    视频 video_versions 取 type=101 的 mp4（102/103 为同链分片变体），不附封面
+    （PlayerModal 按 images 非空走图文分支）；图文 carousel_media 逐张
+    （单图无该字段，用 media 本体）。
     """
     user = media.get("user") or {}
     videos = [
@@ -215,10 +216,13 @@ def parse_play_info(media: dict) -> dict:
         if v.get("type") == 101 and str(v.get("url") or "").startswith("http")
     ]
     images = []
-    for item in media.get("carousel_media") or [media]:
-        url = _cover_url(item)
-        if url:
-            images.append({"url": url})
+    if not videos:
+        # 视频帖不附封面进 images：PlayerModal 按 images 非空走图文分支（isNote），
+        # 附了封面会盖掉视频播放；仅纯图/图文轮播逐张出图（threads 同款语义）
+        for item in media.get("carousel_media") or [media]:
+            url = _cover_url(item)
+            if url:
+                images.append({"url": url})
     duration = media.get("video_duration")
     return {
         "aweme_id": str(media.get("pk") or ""),
