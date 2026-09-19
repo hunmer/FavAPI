@@ -408,10 +408,12 @@ def resolve_self_sec_uid(cookie_header: str) -> str | None:
 # 既是延迟大头也是风控扣分来源（实测连续起会话会触发概率性空响应拦截）。
 # playwright 的 page.evaluate 恰好运行在主世界（非 CDP isolated world），能用到 hook。
 #
-# ⚠️ 必须有头（headless=False）：风控为概率性评分（连续请求累积扣分触发空响应，
-# 冷却后恢复），实测有头恢复快（首拒后重发即过）、headless 连续被拒恢复慢；
-# stealth 补丁（伪造 webdriver/plugins 等）实测反而更易被拒，勿引入。
-# _page_fetch_json 内置空响应重试。
+# 无头运行（headless=True + user_agent 覆盖）：webmssdk 在 Web Worker 里采集环境
+# 生成签名，headless 的 UA 带 HeadlessChrome 标记会被识别；user_agent 参数经 CDP
+# setUserAgentOverride 同时覆盖主世界与 Worker 的 UA，传入正常 Chrome UA 隐藏。
+# 风控为概率性评分（连续请求累积扣分触发空响应，冷却后恢复），
+# stealth 补丁（伪造 webdriver/plugins 等）实测反而更易被拒，勿引入；
+# _page_fetch_json 内置空响应重试兜底偶发首拒。
 # ---------------------------------------------------------------------------
 
 _PAGE_FETCH_JS = """async (payload) => {
@@ -453,12 +455,16 @@ async def _fetch_page_init(page):
 async def _fetch_page(profile_path: str):
     """获取 follows 页面通道的共享页面（同 profile 跨调用复用，空闲自动关闭）。
 
+    headless + user_agent 覆盖（正常 Chrome UA）：隐藏 UA 中的 HeadlessChrome
+    标记——webmssdk 在 Web Worker 里采集环境生成签名，Worker UA 经 CDP
+    setUserAgentOverride 一并覆盖，签名不再暴露 headless 特征。
     复用实例的连续请求不再冷启动浏览器——既是延迟大头也是风控扣分来源
     （实测连续起会话会触发概率性空响应拦截）。
     """
     async with browser.shared_page(
-        profile_path, constants.FETCH_PAGE_URL, headless=False,
-        proxy=resolve_proxy(), init=_fetch_page_init,
+        profile_path, constants.FETCH_PAGE_URL, headless=True,
+        proxy=resolve_proxy(), user_agent=constants.USER_AGENT,
+        init=_fetch_page_init,
     ) as (page, state):
         yield page, state["self_uid"]
 

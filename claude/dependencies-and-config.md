@@ -12,10 +12,13 @@
 | curl_cffi | API 直连通道：模拟 Chrome TLS/HTTP2 指纹（httpx 会被部分平台识别返回空响应） |
 | xhshow | 小红书 x-s / x-s-common 请求签名纯算 |
 | yt-dlp | 下载器之一（子进程调用，可注入 Netscape cookie） |
+| pywebview | 桌面窗口模式（main.py，macOS 需主线程） |
+| aria2p | aria2c 下载器对接（services/aria2_service.py） |
+| tufup | frozen 便携包自动更新（TUF 增量） |
 
-外部运行时依赖：videodl（下载器之二，可选）；Node ≥16（快手 `__NS_hxfalcon` 签名经 `sig_vm.js` + `sig4.cjs` 离线生成）。
+外部运行时依赖：videodl（下载器之二，可选）；aria2c（下载器之三，可选）；Node ≥16（快手 `__NS_hxfalcon` 签名经 `sig_vm.js` + `sig4.cjs` 离线生成）。PyInstaller 仅打包链路用（release.yml 安装）。
 
-无 pyproject.toml / lock 文件。Python 3.13（`.venv`）。
+无 pyproject.toml / lock 文件。Python 3.13（`.venv`；release.yml 打包用 3.12）。
 
 ## 环境变量（app/config.py）
 
@@ -42,7 +45,7 @@
 
 ## 数据目录布局（data/，git 忽略）
 
-`favapi.db`、`profiles/<platform>_<account_id>/`、`downloads/<platform>/`、`uploads/`（头像、账号头像）、`wechat_imports/{id}/messages.json`、`downloads/.cookies/{id}.cookies.txt`（yt-dlp 注入用）。
+`favapi.db`、`profiles/<platform>_<account_id>/`、`downloads/<platform>/`、`uploads/`（头像、账号头像）、`wechat_imports/{id}/messages.json`、`downloads/.cookies/{id}.cookies.txt`（yt-dlp 注入用）、`follow_avatars/`、`follow_posts/`、`follow_covers/`（follows 资产，见 data-model.md）。
 
 ## 平台常量速查
 
@@ -50,4 +53,5 @@
 - xiaohongshu：拦截 `/api/sns/web/v2/note/collect/page`，登录判定用 DOM 判据而非 cookie。
 - youtube：登录 cookie SID/SAPISID/__Secure-3PSID/LOGIN_INFO，解析 playlist?list=LL。
 - kuaishou：登录 cookie mode=all；{userId} 预导航拦截取 eid。
+- threads / instagram：需代理出网；代理解析 env → Windows 注册表回退（api_client.resolve_proxy）。instagram 登录 cookie `sessionid/ds_user_id`，风控节流参数见 constants.py。
 - 各平台 `constants.py` 为调参热点。

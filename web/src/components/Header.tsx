@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Bell, Plus, Loader2 } from 'lucide-react';
+import { Bell, Loader2 } from 'lucide-react';
 import { NavTab } from '../types';
 import { listNotifications, markNotificationsRead, NotificationRow } from '../api';
 import { Popover } from './Popover';
@@ -32,7 +32,6 @@ const TYPE_DOT: Record<string, string> = {
 
 interface HeaderProps {
   activeTab: NavTab;
-  onOpenCreateAccount: () => void;
   runningFetch?: RunningFetchInfo | null;
   /** 页面专属操作区（注入右侧控制区；如特别关注页的一键更新按钮），不传则不渲染 */
   actions?: React.ReactNode;
@@ -40,7 +39,6 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({
   activeTab,
-  onOpenCreateAccount,
   runningFetch,
   actions,
 }) => {
@@ -154,7 +152,7 @@ export const Header: React.FC<HeaderProps> = ({
         </p>
       </div>
 
-      {/* Right Controls: Auto-refresh, Page Actions, Add Account, Notification, Avatar */}
+      {/* Right Controls: Page Actions, Fetch Indicator, Notification */}
       <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 justify-self-end">
         {/* 页面专属操作（如特别关注页的一键更新），每个页面各自注入 */}
         {actions}
@@ -172,15 +170,6 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
           </div>
         )}
-
-        {/* Quick Add Account Button */}
-        <button
-          onClick={onOpenCreateAccount}
-          className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full text-xs font-semibold bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-100 active:scale-95 transition-all shadow-sm shadow-slate-900/20 dark:shadow-black/40"
-        >
-          <Plus className="w-3.5 h-3.5 text-white dark:text-slate-900" />
-          <span className="hidden sm:inline">新建账号</span>
-        </button>
 
         {/* Notifications Dropdown */}
         <Popover

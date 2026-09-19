@@ -8,11 +8,12 @@
 .venv/Scripts/python.exe tests/test_xiaohongshu_parser.py # 小红书 parser
 .venv/Scripts/python.exe tests/test_douyin_api_client.py  # 抖音 API client（unittest+mock）
 .venv/Scripts/python.exe tests/test_youtube_platform.py   # 声明式 _walk + YouTube 样本解析
+.venv/Scripts/python.exe tests/test_download_worker.py    # 下载 worker 单测
 .venv/Scripts/python.exe tests/smoke_test.py              # API+数据层冒烟（临时数据目录，不依赖浏览器）
 .venv/Scripts/python.exe tests/e2e_schedule_test.py       # 定时链路 e2e（需先起服务）
 ```
 
-均带 `__main__` runner 也可 pytest 收集；无 pytest 配置文件、无 CI、无 lint/类型检查配置。
+共 9 个测试脚本（含 __init__ 共 9 个 .py）。均带 `__main__` runner 也可 pytest 收集；无 pytest 配置文件、无 CI 测试 job（release.yml 只做打包）、无 lint/类型检查配置。
 
 ## 覆盖情况
 
@@ -26,7 +27,7 @@
 
 ## 真实链路人工验证
 
-procm 起 server → `http://127.0.0.1:8300` → 创建账号 → 扫码登录 → 详情页触发抓取/平台操作 → 看「数据/任务/下载」。抖音写操作类改动参考根目录 `verify_bili_*.py` 模式写临时验证脚本（注意含真实 cookie，勿提交）。
+procm 起 server → `http://127.0.0.1:8300` → 创建账号 → 扫码登录 → 详情页触发抓取/平台操作 → 看「数据/任务/下载」。平台接入类改动参考 `handoff/` 下的验证脚本模式（`_adapter_verify.py` 全链路直测、`_ig_verify.py` cookie 走环境变量不落盘）；根目录 `verify_bili_*.py` 含真实 cookie 勿提交。`handoff/follows-platform-integration.md` 是 follows 多平台接入交接指南（注意其头部"基于 douyin+bilibili 双平台"描述已过时，现状 8 平台）。
 
 ## 已知质量风险 / 技术债
 

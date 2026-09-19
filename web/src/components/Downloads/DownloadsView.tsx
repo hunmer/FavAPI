@@ -22,6 +22,7 @@ import {
   ListFilter,
 } from 'lucide-react';
 import { Popover } from '../Popover';
+import { confirmDialog } from '../AlertDialog';
 
 const STATUS_META: Record<DownloadRow['status'], { label: string; cls: string }> = {
   pending: { label: '排队中', cls: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800/60 dark:text-slate-300 dark:border-slate-700' },
@@ -306,7 +307,15 @@ export const DownloadsView: React.FC = () => {
   }, [reload]);
 
   const handlePause = async (row: DownloadRow) => {
-    if (row.status === 'running' && !window.confirm('将终止当前下载进程并暂停任务，未完成部分需恢复后重新下载，继续？')) return;
+    if (
+      row.status === 'running' &&
+      !(await confirmDialog({
+        title: '暂停下载任务',
+        message: '将终止当前下载进程并暂停任务，未完成部分需恢复后重新下载。',
+        confirmText: '暂停',
+        danger: true,
+      }))
+    ) return;
     try {
       await api.pauseDownload(row.download_id);
       reload();
@@ -316,8 +325,15 @@ export const DownloadsView: React.FC = () => {
   };
 
   const handleDelete = async (row: DownloadRow) => {
-    const tip = row.status === 'running' ? '将终止正在进行的下载并移除记录' : '';
-    if (tip && !window.confirm(`确定${tip}？`)) return;
+    if (
+      row.status === 'running' &&
+      !(await confirmDialog({
+        title: '移除下载记录',
+        message: '将终止正在进行的下载并移除记录。',
+        confirmText: '移除',
+        danger: true,
+      }))
+    ) return;
     try {
       await api.deleteDownload(row.download_id);
       reload();
@@ -359,13 +375,27 @@ export const DownloadsView: React.FC = () => {
     setRetryRows(null);
   };
 
-  const handleClearSuccess = () => {
-    if (!window.confirm(`确定移除 ${successRows.length} 条已完成记录？（不删除已下载的本地文件）`)) return;
+  const handleClearSuccess = async () => {
+    if (
+      !(await confirmDialog({
+        title: '移除已完成记录',
+        message: `确定移除 ${successRows.length} 条已完成记录？（不删除已下载的本地文件）`,
+        confirmText: '移除',
+        danger: true,
+      }))
+    ) return;
     runBulk('清空已下载', successRows.map((r) => api.deleteDownload(r.download_id)));
   };
 
-  const handleClearAll = () => {
-    if (!window.confirm(`确定清空全部 ${rows.length} 条下载记录？（进行中的任务将被终止，不删除已下载的本地文件）`)) return;
+  const handleClearAll = async () => {
+    if (
+      !(await confirmDialog({
+        title: '清空下载记录',
+        message: `确定清空全部 ${rows.length} 条下载记录？（进行中的任务将被终止，不删除已下载的本地文件）`,
+        confirmText: '清空',
+        danger: true,
+      }))
+    ) return;
     runBulk('清空全部', rows.map((r) => api.deleteDownload(r.download_id)));
   };
 

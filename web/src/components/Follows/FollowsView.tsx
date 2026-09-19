@@ -1,9 +1,12 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   Heart,
   Loader2,
+  MoreVertical,
+  Pencil,
+  RefreshCw,
   Tag,
   Trash2,
   Users,
@@ -11,9 +14,11 @@ import {
 import * as api from '../../api';
 import { Account } from '../../types';
 import { PLATFORMS } from '../../data/platforms';
+import { useDismiss } from '../../hooks/useDismiss';
 import { AuthorPage } from './AuthorPage';
 import { FollowAvatar } from './FollowAvatar';
 import { GroupEditDialog } from './GroupEditDialog';
+import { confirmDialog } from '../AlertDialog';
 
 interface FollowsViewProps {
   accounts: Account[];
@@ -40,6 +45,14 @@ export const FollowsView: React.FC<FollowsViewProps> = ({ accounts, showToast, s
 
   // 分组设置弹窗：列表卡片「设置分组」入口
   const [groupEditUid, setGroupEditUid] = useState<api.FollowAuthorRow | null>(null);
+
+  // 卡片操作菜单（右上 dots 与右键共用）：x/y 为 viewport 坐标
+  const [menu, setMenu] = useState<{ author: api.FollowAuthorRow; x: number; y: number } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useDismiss(() => setMenu(null), menu !== null, menuRef);
+
+  // 单博主同步中标记（卡片右下角刷新按钮）
+  const [syncingUid, setSyncingUid] = useState<string | null>(null);
 
   const reloadAuthors = useCallback(async () => {
     setListLoading(true);
@@ -78,13 +91,41 @@ export const FollowsView: React.FC<FollowsViewProps> = ({ accounts, showToast, s
   // ---------- 动作 ----------
 
   const removeAuthor = async (a: api.FollowAuthorRow) => {
-    if (!window.confirm(`确定取消特别关注「${a.nickname || a.sec_uid.slice(0, 16)}…」？（不影响已入库作品）`)) return;
+    if (
+      !(await confirmDialog({
+        title: '取消特别关注',
+        message: `确定取消特别关注「${a.nickname || a.sec_uid.slice(0, 16)}…」？（不影响已入库作品）`,
+        confirmText: '移除',
+        danger: true,
+      }))
+    ) return;
     try {
       await api.deleteFollowAuthor(a.sec_uid);
       showToast(`已移除「${a.nickname || a.sec_uid.slice(0, 16)}…」`);
       reloadAuthors();
     } catch (e: any) {
       showToast(e.message || '移除失败', 'error');
+    }
+  };
+
+  /** 单博主拉取最新作品（卡片右下角刷新按钮） */
+  const syncAuthor = async (a: api.FollowAuthorRow) => {
+    if (syncingUid) return;
+    const name = a.nickname || a.sec_uid.slice(0, 8);
+    setSyncingUid(a.sec_uid);
+    try {
+      const res = await api.syncFollowPosts({ sec_uids: [a.sec_uid] });
+      const r = res.results[0];
+      if (r?.status === 'failed') {
+        showToast(`「${name}」同步失败：${r.detail || '未知原因'}`, 'error');
+      } else {
+        showToast(`已同步「${name}」，新增 ${r?.new ?? 0} 条作品`);
+      }
+      reloadAuthors();
+    } catch (e: any) {
+      showToast(e.message || '同步失败', 'error');
+    } finally {
+      setSyncingUid(null);
     }
   };
 
@@ -154,20 +195,37 @@ export const FollowsView: React.FC<FollowsViewProps> = ({ accounts, showToast, s
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: Math.min(idx * 25, 250) / 1000 }}
               onClick={() => navigate(`/follows/author/${encodeURIComponent(a.sec_uid)}`)}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setMenu({ author: a, x: e.clientX, y: e.clientY });
+              }}
               className="bg-white dark:bg-[#161B26] rounded-[20px] border border-slate-200/80 dark:border-slate-800 shadow-2xs hover:shadow-lg transition-all duration-200 p-4 cursor-pointer group relative overflow-hidden"
             >
-              {/* 未读作品数角标 */}
-              {!!a.unread && (
-                <span className="absolute top-3 right-3 min-w-[20px] h-5 px-1.5 rounded-full bg-sky-500 text-white text-[10px] font-bold flex items-center justify-center shadow z-10">
-                  {a.unread > 99 ? '99+' : a.unread}
-                </span>
-              )}
+              {/* 右上角：hover 显示的操作菜单入口 */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenu({ author: a, x: e.clientX, y: e.clientY });
+                }}
+                className="absolute top-2.5 right-2.5 w-7 h-7 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-all cursor-pointer z-10"
+                title="更多操作"
+              >
+                <MoreVertical className="w-4 h-4" />
+              </button>
               <div className="flex items-start gap-3">
-                <FollowAvatar
-                  secUid={a.sec_uid}
-                  nickname={a.nickname}
-                  className="w-12 h-12 rounded-full ring-2 ring-slate-100 dark:ring-slate-800"
-                />
+                <div className="relative shrink-0">
+                  <FollowAvatar
+                    secUid={a.sec_uid}
+                    nickname={a.nickname}
+                    className="w-12 h-12 rounded-full ring-2 ring-slate-100 dark:ring-slate-800"
+                  />
+                  {/* 未读作品数角标：挂在头像右上角 */}
+                  {!!a.unread && (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-sky-500 text-white text-[10px] font-bold flex items-center justify-center shadow z-10 ring-2 ring-white dark:ring-[#161B26]">
+                      {a.unread > 99 ? '99+' : a.unread}
+                    </span>
+                  )}
+                </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     <h3 className="text-sm font-bold text-slate-900 dark:text-white truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
@@ -203,23 +261,59 @@ export const FollowsView: React.FC<FollowsViewProps> = ({ accounts, showToast, s
                   <Tag className="w-3 h-3" />
                   {a.group_name || '设置分组'}
                 </button>
-                <span className="text-[10px] text-slate-400">
-                  {a.last_synced_at ? `同步于 ${fmtDate(a.last_synced_at)}` : '尚未同步'}
-                </span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    removeAuthor(a);
-                  }}
-                  className="w-6 h-6 rounded-full flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
-                  title="取消特别关注"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-slate-400">
+                    {a.last_synced_at ? `同步于 ${fmtDate(a.last_synced_at)}` : '尚未同步'}
+                  </span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      syncAuthor(a);
+                    }}
+                    disabled={syncingUid === a.sec_uid}
+                    className="w-6 h-6 rounded-full flex items-center justify-center text-slate-300 hover:text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-950/40 transition-colors cursor-pointer disabled:cursor-default disabled:text-sky-500"
+                    title="同步该博主最新作品"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${syncingUid === a.sec_uid ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
               </div>
             </motion.div>
             );
           })}
+        </div>
+      )}
+
+      {/* 卡片操作菜单：右上角 dots 与卡片右键共用，fixed 定位到事件坐标 */}
+      {menu && (
+        <div
+          ref={menuRef}
+          style={{
+            left: Math.min(menu.x, window.innerWidth - 140),
+            top: Math.min(menu.y, window.innerHeight - 110),
+          }}
+          className="fixed z-50 w-32 py-1 bg-white dark:bg-[#161B26] rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 anim-modal-enter"
+        >
+          <button
+            onClick={() => {
+              setGroupEditUid(menu.author);
+              setMenu(null);
+            }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+            编辑
+          </button>
+          <button
+            onClick={() => {
+              setMenu(null);
+              removeAuthor(menu.author);
+            }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            删除
+          </button>
         </div>
       )}
 

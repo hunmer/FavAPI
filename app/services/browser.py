@@ -105,7 +105,7 @@ def open_tab(profile_path: str, url: str) -> dict | None:
 _shared_pages: dict[str, dict] = {}
 
 
-def _launch_options(profile_path: str, headless: bool, proxy) -> dict:
+def _launch_options(profile_path: str, headless: bool, proxy, user_agent=None) -> dict:
     path = Path(profile_path)
     path.mkdir(parents=True, exist_ok=True)
     options = {
@@ -117,6 +117,11 @@ def _launch_options(profile_path: str, headless: bool, proxy) -> dict:
         "viewport": {"width": 1280, "height": 860},
         "args": ["--disable-blink-features=AutomationControlled"],
     }
+    # headless 下 UA 带 HeadlessChrome 标记且 Web Worker 里改不掉（站点 SDK 在
+    # Worker 里采集环境做签名，会被风控识别）；user_agent 经 CDP
+    # setUserAgentOverride 同时覆盖主世界与 Worker，传入正常 UA 即可隐藏
+    if user_agent:
+        options["user_agent"] = user_agent
     if proxy:
         options["proxy"] = {"server": proxy} if isinstance(proxy, str) else proxy
     return options
@@ -154,14 +159,14 @@ def _schedule_shared_close(key: str, ttl: float) -> None:
 @asynccontextmanager
 async def shared_page(profile_path: str, url: str, *, headless: bool = False,
                       proxy: dict | str | None = None, idle_ttl: float = 30.0,
-                      init=None):
+                      user_agent: str | None = None, init=None):
     """获取/创建常驻共享页面（同 profile 复用同一 Chromium 实例），空闲 idle_ttl 秒后自动关闭。
 
     适用于「高频单页请求但签名需真实页面上下文」的场景（TikTok follows 页面
     通道）：避免每次请求冷启动浏览器（既是延迟也是风控扣分来源）。
     init(page) 仅在实例创建时执行一次（等签名 SDK / 校验登录态），返回值缓存到
     entry["state"]，与 page 一起以 (page, state) yield；init 抛异常时实例立即
-    销毁并向上抛。
+    销毁并向上抛。user_agent 覆盖主世界与 Worker 的 UA（headless 隐藏用）。
 
     与 session() 共用同一把 profile 锁：实例存活期间锁由池持有，其他 session()
     调用排队等待（池空闲关闭后放行）；同一 page 的并发使用经 use_lock 串行化。
@@ -187,7 +192,7 @@ async def shared_page(profile_path: str, url: str, *, headless: bool = False,
         async with _semaphore:
             pw = await async_playwright().start()
             context = await pw.chromium.launch_persistent_context(
-                **_launch_options(profile_path, headless, proxy))
+                **_launch_options(profile_path, headless, proxy, user_agent))
             context.set_default_timeout(config.PAGE_TIMEOUT)
             page = await context.new_page()
             await page.goto(url, wait_until="commit", timeout=config.PAGE_TIMEOUT)

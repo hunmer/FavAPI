@@ -21,12 +21,13 @@ npm run clean     # rm -rf dist
 
 ## 代码风格
 
-- 组件按功能域分目录（Accounts/Dashboard/Data/Tasks/Schedule/Downloads/Settings），账号详情子组件在 `Accounts/AccountDetail/`。
+- 组件按功能域分目录（Accounts/Dashboard/Data/Follows/Tasks/Schedule/Downloads/Settings），账号详情子组件在 `Accounts/AccountDetail/`。
 - 后端 snake_case → UI camelCase 的转换只发生在 `api.ts` 的 `to*` 映射函数；组件只消费 UI 类型（types.ts）。
+- 全局确认/提示一律用 `AlertDialog.tsx` 的 `await confirmDialog()/alertDialog()`，禁止原生 `alert`/`window.confirm`（Host 已挂 App 根部）。
 - 样式：Tailwind 4 工具类为主；动效用 `motion`（lucide-react 图标）；入场动效 class（card-enter 等）见 index.css，尊重 prefers-reduced-motion。
 - 弹出菜单/浮层的点击外部关闭统一用 `hooks/useDismiss.ts`（window 捕获阶段监听），不要各写各的。
-- 下拉选择用 `DropdownSelect`，不用原生 select。
-- localStorage 持久化偏好：theme、fullPage、平台操作表单值（键名见各组件）。
+- 下拉选择用 `DropdownSelect`，不用原生 select；视图切换（grid/waterfall/list）用 `ViewModeSwitch` + `readViewMode(storageKey)`。
+- localStorage 持久化偏好：theme、fullPage、视图模式、过滤条件、平台操作表单值（键名见各组件）。
 
 ## 禁止 / 注意事项
 

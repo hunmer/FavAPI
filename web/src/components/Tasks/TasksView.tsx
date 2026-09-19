@@ -16,6 +16,7 @@ import {
   Terminal,
   Trash2,
 } from 'lucide-react';
+import { confirmDialog } from '../AlertDialog';
 
 interface TasksViewProps {
   tasks: TaskRecord[];
@@ -68,9 +69,16 @@ export const TasksView: React.FC<TasksViewProps> = ({
           </button>
           <button
             type="button"
-            onClick={() => {
+            onClick={async () => {
               if (tasks.length === 0) return;
-              if (window.confirm('确定要清空全部任务记录吗？此操作不可恢复。')) {
+              if (
+                await confirmDialog({
+                  title: '清空任务记录',
+                  message: '确定要清空全部任务记录吗？此操作不可恢复。',
+                  confirmText: '清空',
+                  danger: true,
+                })
+              ) {
                 onClearRecords();
               }
             }}

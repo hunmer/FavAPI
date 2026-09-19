@@ -11,6 +11,7 @@ import { BrowserItemsDeleteModal, BrowserSingleDeleteModal } from './BrowserDele
 import { AiTaggingModal } from './AiTaggingModal';
 import { useAiTagging } from './useAiTagging';
 import { ViewMode, readViewMode } from '../ViewModeSwitch';
+import { alertDialog } from '../AlertDialog';
 import * as api from '../../api';
 import { useSearchParams } from 'react-router-dom';
 
@@ -213,7 +214,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
       setDeleteConfirm(null);
       handleRefresh();  // 刷新列表 / 标签统计 / 分组
     } catch (err: any) {
-      alert(`标签删除失败：${err?.message || '未知错误'}`);
+      await alertDialog({ title: '标签删除失败', message: err?.message || '未知错误' });
     } finally {
       setTagDeleting(false);
     }
@@ -234,7 +235,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
       setEditingGroup(null);
       handleRefresh();
     } catch (err: any) {
-      alert(`分组重命名失败：${err?.message || '未知错误'}`);
+      await alertDialog({ title: '分组重命名失败', message: err?.message || '未知错误' });
     } finally {
       setGroupSaving(false);
     }
@@ -250,7 +251,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
       setNewGroupTags([]);
       handleRefresh();
     } catch (err: any) {
-      alert(`分组创建失败：${err?.message || '未知错误'}`);
+      await alertDialog({ title: '分组创建失败', message: err?.message || '未知错误' });
     } finally {
       setGroupSaving(false);
     }
@@ -302,7 +303,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
       exitSelectionMode();
       handleRefresh();  // 刷新列表 / 标签统计 / 分组
     } catch (err: any) {
-      alert(`批量删除失败：${err?.message || '未知错误'}`);
+      await alertDialog({ title: '批量删除失败', message: err?.message || '未知错误' });
     } finally {
       setItemsDeleting(false);
     }
@@ -427,7 +428,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
       setSingleDelete(null);
       handleRefresh();
     } catch (err: any) {
-      alert(`删除失败：${err?.message || '未知错误'}`);
+      await alertDialog({ title: '删除失败', message: err?.message || '未知错误' });
     } finally {
       setSingleDeleting(false);
     }

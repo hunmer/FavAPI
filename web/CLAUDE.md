@@ -1,6 +1,6 @@
 # web — FavAPI 管理控制台（React SPA）
 
-FavAPI 的前端单页应用：React 19 + Vite 6 + TypeScript 5.8 + Tailwind 4，无状态管理库。覆盖账号管理、扫码登录、手动抓取（SSE 流式/异步轮询）、平台写操作、收藏数据浏览与 AI 打标、定时调度、下载队列、系统设置 7 个页面视图。所有数据来自后端 `/api/v1`：dev 在 3000 端口经 Vite 代理，生产构建产物 `dist/` 由 FastAPI 直接托管。
+FavAPI 的前端单页应用：React 19 + Vite 6 + TypeScript 5.8 + Tailwind 4，无状态管理库。覆盖仪表盘、账号管理（扫码登录/平台写操作）、收藏数据浏览与 AI 打标、**特别关注**（博主列表/作者主页三视图/播放弹窗/一键同步）、任务监控、定时调度、下载队列、系统设置 8 个页面视图。所有数据来自后端 `/api/v1`：dev 在 3000 端口经 Vite 代理，生产构建产物 `dist/` 由 FastAPI 直接托管。
 
 ## 约定的规则
 
@@ -8,6 +8,8 @@ FavAPI 的前端单页应用：React 19 + Vite 6 + TypeScript 5.8 + Tailwind 4�
 - 改前端后要出现在 8300 页面必须重新 build，刷新浏览器无效。
 - snake_case → camelCase 转换只写在 `api.ts` 的 `to*` 映射，组件只消费 `types.ts` 的 UI 类型。
 - 平台操作表单/按钮由后端 `GET /platforms` 动态渲染，前端不硬编码平台能力。
+- 全局 Alert/Confirm 用 `AlertDialog.tsx`（`await confirmDialog/alertDialog`），不用原生 `alert`/`window.confirm`。
+- 浮层点击外部关闭统一 `hooks/useDismiss.ts`；视图切换（grid/waterfall/list）统一 `ViewModeSwitch`。
 - 用 HashRouter（后端无 SPA 回退路由），勿改 BrowserRouter。
 - 无测试/ESLint；至少跑 `npm run lint`。双锁文件并存，别混用包管理器。
 
@@ -30,7 +32,7 @@ FavAPI 的前端单页应用：React 19 + Vite 6 + TypeScript 5.8 + Tailwind 4�
 
 ## 扫描状态
 
-- 更新时间：2026-09-17 22:36（首次生成）。
-- 已扫描：全部约 50 个 ts/tsx 源文件与构建配置（经探索代理结构性阅读）。
+- 更新时间：2026-09-19 13:44（第二次运行，增量更新）。
+- 已扫描：全部 63 个 ts/tsx 源文件（两个探索代理累计）；本次重点补扫 Follows 7 组件族、Data 12 组件拆分、未提交 diff（AlertDialog/Header/App/FollowsView）。
 - 跳过：`node_modules/`、`dist/`、锁文件内容。
-- 下一步建议：`Data/DataBrowserView.tsx`（≈1990 行）与 `App.tsx`（≈830 行）仅结构性阅读，拆分重构前建议深挖。
+- 下一步建议：`Settings/SettingsView.tsx`（≈1025 行，全仓第一大）与 `App.tsx`（≈885 行）仍仅结构性阅读，拆分前建议深挖；Accounts/AccountDetail/ 13 文件未逐行审。

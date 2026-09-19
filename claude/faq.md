@@ -27,6 +27,12 @@ favorites 表以 (account, platform, content_id, fav_media_id) 唯一，同一�
 **Q: 新平台不想写 Python 怎么办？**
 根 `platforms/<name>/platform.json` 声明式配置（拦截 URL、字段路径映射、滚动参数），`POST /api/v1/platforms/reload` 热加载。需要登录后才能抓的记得配 login_cookies。
 
+**Q: Instagram 抓取报挑战/302 循环？**
+Instagram 连续 20+ 混合请求会触发会话挑战（`InstagramChallengeError`），且必须代理出网（env → Windows 注册表回退解析）。等待冷却后减少请求频率；节流参数在 `app/platforms/instagram/constants.py`。它没有浏览器抓取实现，只有 API 直连。
+
+**Q: 特别关注的头像/封面/视频加载失败？**
+头像走本地化（`/follows/authors/{sec_uid}/avatar`），封面本地文件缺失时 307 跳 `/follows/media` CDN 代理。代理按域注入 UA/referer/cookie/代理（`follow_store.MEDIA_HOST_SUFFIXES` 白名单），域不在白名单会失败——新平台 CDN 域要加进 `follow_store.py`。
+
 **Q: 下载任务一直 pending？**
 download_worker 每 2s 扫描、并发默认 1（settings 可调 1–3）。确认 yt-dlp/videodl 已安装；B 站等需 cookie 的平台依赖账号 cookie 快照（抓取后自动刷新，也可手动 GET /accounts/{id}/cookies）。
 

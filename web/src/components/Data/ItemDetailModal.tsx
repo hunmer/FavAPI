@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { ScrapedItem } from '../../types';
 import * as api from '../../api';
 import { DownloaderId } from '../../api';
+import { alertDialog } from '../AlertDialog';
 import { ExternalLink, X, Pencil, Plus, CheckCircle2, Download, Loader2 } from 'lucide-react';
 
 interface ItemDetailModalProps {
@@ -57,7 +58,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose,
       });
       setAdded(true);
     } catch (err: any) {
-      alert(`加入下载队列失败：${err?.message || '未知错误'}`);
+      await alertDialog({ title: '加入下载队列失败', message: err?.message || '未知错误' });
     } finally {
       setAdding(false);
     }
@@ -84,7 +85,7 @@ export const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, onClose,
       await onSaveTags(draftTags);
       setEditing(false);
     } catch (err: any) {
-      alert(`标签保存失败：${err?.message || '未知错误'}`);
+      await alertDialog({ title: '标签保存失败', message: err?.message || '未知错误' });
     } finally {
       setSaving(false);
     }

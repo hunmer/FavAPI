@@ -54,7 +54,7 @@ export const FollowsSyncButton: React.FC<FollowsSyncButtonProps> = ({ showToast,
 
   const label = syncing
     ? `更新中 ${progress!.done}/${progress!.total || '?'} · 新增 ${progress!.newCount}`
-    : '一键更新最新视频';
+    : '更新';
 
   return (
     <button

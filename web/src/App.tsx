@@ -28,6 +28,7 @@ import { NewDownloadModal } from './components/Downloads/NewDownloadModal';
 import { SettingsView } from './components/Settings/SettingsView';
 import { CheckCircle2, AlertCircle, Download as DownloadIcon, Info } from 'lucide-react';
 import { DevInspector } from './components/DevInspector';
+import { AlertDialogHost } from './components/AlertDialog';
 import { AnimatePresence, motion } from 'motion/react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
@@ -675,7 +676,6 @@ export function App() {
         <div className="flex-1 flex flex-col min-w-0 bg-[#F8FAFC] dark:bg-[#0D1117]">
           <Header
             activeTab={activeTab}
-            onOpenCreateAccount={() => setIsCreateModalOpen(true)}
             runningFetch={runningFetch}
             // 页面专属操作：特别关注页注入一键更新；下载页注入新建下载
             actions={
@@ -876,6 +876,9 @@ export function App() {
           onClose={() => setNewDownloadOpen(false)}
         />
       )}
+
+      {/* 全局 Alert / Confirm 弹窗（命令式调用渲染出口） */}
+      <AlertDialogHost />
 
       {/* Dev 元素定位器（仅开发模式渲染） */}
       <DevInspector />

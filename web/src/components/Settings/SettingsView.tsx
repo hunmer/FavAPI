@@ -22,10 +22,13 @@ import {
   Maximize2,
   Frame,
   ImageDown,
-  RotateCcw
+  RotateCcw,
+  Check
 } from 'lucide-react';
 import { AgentConfigRow, AgentTestResult, backfillCovers, clearAllFavorites, clearDownloadLogs, CoverStatus, DownloaderId, DOWNLOAD_QUALITIES, ToolchainStatus, fetchAppSettings, fetchCoverStatus, fetchToolchain, qualityLabel, updateAppSettings, uploadAvatar } from '../../api';
+import { applyPrimaryColor, PRIMARY_PRESETS, readPrimaryColorId } from '../../primaryColor';
 import { TerminalDialog } from '../TerminalDialog';
+import { confirmDialog } from '../AlertDialog';
 
 interface SettingsViewProps {
   onShowToast: (msg: string, type?: 'success' | 'info' | 'error') => void;
@@ -74,6 +77,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [aria2RpcPort, setAria2RpcPort] = useState(6800);
   const [aria2Connections, setAria2Connections] = useState(8);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  // 主题色：primaryColor.ts 内联覆盖 <html> 上的 --color-indigo-* 实现全局换色
+  const [primaryId, setPrimaryId] = useState(readPrimaryColorId);
   // loaded 之前的 state 变化来自初始加载，不触发自动保存
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   // 加载完成时的基线快照：当前值与基线一致视为无修改，跳过自动保存
@@ -197,7 +202,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [clearingLogs, setClearingLogs] = useState(false);
 
   const handleClearLogs = async () => {
-    if (!window.confirm('确定清空全部下载日志？该操作不可恢复（运行中任务的日志保留）。')) return;
+    if (
+      !(await confirmDialog({
+        title: '清空下载日志',
+        message: '该操作不可恢复（运行中任务的日志保留）。',
+        confirmText: '清空',
+        danger: true,
+      }))
+    ) return;
     setClearingLogs(true);
     try {
       const { deleted } = await clearDownloadLogs();
@@ -213,7 +225,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [resettingFavs, setResettingFavs] = useState(false);
 
   const handleResetFavorites = async () => {
-    if (!window.confirm(`确定重置收藏夹？将删除本地库全部 ${totalItemsCount} 条收藏及对应内容记录（含 AI 标签），平台云端收藏不受影响，该操作不可恢复。`)) return;
+    if (
+      !(await confirmDialog({
+        title: '重置收藏夹',
+        message: `将删除本地库全部 ${totalItemsCount} 条收藏及对应内容记录（含 AI 标签），平台云端收藏不受影响，该操作不可恢复。`,
+        confirmText: '重置',
+        danger: true,
+      }))
+    ) return;
     setResettingFavs(true);
     try {
       const { deleted, contents_deleted, covers_deleted } = await clearAllFavorites();
@@ -404,6 +423,41 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 <Moon className="w-3.5 h-3.5 text-sky-400" />
                 暗色模式
               </button>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-4 border-t border-slate-50 dark:border-slate-800/80">
+            <div>
+              <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">主题色</div>
+              <div className="text-[11px] text-slate-400">自定义全局按钮、链接与高亮色，点击即时生效并记忆</div>
+            </div>
+
+            <div className="flex items-center gap-2.5">
+              {PRIMARY_PRESETS.map((p) => {
+                const active = p.id === primaryId;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    title={p.name}
+                    aria-label={`主题色：${p.name}`}
+                    onClick={() => {
+                      if (active) return;
+                      setPrimaryId(p.id);
+                      applyPrimaryColor(p.id);
+                      onShowToast(`主题色已切换为「${p.name}」`, 'info');
+                    }}
+                    className={`w-7 h-7 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+                      active
+                        ? 'ring-2 ring-offset-2 ring-slate-300 dark:ring-slate-500 dark:ring-offset-[#161B26] scale-110'
+                        : 'ring-1 ring-slate-200 dark:ring-slate-700 hover:scale-110'
+                    }`}
+                    style={{ backgroundColor: p.shades['600'] }}
+                  >
+                    {active && <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
