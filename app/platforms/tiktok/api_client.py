@@ -17,7 +17,11 @@ TikTok Web 列表接口 2026-09 逆向结论（用户抓包 + curl_cffi 消融�
   （X-Gnarly 与完整 query 绑定，改任一参数即空响应），不可直连；改走帖子页
   HTML 的 SSR 段 webapp.video-detail（公开访客可见），图文帖必须用 /video/
   路径访问才有该段；视频 CDN 直链需页面会话 cookie（tt_chain_token），
-  v16 主机对部分出口 IP 403、v19 可用（见 fetch_post_detail）。
+  v16 主机对部分出口 IP 403、v19 可用（见 fetch_post_detail）；
+- follows 两接口（/api/post/item_list/ 博主作品、/api/user/list/ 关注列表）
+  同样有签名强校验，但强校验对象是 X-Dynosaur（与 query 逐字绑定，缺失或改
+  cursor 即空响应），直连不可行；webmssdk hook 了页面主世界的 window.fetch
+  自动加签，走页面通道（*_via_page 系列，见文件末尾）。
 
 列表接口都要求 secUid 入参：无 cookie 可得（TikTok 不写 secUid cookie），
 在登录后由 adapter.refresh_profile 从个人主页 HTML 提取并回填账号 extra，
@@ -27,6 +31,7 @@ tiktok.com 在部分网络环境需代理：与声明式平台同策略解析（
 注册表），浏览器会话与直连共用。
 """
 import asyncio
+import json
 import logging
 import os
 import re
@@ -41,6 +46,7 @@ from .parser import (
     parse_download_links,
     parse_item_detail_html,
     parse_item_list,
+    parse_following_list,
     parse_user_detail_html,
 )
 from ..base import LoginExpiredError
@@ -367,3 +373,211 @@ def resolve_self_sec_uid(cookie_header: str) -> str | None:
         return None
     match = _SEC_UID_PATTERN.search(response.text)
     return match.group(1) if match else None
+
+
+# ---------------------------------------------------------------------------
+# follows 页面通道：博主发布作品 / 当前账号关注列表
+#
+# 2026-09 逆向结论（抓包重放 + 消融实验）：/api/post/item_list/ 与 /api/user/list/
+# 对 X-Dynosaur 签名强校验且与 query 逐字绑定（缺失或改任一参数值 → HTTP 200 空响应），
+# 与 /api/item/detail 的 X-Gnarly 同款策略，curl_cffi 直连不可行；
+# webmssdk 会 hook 页面主世界的 window.fetch 自动加签（X-Gnarly/X-Dynosaur 在请求头），
+# 与抖音写接口同款页面通道：起一次 Chromium，页面内 fetch 翻页，一次会话拉全量。
+# playwright 的 page.evaluate 恰好运行在主世界（非 CDP isolated world），能用到 hook。
+#
+# ⚠️ 必须有头（headless=False）：TikTok 风控对 headless 环境的签名请求持续空响应
+# （实测 8 连拒、充分等待无效），有头偶发首次空响应、同页重发即过（签名会重新
+# 生成），_page_fetch_json 内置重试。
+# ---------------------------------------------------------------------------
+
+_PAGE_FETCH_JS = """async (payload) => {
+    const r = await fetch(payload.path + '?' + payload.query, {credentials: 'include'});
+    return await r.text();
+}"""
+
+# hook 生效判据：包装后的 fetch 源码含签名字段（实测含 "pubKey"），原始 fetch 为 native code
+_FETCH_HOOK_READY_JS = (
+    "() => String(window.fetch).includes('pubKey') "
+    "|| !String(window.fetch).includes('[native code]')"
+)
+
+# 页面内单条请求的空响应重试次数（有头偶发首拒，重发即过）
+_PAGE_FETCH_RETRIES = 3
+_PAGE_FETCH_RETRY_INTERVAL_SEC = 1.5
+
+
+async def _open_fetch_page(ctx):
+    """打开 foryou 页并等待 webmssdk 的 fetch hook 生效，返回 (page, self_uid)。
+
+    先经 common-app-context 校验页面登录态（follows 两接口都要求登录态），
+    失效抛 LoginExpiredError。self_uid 即 odinId（登录后两者同值，作 query 参数）。
+    """
+    from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+
+    page = await ctx.new_page()
+    await page.goto(constants.FETCH_PAGE_URL, wait_until="commit", timeout=60000)
+    try:
+        await page.wait_for_function(_FETCH_HOOK_READY_JS, timeout=20000)
+        text = await page.evaluate(
+            _PAGE_FETCH_JS, {"path": "/node-webapp/api/common-app-context", "query": ""})
+        user = (json.loads(text) if text and text.strip() else {}).get("user") or {}
+    except (PlaywrightTimeoutError, json.JSONDecodeError, ValueError):
+        await page.close()
+        raise RuntimeError("TikTok 签名 SDK（webmssdk fetch hook）未初始化，页面加载异常")
+    if not user.get("secUid"):
+        await page.close()
+        raise LoginExpiredError("TikTok 登录态失效（页面会话未登录），请重新登录")
+    return page, str(user.get("uid") or "")
+
+
+async def _page_fetch_json(page, api_path: str, params: dict, api: str) -> dict:
+    """页面内发一条列表请求并校验（签名由 webmssdk fetch hook 自动附加）。
+
+    空响应（风控软拦截）时同页重发，重试 _PAGE_FETCH_RETRIES 次。
+    """
+    text = ""
+    for attempt in range(1, _PAGE_FETCH_RETRIES + 1):
+        text = await page.evaluate(
+            _PAGE_FETCH_JS, {"path": api_path, "query": urlencode(params)})
+        if text and text.strip():
+            break
+        logger.warning("%s 页面请求空响应（第 %d/%d 次）", api, attempt, _PAGE_FETCH_RETRIES)
+        if attempt < _PAGE_FETCH_RETRIES:
+            await asyncio.sleep(_PAGE_FETCH_RETRY_INTERVAL_SEC)
+    if not text or not text.strip():
+        raise RuntimeError(f"TikTok 页面请求返回空响应（{api}，疑似风控拦截）")
+    data = json.loads(text)
+    if data.get("status_code") == 8 or data.get("status_msg") == "Login expired":
+        raise LoginExpiredError("TikTok 登录态失效（会话被拒绝），请重新登录")
+    status_code = data.get("statusCode")
+    if status_code not in (0, None):
+        raise RuntimeError(f"{api} 返回错误 statusCode={status_code}")
+    return data
+
+
+def _post_list_params(sec_uid: str, odin_id: str, cursor: int, count: int) -> dict:
+    """博主作品列表 query：浏览器公共参数 + secUid/毫秒游标。"""
+    return {
+        **_QUERY_PARAMS,
+        "secUid": sec_uid,
+        "odinId": odin_id,
+        "count": count,
+        "cursor": cursor,
+        "referer": constants.HOMEPAGE + "/",
+        "root_referer": constants.HOMEPAGE + "/",
+    }
+
+
+def _user_list_params(sec_uid: str, odin_id: str, max_cursor: int, count: int) -> dict:
+    """关注列表 query：公共参数去掉作品列表专属位 + secUid/秒级游标。"""
+    params = {
+        k: v for k, v in _QUERY_PARAMS.items()
+        if k not in ("coverFormat", "needPinnedItemIds", "post_item_list_request_type")
+    }
+    return {
+        **params,
+        "secUid": sec_uid,
+        "odinId": odin_id,
+        "count": count,
+        "maxCursor": max_cursor,
+        "minCursor": 0,
+        "scene": 21,
+        "from_page": "user",
+        "referer": constants.HOMEPAGE + "/",
+        "root_referer": constants.HOMEPAGE + "/",
+    }
+
+
+async def fetch_post_page_via_page(profile_path: str, sec_uid: str, cursor: int = 0,
+                                   count: int = constants.API_PAGE_COUNT) -> dict:
+    """页面通道拉取一页博主发布作品（同步阻塞语义，浏览场景单页翻页用）。
+
+    返回 parse_item_list 的结果 {items, cursor, has_more, total}；
+    cursor 为毫秒时间戳（首页传 0，响应值供下一页入参）。
+    """
+    async with browser.session(profile_path, headless=False, proxy=resolve_proxy()) as ctx:
+        page, odin_id = await _open_fetch_page(ctx)
+        try:
+            data = await _page_fetch_json(
+                page, constants.POST_LIST_PATH,
+                _post_list_params(sec_uid, odin_id, cursor, count), "post/item_list")
+            return parse_item_list(data)
+        finally:
+            await page.close()
+
+
+async def fetch_post_via_page(profile_path: str, sec_uid: str, count: int = 0,
+                              on_batch=None):
+    """页面通道按毫秒游标翻页拉取博主发布作品，直到取满 count（0=全部）或 hasMore=false。
+
+    单次浏览器会话内完成全部翻页；返回 (全部 items, 最后一批的 has_more)。
+    """
+    async with browser.session(profile_path, headless=False, proxy=resolve_proxy()) as ctx:
+        page, odin_id = await _open_fetch_page(ctx)
+        try:
+            cursor = 0
+            collected: list[dict] = []
+            page_no = 0
+            while True:
+                data = await _page_fetch_json(
+                    page, constants.POST_LIST_PATH,
+                    _post_list_params(sec_uid, odin_id, cursor, constants.API_PAGE_COUNT),
+                    "post/item_list")
+                batch = parse_item_list(data)
+                page_no += 1
+                collected.extend(batch["items"])
+                logger.info(
+                    "post(via page) 第 %d 页：%d 条，累计 %d，hasMore=%s",
+                    page_no, len(batch["items"]), len(collected), batch["has_more"],
+                )
+                if on_batch and batch["items"]:
+                    await on_batch({"page": page_no, "items": batch["items"]})
+                if not batch["has_more"] or not batch["cursor"]:
+                    return collected, False
+                if count and len(collected) >= count:
+                    return collected, True
+                cursor = batch["cursor"]
+                await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
+        finally:
+            await page.close()
+
+
+async def fetch_following_via_page(profile_path: str, sec_uid: str, count: int = 0,
+                                   on_batch=None):
+    """页面通道翻页拉取当前账号关注列表，直到取满 count（0=全部）或 hasMore=false。
+
+    翻页：首页 maxCursor=0，下一页传上一页响应的 minCursor（秒级时间戳）；
+    返回 (全部 followings, 最后一批的 has_more)。
+    """
+    async with browser.session(profile_path, headless=False, proxy=resolve_proxy()) as ctx:
+        page, odin_id = await _open_fetch_page(ctx)
+        try:
+            max_cursor = 0
+            collected: list[dict] = []
+            page_no = 0
+            while True:
+                data = await _page_fetch_json(
+                    page, constants.FOLLOWING_LIST_PATH,
+                    _user_list_params(sec_uid, odin_id, max_cursor,
+                                      constants.FOLLOWING_PAGE_COUNT),
+                    "user/list")
+                batch = parse_following_list(data)
+                page_no += 1
+                collected.extend(batch["followings"])
+                logger.info(
+                    "following(via page) 第 %d 页：%d 条，累计 %d，hasMore=%s",
+                    page_no, len(batch["followings"]), len(collected), batch["has_more"],
+                )
+                if on_batch and batch["followings"]:
+                    await on_batch({"page": page_no, "followings": batch["followings"]})
+                if not batch["has_more"] or not batch["followings"]:
+                    return collected, False
+                if count and len(collected) >= count:
+                    return collected, True
+                next_cursor = batch["cursor"]
+                if not next_cursor or next_cursor == max_cursor:
+                    return collected, False  # 游标未推进，防御死循环
+                max_cursor = next_cursor
+                await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
+        finally:
+            await page.close()

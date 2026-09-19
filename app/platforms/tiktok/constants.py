@@ -15,6 +15,16 @@ APP_CONTEXT_URL = "https://www.tiktok.com/node-webapp/api/common-app-context"
 # 帖子详情数据源：帖子页 HTML 的 SSR 段（webapp.video-detail，公开访客可见）。
 # URL 中 handle 不参与定位（占位即可）；图文帖必须用 /video/ 路径才有 SSR 详情。
 POST_DETAIL_URL = "https://www.tiktok.com/@tiktok/video/{item_id}"
+# 博主发布作品（follows；对 X-Dynosaur 签名强校验，仅页面通道可访问，见 api_client）
+POST_LIST_URL = "https://www.tiktok.com/api/post/item_list/"
+POST_LIST_PATH = "/api/post/item_list/"
+# 当前账号关注列表（follows；需登录态，同样仅页面通道可访问）
+FOLLOWING_LIST_URL = "https://www.tiktok.com/api/user/list/"
+FOLLOWING_LIST_PATH = "/api/user/list/"
+# 页面通道入口页（webmssdk 在任意 tiktok.com 页面加载后 hook window.fetch）
+FETCH_PAGE_URL = "https://www.tiktok.com/foryou"
+
+FOLLOWING_PAGE_COUNT = 30        # 关注列表单页条数（与浏览器一致）
 
 # 判定 API 直连登录态的 cookie
 LOGIN_COOKIE_KEYS = ("sessionid",)

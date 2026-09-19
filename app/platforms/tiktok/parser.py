@@ -59,7 +59,7 @@ def parse_item(item: dict) -> dict:
 
 
 def parse_item_list(data: dict) -> dict:
-    """favorite / collect 列表响应 JSON → {items, cursor, has_more, total}。
+    """favorite / collect / post 列表响应 JSON → {items, cursor, has_more, total}。
 
     cursor 为毫秒时间戳（首页传 0），作为下一页入参原样回传。
     """
@@ -68,6 +68,37 @@ def parse_item_list(data: dict) -> dict:
     return {
         "items": items,
         "cursor": _as_int(data.get("cursor")),
+        "has_more": bool(data.get("hasMore")),
+        "total": _as_int(data.get("total")) or 0,
+    }
+
+
+def parse_following_list(data: dict) -> dict:
+    """user/list（关注列表）响应 JSON → {followings, cursor, has_more, total}。
+
+    条目结构对齐 follows 契约的统一 followings 行；cursor 取响应 minCursor
+    （秒级时间戳 = 本页最旧一条的关注时间，作为下一页 maxCursor 入参）。
+    """
+    followings = []
+    for entry in data.get("userList") or []:
+        user = entry.get("user") or {}
+        if not user.get("secUid"):
+            continue
+        stats = entry.get("stats") or {}
+        followings.append({
+            "sec_uid": user.get("secUid"),
+            "uid": str(user.get("id") or ""),
+            "unique_id": user.get("uniqueId"),
+            "nickname": user.get("nickname"),
+            "signature": user.get("signature"),
+            "avatar_url": user.get("avatarLarger") or user.get("avatarMedium"),
+            "follower_count": _as_int(stats.get("followerCount")),
+            "aweme_count": _as_int(stats.get("videoCount")),
+            "is_top": None,
+        })
+    return {
+        "followings": followings,
+        "cursor": _as_int(data.get("minCursor")),
         "has_more": bool(data.get("hasMore")),
         "total": _as_int(data.get("total")) or 0,
     }
