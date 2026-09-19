@@ -1121,8 +1121,9 @@ export interface PlayInfo {
   statistics: Record<string, number | null>;
   author: { nickname?: string | null; sec_uid?: string | null };
   video_urls: string[];
-  images: { url: string; width: number; height: number }[];
+  images: { url: string; width?: number; height?: number }[];
   music_url?: string | null;  // 图文作品的背景音乐直链
+  iframe_url?: string | null; // 平台官方嵌入播放页（YouTube：直链绑定会话不可独立访问）
 }
 
 export interface FollowSyncResult {

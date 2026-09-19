@@ -23,6 +23,7 @@ from app.services.follow_store import (
     avatar_local_path,
     download_avatar,
     is_allowed_media_url,
+    media_proxy,
     media_referer,
     upgrade_media_url,
 )
@@ -508,7 +509,8 @@ def proxy_media(url: str, request: Request):
         headers["range"] = range_header
     try:
         upstream = curl_requests.get(
-            url, headers=headers, impersonate="chrome", stream=True, timeout=60
+            url, headers=headers, impersonate="chrome", stream=True, timeout=60,
+            proxy=media_proxy(url),
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"媒体拉取失败：{exc}")

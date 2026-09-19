@@ -106,7 +106,7 @@ export const PlayerModal: React.FC<PlayerModalProps> = ({
         <div className="flex items-start justify-between gap-3 px-5 py-3.5 border-b border-slate-800/80 shrink-0">
           <div className="min-w-0">
             <p className="text-sm font-bold text-white truncate">
-              {info?.desc?.splitlines?.()[0] || info?.desc || fallbackTitle || `作品 ${awemeId}`}
+              {info?.desc?.split('\n')[0] || info?.desc || fallbackTitle || `作品 ${awemeId}`}
             </p>
             {info?.author?.nickname && (
               <p className="text-[11px] text-slate-400 mt-0.5">@{info.author.nickname}</p>
@@ -173,6 +173,16 @@ export const PlayerModal: React.FC<PlayerModalProps> = ({
                 </>
               )}
             </div>
+          ) : info.iframe_url ? (
+            /* 平台官方嵌入播放（YouTube：直链绑定会话不可独立访问） */
+            <iframe
+              key={info.aweme_id}
+              src={info.iframe_url}
+              title={info.desc || `作品 ${info.aweme_id}`}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+              className="w-full aspect-video max-h-[70vh] rounded-xl bg-black"
+            />
           ) : (
             /* 视频：直链经后端代理播放（支持拖动进度） */
             <video

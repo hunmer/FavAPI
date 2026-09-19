@@ -27,7 +27,12 @@ MEDIA_HOST_SUFFIXES = (
     "kwimgs.com", "yximgs.com", "kwaicdn.com", "ndcimgs.com",
     "xhscdn.com",
     "cdninstagram.com",
+    # YouTube 系 CDN（i.ytimg.com 封面、yt3.googleusercontent.com / yt3.ggpht.com
+    # 头像、googlevideo.com 视频直链），仅 UA 即可访问但需代理出网
+    "ytimg.com", "googleusercontent.com", "ggpht.com", "googlevideo.com", "gstatic.com",
 )
+# 需要经代理出网的平台 CDN（YouTube 系；国内平台直连最快）
+_PROXY_SUFFIXES = ("ytimg.com", "googleusercontent.com", "ggpht.com", "googlevideo.com", "gstatic.com")
 # 需要站内 referer 的平台 CDN（其余如 B 站直链不带 referer 最稳）
 DOUYIN_REFERER = "https://www.douyin.com/"
 _DOUYIN_REFERER_SUFFIXES = (
@@ -74,6 +79,40 @@ def media_referer(url: str) -> str:
     ) else ""
 
 
+def media_proxy(url: str) -> str | None:
+    """按目标 CDN 域返回出网代理：YouTube 系走代理（国际站直连超时），其余直连。
+
+    代理地址优先环境变量（HTTPS_PROXY 等），Windows 回退注册表桌面代理
+    （与 tiktok/threads/youtube 平台 api_client 的 resolve_proxy 同一逻辑）。
+    """
+    host = urlparse(url or "").hostname or ""
+    if not any(host == s or host.endswith("." + s) for s in _PROXY_SUFFIXES):
+        return None
+    import os
+    for key in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"):
+        if os.environ.get(key):
+            return os.environ[key]
+    if os.name == "nt":
+        try:
+            import winreg
+            reg = winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Microsoft\Windows\CurrentVersion\Internet Settings",
+            )
+            enabled = winreg.QueryValueEx(reg, "ProxyEnable")[0]
+            server = winreg.QueryValueEx(reg, "ProxyServer")[0]
+            winreg.CloseKey(reg)
+            if enabled and server:
+                parts = dict(p.split("=", 1) for p in str(server).split(";") if "=" in p)
+                server = parts.get("https") or parts.get("http") or server
+                if not str(server).startswith(("http://", "https://", "socks5://")):
+                    server = "http://" + server
+                return server
+        except (OSError, ImportError, ValueError):
+            pass
+    return None
+
+
 def avatar_local_path(sec_uid: str) -> Path | None:
     """已落盘的博主头像路径；sec_uid 字符白名单校验防路径穿越。"""
     if not re.fullmatch(r"[A-Za-z0-9._-]+", sec_uid or ""):
@@ -100,6 +139,7 @@ def download_avatar(sec_uid: str, url: str) -> Path | None:
             headers["referer"] = referer
         resp = curl_requests.get(
             url, headers=headers, impersonate="chrome", timeout=20,
+            proxy=media_proxy(url),
         )
         if resp.status_code != 200 or not resp.content:
             return None

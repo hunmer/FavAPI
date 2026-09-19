@@ -1,11 +1,19 @@
-"""YouTube 播放列表页面适配器（解析 feed/playlists 的 DOM 分组）。"""
+"""YouTube 播放列表页面适配器（解析 feed/playlists 的 DOM 分组）。
+
+特别关注（follows）体系走 InnerTube API 直连（见 api_client.py）：
+订阅列表 browse FEchannels（SAPISIDHASH）+ 频道 Videos tab browse +
+player 详情；播放用官方 embed iframe（WEB 直链绑定 PO token 会话不可独立访问）。
+"""
 import json
+import re
 import asyncio
 import logging
 
 from app import config
 from app.platforms.base import BasePlatformAdapter, FetchResult, AccountContext, LoginExpiredError
 from app.services import browser
+from app.utils import now_iso
+from . import api_client
 
 logger = logging.getLogger("favapi.youtube")
 
@@ -17,6 +25,7 @@ class YouTubeAdapter(BasePlatformAdapter):
     playlist_url = "https://www.youtube.com/playlist?list=LL"
     icon = "favicon.ico"
     supported_actions = ("list_favorites",)
+    follows_api_implemented = True
 
     _COOKIE_KEYS = ("SID", "SAPISID", "__Secure-3PSID", "LOGIN_INFO")
 
@@ -111,3 +120,66 @@ class YouTubeAdapter(BasePlatformAdapter):
         items = items[:target] if target else items
         logger.info("[%s] YouTube 喜欢的视频抓取完成：items=%d", account.account_id, len(items))
         return FetchResult(items=items, total=len(items), has_more=False)
+
+    # ---------- 特别关注（follows）体系：InnerTube API 直连 ----------
+
+    async def follows_profile_cookie(self, account: AccountContext) -> str:
+        return await api_client.profile_cookie_header(account.profile_path)
+
+    def follows_self_uid(self, cookie_header: str) -> str:
+        return api_client.fetch_self_channel_id(cookie_header)
+
+    def follows_validate_uid(self, sec_uid: str) -> None:
+        if not re.fullmatch(r"UC[A-Za-z0-9_-]{22}", str(sec_uid or "")):
+            raise ValueError("YouTube 博主主键需为 UC 开头的 24 位频道 ID")
+
+    async def follows_fetch_following(self, cookie_header: str, self_uid: str,
+                                      count: int = 0, on_batch=None) -> tuple[list[dict], bool]:
+        # 订阅 feed（FEchannels）按会话返回，self_uid 不参与请求
+        return await api_client.fetch_subscriptions(cookie_header, count, on_batch=on_batch)
+
+    async def follows_fetch_posts_page(self, cookie_header: str, sec_uid: str,
+                                       cursor: int | str = 0, count: int = 18) -> dict:
+        # cursor 为 InnerTube continuation token（str，0/空 = 首页）；末页归 0 对齐统一语义
+        batch = await asyncio.to_thread(
+            api_client.fetch_channel_videos_page, cookie_header, sec_uid, str(cursor or ""))
+        return {
+            "items": batch["items"][:max(1, count)] if count else batch["items"],
+            "cursor": batch["continuation"] or 0,
+            "has_more": bool(batch["continuation"]),
+        }
+
+    async def follows_play_info(self, cookie_header: str, content_id: str) -> dict:
+        # YouTube WEB 直链绑定 PO token 生成会话（客户端独立访问 403），
+        # video_urls 留空、下发官方 embed 的 iframe_url 由前端 <iframe> 播放
+        return await asyncio.to_thread(api_client.fetch_video_play_info, cookie_header, content_id)
+
+    async def sync_author_posts(self, account: AccountContext, author_row: dict,
+                                cookie_header: str, count: int) -> list[dict]:
+        """拉取单博主最新 count 条视频并回填 last_synced_at / uid / 昵称。
+
+        不负责入库：follows /sync 路由与 follow_sync 抓取目标共用本方法。
+        """
+        from app.database import db  # 延迟导入：平台层仅此方法触库
+        from app.services import follow_store
+
+        items, _ = await api_client.fetch_channel_videos(
+            cookie_header, author_row["sec_uid"], count)
+        items = items[:count]  # 单页固定 30 条，按 count 截断保证入库量与配置一致
+        author_id = next((it.get("author_id") for it in items if it.get("author_id")), None)
+        author_name = next((it.get("author_name") for it in items if it.get("author_name")), None)
+        await db.execute(
+            """UPDATE follow_authors SET last_synced_at = ?,
+                   uid = COALESCE(NULLIF(?, ''), uid),
+                   nickname = COALESCE(NULLIF(?, ''), nickname)
+               WHERE sec_uid = ?""",
+            (now_iso(), author_id or "", author_name or "", author_row["sec_uid"]),
+        )
+        # Videos tab 不带作者头像：本地文件缺失时按库中 URL（关注列表入库）补下自愈
+        if follow_store.avatar_local_path(author_row["sec_uid"]) is None:
+            source_url = (author_row.get("avatar_url") or "").strip()
+            if source_url:
+                await asyncio.to_thread(
+                    follow_store.download_avatar, author_row["sec_uid"], source_url
+                )
+        return items

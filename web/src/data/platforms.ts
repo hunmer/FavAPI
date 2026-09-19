@@ -119,6 +119,7 @@ export const PLATFORMS: PlatformMeta[] = [
     badgeBg: 'bg-slate-100 text-slate-400 border-slate-200',
     isSupported: false,
     tagline: 'Playlists 与 Watch Later 列表抓取（即将支持）',
+    followsApi: true,
   },
   {
     id: 'wechat',
