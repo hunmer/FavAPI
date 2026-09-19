@@ -130,6 +130,76 @@ def parse_media_info(data: dict) -> dict:
     return _media_content_row(items[0]) if items else None
 
 
+def parse_user_profile(data: dict) -> dict:
+    """解析用户资料（REST v1 users/{uid}/info 的完整响应）→ 精简结构。
+
+    fbid_v2 是 GraphQL 号空间的用户 id（点赞 mutation 的 actor_id / av）；
+    关注列表 REST 接口不下发粉丝数与帖子数，这里全量返回供补全。
+    """
+    u = data.get("user") or {}
+    return {
+        "id": str(u.get("pk") or ""),
+        "fbid_v2": str(u.get("fbid_v2") or ""),
+        "username": u.get("username"),
+        "full_name": u.get("full_name"),
+        "biography": u.get("biography"),
+        "avatar": u.get("profile_pic_url"),
+        "follower_count": u.get("follower_count"),
+        "media_count": u.get("media_count"),
+        "is_private": bool(u.get("is_private")),
+        "is_verified": bool(u.get("is_verified")),
+    }
+
+
+def parse_post_links(media: dict) -> list[dict]:
+    """解析作品详情媒体对象 → 可下载直链列表（download_worker 消费）。
+
+    视频（media_type=2）：video_versions 取 type=101 的 mp4（102/103 为同链分片
+    变体），不附封面图（download_worker 见 image 链接会走图文通道）；
+    图文（media_type=1/8）：carousel_media（单图时无该字段，用 media 本体）逐张取
+    image_versions2 候选中面积最大者；纯文案帖无视频与图，仅 kind=text。
+    """
+    links: list[dict] = []
+    width = media.get("original_width") or 0
+    height = media.get("original_height") or 0
+
+    def _video(v: dict, label: str) -> None:
+        url = str(v.get("url") or "")
+        if url.startswith("http"):
+            links.append({"url": url, "label": label, "kind": "video", "ext": "mp4"})
+
+    videos = [v for v in media.get("video_versions") or [] if v.get("type") == 101]
+    for v in videos:
+        _video(v, f"视频 {width}x{height}" if width else "视频")
+
+    items = media.get("carousel_media") or [media]
+    count = len(items)
+    for i, item in enumerate(items, start=1):
+        if videos:
+            continue  # 视频帖不附封面图（download_worker 见 image 链接会走图文通道）
+        for v in item.get("video_versions") or []:
+            if v.get("type") == 101:
+                # 图文轮播内嵌视频（混合 carousel）：逐项提取视频
+                _video(v, f"视频 {i}/{count}")
+        candidates = ((item.get("image_versions2") or {}).get("candidates") or [])
+        best = max(
+            (c for c in candidates if str(c.get("url") or "").startswith("http")),
+            key=lambda c: (c.get("width") or 0) * (c.get("height") or 0),
+            default=None,
+        )
+        if best:
+            links.append({
+                "url": best.get("url"), "label": f"图片 {i}/{count}", "kind": "image",
+                "ext": "jpg",  # CDN 路径无扩展名
+                "width": best.get("width") or 0, "height": best.get("height") or 0,
+            })
+
+    caption = (media.get("caption") or {}).get("text") or ""
+    if caption.strip():
+        links.append({"kind": "text", "text": caption, "label": "文案"})
+    return links
+
+
 def parse_play_info(media: dict) -> dict:
     """作品详情媒体对象 → PlayerModal 播放信息统一结构。
 

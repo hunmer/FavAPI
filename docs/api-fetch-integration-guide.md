@@ -163,7 +163,7 @@ curl ... -d '{"platform":"bilibili",...,"params":{"method":"api"}}'   # → 400 
 | youtube | ✅ | ❌ | 按需接入 |
 | kuaishou | ✅ | ✅ | 2026-09 接入：`__NS_hxfalcon` 签名强校验（缺失/伪造 → result=50），签名 VM 从站点 bundle 剥离到 `kuaishou/sig_vm.js`，经 `sig4.cjs`（Node CLI ≥16，系统依赖）离线生成；坑见 `kuaishou/api_client.py` 模块 docstring（profile 混入 live/id 域 cookie 必须按 domain 过滤，否则多个 userId 并存 → result=109；VM 必须间接 eval + 事件循环内执行；换行符必须 LF） |
 | threads | ✅ | ✅ | 2026-09 接入：GraphQL（`/graphql/query`），直连需 `x-csrftoken` + lsd + 完整 relay pv 标志（`constants.SAVED_PV_FLAGS`）；代理沿用声明式 auto 解析 |
-| instagram | — | ✅ | 2026-09 接入（仅 API 直连）：REST v1（收藏 `feed/saved/posts`、关注 `friendships/{uid}/following`、详情 `media/{pk}/info`，最小头集 x-csrftoken + x-ig-app-id）+ GraphQL 投稿查询（form 最小集 lsd/variables/doc_id，av/fb_dtsg 可省；variables 按 username 定位 + 3 个 Polaris pv 标志）；lsd 从首页 HTML 提取；需代理出网；CDN（scontent-*.cdninstagram.com）直链仅 UA；博主主键 = username（投稿 GraphQL 不认数字 pk）；坑详见 `instagram/api_client.py` 模块 docstring |
+| instagram | — | ✅ | 2026-09 接入（仅 API 直连）：REST v1（收藏 `feed/saved/posts`、关注 `friendships/{uid}/following`、详情 `media/{pk}/info`、用户资料 `users/{uid}/info`，最小头集 x-csrftoken + x-ig-app-id）+ GraphQL 投稿查询（form 最小集 lsd/variables/doc_id，av/fb_dtsg 可省；variables 按 username 定位 + 3 个 Polaris pv 标志）+ 写 mutation（`/api/graphql`，doc_id 见 constants，2026-09 往返实测）；lsd 从首页 HTML 提取；需代理出网；CDN（scontent-*.cdninstagram.com）直链仅 UA；博主主键 = username（投稿 GraphQL 不认数字 pk）；**风控敏感：连续 20+ 混合直连请求触发会话挑战（全部请求 302 循环回 `instagram.com/#`），`_request` 统一转 InstagramChallengeError**；坑详见 `instagram/api_client.py` 模块 docstring |
 | tiktok | ✅ | ✅ | 2026-09 接入（外部扩展模式同快手）：签名（X-Gnarly/X-Bogus/msToken/X-Dynosaur/verifyFp）**全部不做强校验**，但 query 需保留 msToken+X-Bogus=1 占位（全删触发空响应软拦截）；收藏 `user/collect/item_list` 强登录态（复制出的 cookie 数分钟即被拒，必须 profile 活会话，status_code=8 → LoginExpiredError）；点赞 `favorite/item_list` 半公开（私密点赞返回空列表非报错）；用户信息走个人主页 HTML 的 `__UNIVERSAL_DATA_FOR_REHYDRATION__` SSR 解析（`/api/user/detail/` 对非浏览器上下文返回空 userInfo）；secUid 不落 cookie，登录后 refresh_profile 从浏览器提取回填 extra；坑详见 `tiktok/api_client.py` 模块 docstring |
 
 ## 6. 快速回顧：一次成功接入的样子
@@ -243,6 +243,26 @@ Bilibili 已实现 `cancel_favorites`（批量取消收藏）与 `resolve_downlo
 （collected_at 缺失由 parser 兜底发布时间）；task_executor 的抓取过滤也走同一份实现。
 
 TikTok 已实现 `resolve_download_urls`（按帖子 ID/链接解析直链，视频+图文）。
+
+Instagram 已实现 6 个操作（`instagram/adapter.py`，2026-09 实测往返验证）：
+
+| op_id | 说明 | 参数 |
+|---|---|---|
+| `get_profile` | 获取当前登录用户完整资料（含 fbid_v2 / 粉丝数 / 帖子数） | — |
+| `like_post` / `unlike_post` | 点赞 / 取消点赞（PolarisAPI*PostMutation） | media_id（必填） |
+| `save_post` / `unsave_post` | 收藏 / 取消收藏（PolarisAPISavePostMutation） | media_id（必填） |
+| `resolve_download_urls` | 按媒体 pk 解析下载直链（视频 / 图文 / 文案） | post（必填） |
+
+要点：用户资料走 REST v1 `users/{uid}/info`（登录校验与身份回填共用；
+`fbid_v2` 是 GraphQL 号空间 id，写 mutation 的 actor_id/av 均取它，与 cookie
+ds_user_id 不同号空间）；写 mutation 端点是 `/api/graphql`（与读
+`/graphql/query` 不同），form 需 av + fb_dtsg + lsd 全集，fb_dtsg 仅登录态页面
+HTML 下发（`fetch_tokens` 与 lsd 同一份 HTML 提取，pattern 以
+`"DTSGInitData",[],{"token"` 优先）；响应 content-type 恒为 text/javascript，
+成败判定用 json() 解析而非 content-type。doc_id 获取路径：`gh search code
+"PolarisAPIUnlikePostMutation"` 等公开逆向仓库（各时期值不同，轮换后需重查），
+或登录态浏览器交互抓包。REST fallback 路径（`web/likes|save/{id}/**`）实测
+404 已不放行，勿走。
 要点（坑详见 `tiktok/api_client.py` 模块 docstring）：详情 XHR `/api/item/detail`
 有签名强校验（X-Gnarly 与完整 query 绑定，改任一参数即空响应），不可直连；
 改走帖子页 HTML 的 SSR 段 `webapp.video-detail`（公开访客可见），图文帖必须

@@ -2,17 +2,23 @@
 
 Instagram Web 混用两套接口，curl_cffi impersonate="chrome" 直连（原生 httpx 被指纹层拒）：
 
-- REST v1（GET API_BASE/**，2026-09 实测最小头集）：
+- REST v1（GET/POST API_BASE/**，2026-09 实测最小头集）：
   必需 cookie + x-csrftoken（取 cookie csrftoken）+ x-ig-app-id（缺任一 403/404）；
   x-ig-www-claim / x-web-session-id / rur 等会话头均可省。
   * 收藏：feed/saved/posts，items 为 [{media: {...}}] 嵌套，翻页 next_max_id（不透明 token）
   * 关注：friendships/{ds_user_id}/following，max_id 为纯偏移量（首页 "12"、次页 "24"）
   * 详情：media/{pk}/info → items[0]（play_info / 直链解析共用）
-- GraphQL（POST /graphql/query，form-urlencoded）：
-  form 最小集 lsd/variables/doc_id（av / fb_dtsg / __dyn 等全可省，实测）；
-  variables 必须带 username + 3 个 Polaris pv 标志（constants.USER_POSTS_PV_FLAGS），
-  投稿查询不认数字 pk；翻页回传 after = page_info.end_cursor（"{media_pk}_{user_pk}"）。
-  lsd 令牌从 instagram.com 任意页面 HTML 提取（"LSD",[],{"token":"..."}，threads 同款）。
+  * 资料：users/{uid}/info → data.user（fbid_v2 是 GraphQL 号空间 id）
+- GraphQL（form-urlencoded）：
+  读投稿 POST /graphql/query：form 最小集 lsd/variables/doc_id（av / fb_dtsg /
+  __dyn 等全可省，实测）；variables 必须带 username + 3 个 Polaris pv 标志
+  （constants.USER_POSTS_PV_FLAGS），投稿查询不认数字 pk；翻页回传
+  after = page_info.end_cursor（"{media_pk}_{user_pk}"）。
+  写 mutation POST /api/graphql（与读端点不同）：form 需 av + fb_dtsg + lsd 全集，
+  doc_id 见 constants（随版本轮换）；REST fallback 路径（web/likes|save/**）
+  实测 404 已不放行。响应 content-type 恒为 text/javascript，判定用 json() 解析。
+  lsd 从 instagram.com 任意页面 HTML 提取（"LSD",[],{"token":"..."}，threads 同款）；
+  fb_dtsg 仅登录态页面 HTML 下发（"DTSGInitData",[],{"token":"..."}）。
 
 登录态复用账号浏览器 profile：起一次无头 Chromium 读 instagram.com 域 cookies
 （ctx.cookies(urls=[...]) 按域过滤；profile 若同时登录 Threads，共享 cookie 不会混入）。
@@ -20,7 +26,12 @@ Instagram 需代理出网：与 threads 同策略（env → Windows 注册表）
 
 CDN（scontent-*.cdninstagram.com）头像/封面/视频直链实测仅 UA 即可访问（Range 206 验证）。
 博主主键（follow_authors.sec_uid）= username：投稿 GraphQL 只认 username，全局唯一且与
-主页 URL 一致；数字 pk 存 uid 列（关注列表 / 作品响应自动回填，防改名漂移）。
+主页 URL 一致；数字 pk 存 uid 列（关注列表/作品响应自动回填，防改名漂移）。
+
+风控（2026-09 实测）：连续 20+ 个混合直连请求（读+写混合更快触发）即会话挑战，
+症状为全部请求（REST/GraphQL/HTML）302 循环回 instagram.com/# —— TooManyRedirects
+即此症状，_request 统一转 InstagramChallengeError；挑战需浏览器侧解锁或冷却数小时。
+REST v1 写端点（media/{id}/like|unlike|save|unsave）在 web 网关同样返回 302 循环，不可用。
 """
 import asyncio
 import json
@@ -30,7 +41,7 @@ import re
 import time
 
 from curl_cffi import requests
-from curl_cffi.requests.exceptions import HTTPError, RequestException
+from curl_cffi.requests.exceptions import HTTPError, RequestException, TooManyRedirects
 
 from app.services import browser
 from . import constants
@@ -38,7 +49,9 @@ from .parser import (
     parse_following_list,
     parse_media_info,
     parse_play_info,
+    parse_post_links,
     parse_saved_list,
+    parse_user_profile,
     parse_user_posts,
 )
 from ..base import LoginExpiredError
@@ -46,6 +59,14 @@ from ..base import LoginExpiredError
 logger = logging.getLogger("favapi.instagram.api")
 
 _LSD_PATTERN = re.compile(r'"LSD",\[\],\{"token":"([^"]+)"')
+# fb_dtsg：仅登录态页面 HTML 下发（登出页无此块，2026-09 实测）；
+# 登录态首页实测命中第一个 pattern（DTSGInitData），其余为版本形态兜底
+_FB_DTSG_PATTERNS = (
+    re.compile(r'"DTSGInitData",\[\],\{"token":"([^"]+)"'),
+    re.compile(r'"DTSGInitialData",\[\],\{"token":"([^"]+)"'),
+    re.compile(r'"dtsg":\{"token":"([^"]+)"'),
+    re.compile(r'"DTSGInitData"[^}]{0,120}"token":"([^"]+)"'),
+)
 _HTTP_RETRIES = 3  # 连接瞬断重试次数（本地代理不稳，SSL reset 常见）
 _AUTH_MESSAGES = ("login_required", "authentication_required", "Not authorized")
 
@@ -104,13 +125,14 @@ def _http_with_retry(fn, *args, **kwargs):
     """curl 请求连接瞬断（SSL reset / 超时，本地代理不稳）自动重试。
 
     仅重试连接类 RequestException（GET 幂等，重试安全）；
-    HTTP 状态错误（HTTPError）不重试直接抛。
+    HTTP 状态错误（HTTPError）与重定向循环（TooManyRedirects = 会话被风控挑战，
+    重试只会更慢更糟）不重试直接抛。
     """
     last_exc: Exception | None = None
     for attempt in range(1, _HTTP_RETRIES + 1):
         try:
             return fn(*args, **kwargs)
-        except HTTPError:
+        except (HTTPError, TooManyRedirects):
             raise
         except RequestException as exc:
             last_exc = exc
@@ -118,6 +140,23 @@ def _http_with_retry(fn, *args, **kwargs):
             if attempt < _HTTP_RETRIES:
                 time.sleep(attempt)  # 1s, 2s 退避
     raise last_exc
+
+
+class InstagramChallengeError(RuntimeError):
+    """会话被 Instagram 风控挑战（症状：全部请求 302 循环回 instagram.com/#）。
+
+    2026-09 实测：连续 20+ 个混合直连请求即可触发（读+写混合时更快），
+    挑战后 REST/GraphQL/HTML 页面全部循环重定向，需浏览器侧人工解锁或冷却数小时。
+    """
+
+
+def _request(fn, *args, **kwargs):
+    """统一入口：连接重试 + 挑战/登录态异常转换。"""
+    try:
+        return _http_with_retry(fn, *args, **kwargs)
+    except TooManyRedirects as exc:
+        raise InstagramChallengeError(
+            "Instagram 会话被风控挑战（302 循环），请稍后重试或在浏览器重新访问解锁") from exc
 
 
 def _base_headers(cookie_header: str, referer: str) -> dict:
@@ -153,7 +192,7 @@ def _check_auth(response) -> None:
 
 def _v1_get(cookie_header: str, url: str, referer: str) -> dict:
     """GET 一个 REST v1 接口并返回 JSON（同步阻塞，异步侧 asyncio.to_thread 调用）。"""
-    response = _http_with_retry(
+    response = _request(
         requests.get, url,
         headers=_base_headers(cookie_header, referer),
         impersonate="chrome", timeout=30, proxy=resolve_proxy(),
@@ -165,7 +204,7 @@ def _v1_get(cookie_header: str, url: str, referer: str) -> dict:
 
 def fetch_lsd(cookie_header: str) -> str:
     """GET 首页 HTML 提取 lsd 令牌（同步阻塞，异步侧用 asyncio.to_thread 调用）。"""
-    response = _http_with_retry(
+    response = _request(
         requests.get, constants.HOME_URL,
         headers={"cookie": cookie_header,
                  "user-agent": _base_headers(cookie_header, "")["user-agent"]},
@@ -200,7 +239,7 @@ def _graphql_post(cookie_header: str, lsd: str, friendly_name: str,
         "x-fb-friendly-name": friendly_name,
         "x-root-field-name": root_field,
     })
-    response = _http_with_retry(
+    response = _request(
         requests.post, constants.GRAPHQL_URL, data=form, headers=headers,
         impersonate="chrome", timeout=30, proxy=resolve_proxy(),
     )
@@ -211,6 +250,134 @@ def _graphql_post(cookie_header: str, lsd: str, friendly_name: str,
 
 def _json_compact(payload: dict) -> str:
     return json.dumps(payload, separators=(",", ":"))
+
+
+# ---------- 用户资料（登录用户信息 / get_profile）----------
+
+def fetch_user_info(cookie_header: str, user_id: str) -> dict:
+    """拉取用户资料（REST v1 users/{uid}/info → data.user，同步阻塞）。
+
+    登录用户自己（user_id=ds_user_id）与任意博主（数字 pk）均可查；
+    未登录/会话失效由 _check_auth 转 LoginExpiredError。
+    """
+    data = _v1_get(
+        cookie_header,
+        f"{constants.API_BASE}{constants.USER_INFO_PATH.format(user_id=user_id)}",
+        constants.HOME_URL,
+    )
+    user = data.get("user") or {}
+    if not user.get("pk"):
+        raise RuntimeError(f"用户资料为空（{user_id}，可能不存在或不可见）")
+    return parse_user_profile(data)
+
+
+def fetch_viewer_profile(cookie_header: str) -> dict:
+    """获取当前登录用户完整资料（同步阻塞，异步侧用 asyncio.to_thread 调用）。
+
+    parse_user_profile 的结果（含 fbid_v2 / username / 头像 / 粉丝数 / 帖子数）；
+    会话失效由 _check_auth 转 LoginExpiredError。
+    """
+    return fetch_user_info(cookie_header, self_user_id(cookie_header))
+
+
+# ---------- 写操作（/api/graphql mutation：点赞 / 收藏）----------
+
+def fetch_tokens(cookie_header: str) -> dict:
+    """一次 GET 首页 HTML 提取写操作令牌 {lsd, fb_dtsg}（同步阻塞）。
+
+    lsd 是网关令牌（x-fb-lsd 头 + form lsd）；fb_dtsg 是 /api/graphql 写
+    mutation 的 form 令牌，仅登录态页面 HTML 下发（见 _FB_DTSG_PATTERNS）。
+    """
+    response = _request(
+        requests.get, constants.HOME_URL,
+        headers={"cookie": cookie_header,
+                 "user-agent": _base_headers(cookie_header, "")["user-agent"]},
+        impersonate="chrome", timeout=30, proxy=resolve_proxy(),
+    )
+    response.raise_for_status()
+    lsd_match = _LSD_PATTERN.search(response.text)
+    if not lsd_match:
+        raise RuntimeError("未能从 Instagram 页面提取 lsd 令牌（页面结构变化或登录态失效）")
+    fb_dtsg = ""
+    for pattern in _FB_DTSG_PATTERNS:
+        m = pattern.search(response.text)
+        if m:
+            fb_dtsg = m.group(1)
+            break
+    if not fb_dtsg:
+        raise RuntimeError(
+            "未能从 Instagram 页面提取 fb_dtsg 令牌（仅登录态页面下发，登录态可能已失效）")
+    return {"lsd": lsd_match.group(1), "fb_dtsg": fb_dtsg}
+
+
+def _graphql_write(cookie_header: str, tokens: dict, actor_id: str, doc_id: str,
+                   friendly_name: str, media_id: str, action: str,
+                   with_actor: bool = False) -> dict:
+    """执行一个媒体写 mutation（同步阻塞），errors 时抛 RuntimeError。
+
+    with_actor：like 按 2026-09 用户抓包原样带 actor_id + client_mutation_id；
+    unlike/save/unsave 按站点 bundle 模块源码仅 media_id（均实测验证）。
+    响应 content-type 为 text/javascript，成败判定用 json() 解析而非 content-type。
+    """
+    input_data = {"media_id": str(media_id)}
+    if with_actor:
+        input_data.update({"actor_id": str(actor_id), "client_mutation_id": "1"})
+    form = {
+        "av": str(actor_id),
+        "fb_dtsg": tokens["fb_dtsg"],
+        "lsd": tokens["lsd"],
+        "variables": _json_compact({"input": input_data}),
+        "doc_id": doc_id,
+        "server_timestamps": "true",
+    }
+    headers = _base_headers(cookie_header, constants.HOME_URL)
+    headers.update({
+        "content-type": "application/x-www-form-urlencoded",
+        "origin": "https://www.instagram.com",
+        "x-fb-lsd": tokens["lsd"],
+        "x-fb-friendly-name": friendly_name,
+    })
+    response = _request(
+        requests.post, constants.API_GRAPHQL_URL, data=form, headers=headers,
+        impersonate="chrome", timeout=30, proxy=resolve_proxy(),
+    )
+    _check_auth(response)
+    response.raise_for_status()
+    try:
+        data = response.json()
+    except ValueError as exc:
+        # 风控挑战时网关返回 HTML 页面（正常响应恒为可解析 JSON）
+        raise InstagramChallengeError(
+            f"Instagram {action}请求被网关以非 JSON 响应（会话疑似被风控挑战）") from exc
+    if data.get("errors"):
+        errors = "; ".join(str(e.get("message")) for e in (data.get("errors") or []))
+        raise RuntimeError(f"{action}失败（media_id={media_id}）：{errors}")
+    logger.info("%s media_id=%s 完成", action, media_id)
+    return data
+
+
+def like_media(cookie_header: str, tokens: dict, actor_id: str, media_id: str) -> dict:
+    """点赞帖子（同步阻塞，异步侧用 asyncio.to_thread 调用）。"""
+    return _graphql_write(cookie_header, tokens, actor_id, constants.LIKE_DOC_ID,
+                          constants.LIKE_QUERY_NAME, media_id, "点赞", with_actor=True)
+
+
+def unlike_media(cookie_header: str, tokens: dict, actor_id: str, media_id: str) -> dict:
+    """取消点赞（同步阻塞，异步侧用 asyncio.to_thread 调用）。"""
+    return _graphql_write(cookie_header, tokens, actor_id, constants.UNLIKE_DOC_ID,
+                          constants.UNLIKE_QUERY_NAME, media_id, "取消点赞")
+
+
+def save_media(cookie_header: str, tokens: dict, actor_id: str, media_id: str) -> dict:
+    """收藏帖子（同步阻塞，异步侧用 asyncio.to_thread 调用）。"""
+    return _graphql_write(cookie_header, tokens, actor_id, constants.SAVE_DOC_ID,
+                          constants.SAVE_QUERY_NAME, media_id, "收藏")
+
+
+def unsave_media(cookie_header: str, tokens: dict, actor_id: str, media_id: str) -> dict:
+    """取消收藏（同步阻塞，异步侧用 asyncio.to_thread 调用）。"""
+    return _graphql_write(cookie_header, tokens, actor_id, constants.UNSAVE_DOC_ID,
+                          constants.UNSAVE_QUERY_NAME, media_id, "取消收藏")
 
 
 # ---------- 收藏列表（fetch/task 体系）----------

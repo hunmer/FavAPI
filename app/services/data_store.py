@@ -463,6 +463,20 @@ async def clear_tasks() -> int:
     return cur.rowcount
 
 
+async def interrupt_stale_tasks() -> int:
+    """服务启动时清理残留运行态：上次进程退出（重启/崩溃）时停在 pending/running
+    的任务标记为 failed。不清理的话：任务列表永远显示运行中，且调度器防重入
+    （scheduler.trigger_schedule 按 pending/running 跳过）会让该计划永久不再触发。
+    """
+    cur = await db.execute(
+        """UPDATE fetch_tasks SET status = 'failed',
+               error_message = '服务重启，任务中断', progress = NULL, finished_at = ?
+           WHERE status IN ('pending', 'running')""",
+        (now_iso(),),
+    )
+    return cur.rowcount
+
+
 # ---------- 标签聚合 ----------
 
 async def list_tag_stats(limit: int = 100) -> list[dict]:

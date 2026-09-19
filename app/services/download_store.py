@@ -80,6 +80,19 @@ async def next_pending() -> dict | None:
     )
 
 
+async def requeue_stale_running() -> int:
+    """服务启动时把残留 running 下载归队 pending。
+
+    上次进程退出时下载子进程已被 stop() kill，但 DB 状态停在 running；
+    next_pending 只取 pending，不归队会永久卡在「运行中」。yt-dlp/aria2c
+    支持断点续传，直接重跑即可。
+    """
+    cur = await db.execute(
+        "UPDATE downloads SET status = 'pending', progress = NULL WHERE status = 'running'"
+    )
+    return cur.rowcount
+
+
 async def reset_download(download_id: str, downloader: str | None = None) -> dict | None:
     """失败/取消/暂停后重新入队；downloader 非空时顺带切换下载器。"""
     return await update_download(

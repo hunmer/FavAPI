@@ -13,10 +13,12 @@ import time
 from app import config
 from app.platforms.base import (
     AccountContext,
+    ApiOperation,
     ApiOperationParam,
     BasePlatformAdapter,
     FetchResult,
     FetchTarget,
+    LoginExpiredError,
     PARAM_CURSOR,
     PARAM_DATE_FROM,
     PARAM_DATE_TO,
@@ -25,6 +27,7 @@ from app.services import browser
 from app.utils import now_iso
 from . import api_client
 from . import constants
+from .parser import parse_post_links
 
 logger = logging.getLogger("favapi.instagram")
 
@@ -41,6 +44,7 @@ class InstagramAdapter(BasePlatformAdapter):
     implemented = True
     supported_actions = ("list_favorites",)
     api_fetch_implemented = True  # 收藏列表支持 API 直连（params.method="api"）
+    download_api_implemented = True  # 支持按媒体 pk 解析下载直链（视频/图文/文案）
     follows_api_implemented = True  # 特别关注体系：关注列表 / 博主主页作品 / 播放 / 一键同步
     # 不填 count 默认抓全部（fetch_favorites_api 默认 0），覆盖通用 PARAM_COUNT 文案
     fetch_targets = (
@@ -56,9 +60,158 @@ class InstagramAdapter(BasePlatformAdapter):
             ],
         ),
     )
+    api_operations = (
+        ApiOperation(
+            op_id="get_profile",
+            name="获取登录用户信息",
+            description="查询当前账号资料（用户名 / 昵称 / 头像 / 粉丝数 / 帖子数，只读）",
+            params=(),
+        ),
+        ApiOperation(
+            op_id="like_post",
+            name="点赞帖子",
+            description="API 直连点赞指定帖子（帖子详情页「赞」同款接口）",
+            params=(
+                ApiOperationParam(
+                    key="media_id", label="帖子 ID", type="text", required=True,
+                    placeholder="例如：3981703481130009879",
+                    help="纯数字媒体 pk，可从收藏列表/博主作品条目的 content_id 获取",
+                ),
+            ),
+        ),
+        ApiOperation(
+            op_id="unlike_post",
+            name="取消点赞",
+            description="API 直连取消指定帖子的点赞",
+            params=(
+                ApiOperationParam(
+                    key="media_id", label="帖子 ID", type="text", required=True,
+                    placeholder="例如：3981703481130009879",
+                    help="纯数字媒体 pk（收藏列表/博主作品条目的 content_id）",
+                ),
+            ),
+        ),
+        ApiOperation(
+            op_id="save_post",
+            name="收藏帖子",
+            description="API 直连收藏指定帖子（帖子详情页「收藏」同款接口）",
+            params=(
+                ApiOperationParam(
+                    key="media_id", label="帖子 ID", type="text", required=True,
+                    placeholder="例如：3981703481130009879",
+                    help="纯数字媒体 pk（收藏列表/博主作品条目的 content_id）",
+                ),
+            ),
+        ),
+        ApiOperation(
+            op_id="unsave_post",
+            name="取消收藏",
+            description="API 直连取消指定帖子的收藏（操作可逆，重新收藏即可恢复）",
+            params=(
+                ApiOperationParam(
+                    key="media_id", label="帖子 ID", type="text", required=True,
+                    placeholder="例如：3981703481130009879",
+                    help="纯数字媒体 pk（收藏列表条目的 content_id）",
+                ),
+            ),
+        ),
+        ApiOperation(
+            op_id="resolve_download_urls",
+            name="解析下载直链",
+            description="按帖子 ID 调详情接口返回可下载内容（视频/图文/文案，只读）",
+            params=(
+                ApiOperationParam(
+                    key="post", label="帖子 ID", type="text", required=True,
+                    placeholder="例如：3981703481130009879",
+                    help="纯数字媒体 pk（收藏列表/博主作品条目的 content_id）",
+                ),
+            ),
+        ),
+    )
 
     def __init__(self, base_dir=None):
         self.base_dir = base_dir  # 图标目录（/platforms/{id}/icon 下发用）
+
+    async def execute_api_operation(
+        self, op_id: str, account: AccountContext, params: dict, on_event=None
+    ) -> dict:
+        if op_id == "get_profile":
+            return await self._op_get_profile(account)
+        if op_id in ("like_post", "unlike_post", "save_post", "unsave_post"):
+            return await self._op_media_action(account, op_id, params)
+        if op_id == "resolve_download_urls":
+            source = str((params or {}).get("post") or "").strip()
+            if not source:
+                raise ValueError("请填写帖子 ID")
+            return await self.resolve_download_urls(account, source)
+        raise ValueError(f"未知操作：{op_id}")
+
+    async def _op_get_profile(self, account: AccountContext) -> dict:
+        """获取当前登录用户完整资料（users/{ds_user_id}/info）。"""
+        logger.info("[%s] API 操作 get_profile", account.account_id)
+        cookie_header = await api_client.profile_cookie_header(account.profile_path)
+        profile = await asyncio.to_thread(api_client.fetch_viewer_profile, cookie_header)
+        logger.info("[%s] get_profile：@%s（粉丝 %s，帖子 %s）", account.account_id,
+                    profile.get("username"), profile.get("follower_count"),
+                    profile.get("media_count"))
+        return profile
+
+    _MEDIA_ACTIONS = {
+        "like_post": (api_client.like_media, "点赞"),
+        "unlike_post": (api_client.unlike_media, "取消点赞"),
+        "save_post": (api_client.save_media, "收藏"),
+        "unsave_post": (api_client.unsave_media, "取消收藏"),
+    }
+
+    async def _op_media_action(self, account: AccountContext, op_id: str,
+                               params: dict) -> dict:
+        """媒体写操作（点赞 / 取消点赞 / 收藏 / 取消收藏，/api/graphql mutation）。"""
+        media_id = str((params or {}).get("media_id") or "").strip()
+        if not media_id.isdigit():
+            raise ValueError("请填写帖子 ID（纯数字媒体 pk）")
+        fn, label = self._MEDIA_ACTIONS[op_id]
+        logger.info("[%s] API 操作 %s：%s", account.account_id, op_id, media_id)
+        cookie_header = await api_client.profile_cookie_header(account.profile_path)
+        # actor_id（fbid_v2）与写令牌（fb_dtsg/lsd）每次操作现取，不缓存
+        profile = await asyncio.to_thread(api_client.fetch_viewer_profile, cookie_header)
+        actor_id = profile.get("fbid_v2") or ""
+        if not actor_id:
+            raise RuntimeError("未能获取当前用户 fbid_v2（写 mutation 的 actor_id）")
+        tokens = await asyncio.to_thread(api_client.fetch_tokens, cookie_header)
+        data = await asyncio.to_thread(fn, cookie_header, tokens, actor_id, media_id)
+        logger.info("[%s] %s完成：%s", account.account_id, label, media_id)
+        return {"media_id": media_id, "status": "ok", "response": data}
+
+    async def resolve_download_urls(self, account: AccountContext, content_id: str) -> list[dict]:
+        """按媒体 pk 调详情接口返回可下载内容列表（首项为推荐下载项）。
+
+        content_id 为纯数字媒体 pk（收藏列表 / 博主作品条目的 content_id）；
+        CDN 直链（scontent-*.cdninstagram.com）实测仅 UA 即可下载，交给 aria2c
+        时作为请求头注入。
+        """
+        media_id = str(content_id or "").strip()
+        if not media_id.isdigit():
+            raise ValueError("Instagram 下载解析需要纯数字媒体 pk（条目的 content_id）")
+        headers = {
+            "user-agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                           "(KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36"),
+        }
+        cookie_header = await api_client.profile_cookie_header(account.profile_path)
+        logger.info("[%s] 解析下载直链：%s", account.account_id, media_id)
+        media = await asyncio.to_thread(api_client.fetch_media_info, cookie_header, media_id)
+        links = parse_post_links(media)
+        if not any(l.get("url") for l in links):
+            # 纯文字帖只有文案链接，无直链不算失败；完全为空才视为异常
+            if not any(l.get("kind") == "text" for l in links):
+                raise RuntimeError("帖子详情无可下载内容（帖子可能已删除或设为私密）")
+        user = media.get("user") or {}
+        for link in links:
+            if link.get("url"):
+                link["headers"] = headers
+            # 作者信息随链接下发：下载分类模板 {authorName}/{authorId} 变量来源
+            link.setdefault("author_name", user.get("username"))
+            link.setdefault("author_id", str(user.get("pk") or ""))
+        return links
 
     # ---------- 特别关注（follows）体系 ----------
 
@@ -177,29 +330,67 @@ class InstagramAdapter(BasePlatformAdapter):
             return False
 
     async def check_login_status(self, account: AccountContext) -> bool:
-        """登录态检查：cookie 快速判定，cookie 存在即视为有效。
+        """登录态检查：cookie 快速判定 + users/info 真实校验。
 
-        服务端会话真实失效由抓取/操作时的 _check_auth 判定并抛 LoginExpiredError
-        （执行器标记账号 expired）；网络异常向上抛（路由层 503），不误标。
+        cookie 缺失直接 False；cookie 存在但服务端会话已被踢（sessionid 失效）
+        由 fetch_viewer_profile 判定。风控挑战（InstagramChallengeError）与网络
+        异常向上抛（路由层 503），不误标 expired。
         """
+        logged_in, _ = await self._check_and_maybe_refresh(account, refresh=False)
+        return logged_in
+
+    async def check_login_status_and_refresh(self, account: AccountContext) -> tuple[bool, bool]:
+        """单会话版本：一次读 cookie + 一次 API 校验，登录有效时身份已随响应拿到，直接回填。"""
+        return await self._check_and_maybe_refresh(account, refresh=True)
+
+    async def _check_and_maybe_refresh(self, account: AccountContext, refresh: bool) -> tuple[bool, bool]:
         async with browser.session(
             account.profile_path, headless=True, proxy=api_client.resolve_proxy()
         ) as ctx:
             cookies = await ctx.cookies(urls=[constants.HOME_URL])
-        logged_in = browser.has_login_cookies(cookies, constants.LOGIN_COOKIE_KEYS)
-        logger.info("[%s] 登录态检查：%s", account.account_id, "有效" if logged_in else "无效")
-        return logged_in
+        if not browser.has_login_cookies(cookies, constants.LOGIN_COOKIE_KEYS):
+            logger.info("[%s] 登录态检查：无效（profile 无登录 cookie）", account.account_id)
+            return False, False
+        cookie_header = "; ".join(
+            f"{c['name']}={c['value']}" for c in cookies if c.get("name"))
+        try:
+            profile = await asyncio.to_thread(
+                api_client.fetch_viewer_profile, cookie_header)
+        except LoginExpiredError:
+            logger.warning("[%s] 登录态检查：cookie 存在但服务端会话已失效", account.account_id)
+            return False, False
+        logger.info("[%s] 登录态检查：有效（@%s）", account.account_id, profile.get("username"))
+        if not refresh:
+            return True, False
+        try:
+            await self._save_owner(account, profile)
+            return True, True
+        except Exception:
+            logger.warning("[%s] 身份回填失败（不影响登录态结论）", account.account_id, exc_info=True)
+            return True, False
 
     async def refresh_profile(self, account: AccountContext) -> None:
-        """登录成功后回填主人信息：extra.instagram.owner = {id}。"""
+        """登录成功后回填主人信息：extra.instagram.owner = {id, username, avatar, ...}。"""
+        cookie_header = await api_client.profile_cookie_header(account.profile_path)
+        profile = await asyncio.to_thread(api_client.fetch_viewer_profile, cookie_header)
+        await self._save_owner(account, profile)
+
+    async def _save_owner(self, account: AccountContext, profile: dict) -> None:
         from app.services import account_manager  # 延迟导入避免循环依赖
 
-        cookie_header = await api_client.profile_cookie_header(account.profile_path)
-        owner = {"id": api_client.self_user_id(cookie_header)}
-        saved = await account_manager.save_owner(
-            account.account_id, constants.PLATFORM, {"owner": owner})
+        owner = {
+            "id": profile["id"],
+            "fbid_v2": profile.get("fbid_v2"),
+            "username": profile.get("username"),
+            "full_name": profile.get("full_name"),
+            "avatar": profile.get("avatar"),  # 带签名 CDN 原链，save_owner 落盘防过期
+            "follower_count": profile.get("follower_count"),
+            "media_count": profile.get("media_count"),
+        }
+        saved = await account_manager.save_owner(account.account_id, constants.PLATFORM, {"owner": owner})
         if saved is not None:
-            logger.info("[%s] 身份信息已回填：%s", account.account_id, owner["id"])
+            logger.info("[%s] 身份信息已回填：@%s(%s)",
+                        account.account_id, profile.get("username"), profile["id"])
 
     # ---------- 收藏抓取 ----------
 

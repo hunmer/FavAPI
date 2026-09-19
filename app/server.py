@@ -6,7 +6,7 @@ from fastapi import FastAPI
 
 from app.api import accounts, agents, ai_tag, covers, downloads, fetch, follows, notifications, queries, schedules, settings, tags
 from app.database import db
-from app.services import aria2_service, cover_worker, download_worker, scheduler
+from app.services import aria2_service, cover_worker, download_store, download_worker, scheduler, data_store
 from app.web.router import mount_web
 
 # 让 favapi.* 调试日志输出到 stderr（procm 会同时采集 stdout/stderr）
@@ -16,6 +16,12 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await db.connect()
+    # 清理上次进程残留的运行态（重启/崩溃后无人执行，且会卡住调度器防重入与下载队列）
+    stale_tasks = await data_store.interrupt_stale_tasks()
+    stale_downloads = await download_store.requeue_stale_running()
+    if stale_tasks or stale_downloads:
+        logging.getLogger("favapi").info(
+            "启动清理：%d 个中断任务标记失败，%d 个下载重新入队", stale_tasks, stale_downloads)
     await scheduler.start()
     await download_worker.start()
     await cover_worker.start()
