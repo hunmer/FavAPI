@@ -1,14 +1,22 @@
 import React from 'react';
-import { LayoutGrid, List, Loader2, Sparkles, X, CheckSquare, Download, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
+import { LayoutGrid, List, Columns3, Loader2, Sparkles, X, CheckSquare, Download, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
+import { ViewMode, ViewModeOption, ViewModeSwitch } from '../ViewModeSwitch';
 
 /** 列表排序字段：default 按抓取入库时间，collected 收藏时间，duration 时长 */
 export type BrowserSortBy = 'default' | 'collected' | 'duration';
 
+/** 数据浏览页支持的视图集合（网格 / 瀑布流 / 列表） */
+const VIEW_MODES: ViewModeOption<ViewMode>[] = [
+  { value: 'grid', icon: LayoutGrid, title: '网格视图：封面卡片流，适合快速找内容' },
+  { value: 'waterfall', icon: Columns3, title: '瀑布流视图：按封面原始比例多列排布' },
+  { value: 'list', icon: List, title: '列表视图：逐条信息核对，展现点赞/收藏与时间明细' },
+];
+
 /** 右列头部：标题 + 排序/视图切换/多选/一键打标（移动端页面滚动时吸顶），自 DataBrowserView 抽离 */
 export const BrowserToolbar: React.FC<{
   listLoading: boolean;
-  viewMode: 'grid' | 'list';
-  onViewModeChange: (mode: 'grid' | 'list') => void;
+  viewMode: ViewMode;
+  onViewModeChange: (mode: ViewMode) => void;
   selectionMode: boolean;
   onEnterSelectionMode: () => void;
   onExitSelectionMode: () => void;
@@ -99,34 +107,7 @@ export const BrowserToolbar: React.FC<{
           <span>{sortAsc ? '正序' : '倒序'}</span>
         </button>
       </div>
-      <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl border border-slate-200 dark:border-slate-700 flex items-center gap-1 shadow-2xs">
-        <button
-          type="button"
-          onClick={() => onViewModeChange('grid')}
-          className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
-            viewMode === 'grid'
-              ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
-              : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-          }`}
-          title="网格视图：封面卡片流，适合快速找内容"
-        >
-          <LayoutGrid className="w-3.5 h-3.5" />
-          <span>网格视图</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => onViewModeChange('list')}
-          className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
-            viewMode === 'list'
-              ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
-              : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-          }`}
-          title="列表视图：逐条信息核对，展现点赞/收藏与时间明细"
-        >
-          <List className="w-3.5 h-3.5" />
-          <span>列表视图</span>
-        </button>
-      </div>
+      <ViewModeSwitch modes={VIEW_MODES} value={viewMode} onChange={onViewModeChange} />
     </div>
   </div>
 );

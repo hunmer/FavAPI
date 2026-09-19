@@ -2,17 +2,18 @@ import React from 'react';
 import { Database, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ScrapedItem } from '../../types';
 import { coverApiUrl } from '../../api';
+import { ViewMode } from '../ViewModeSwitch';
 import { DataItemCard } from './DataItemCard';
 
 /**
- * 内容区（自 DataBrowserView 抽离）：空态 / 网格视图 / 列表视图，
+ * 内容区（自 DataBrowserView 抽离）：空态 / 网格视图 / 瀑布流视图 / 列表视图，
  * 含内部滚动区（#data-browser-scroll）与底部钉住的分页条。
  */
 export const BrowserContent: React.FC<{
   listLoading: boolean;
   totalCount: number;
   totalAll: number;
-  viewMode: 'grid' | 'list';
+  viewMode: ViewMode;
   currentItems: ScrapedItem[];
   selectionMode: boolean;
   selectedKeys: Set<string>;
@@ -91,6 +92,28 @@ export const BrowserContent: React.FC<{
             key={item.id}
             item={item}
             idx={idx}
+            onSelect={onOpenItem}
+            selectable={selectionMode}
+            selected={selectedKeys.has(itemKey(item))}
+            onToggleSelect={onToggleSelectItem}
+            onFilterAuthor={onFilterAuthor}
+            onOpenExternal={onOpenExternal}
+            onCopyUrl={onCopyUrl}
+            onOpenWithAccount={onOpenWithAccount}
+            onDownload={onDownload}
+            onDelete={onDeleteItem}
+          />
+        ))}
+      </div>
+    ) : viewMode === 'waterfall' ? (
+      /* Waterfall View: 封面按原始比例 CSS 多列排布（先竖后横，break-inside 防卡片跨列拆分） */
+      <div className="columns-2 sm:columns-3 lg:columns-4 xl:columns-5 gap-4 sm:gap-5 [&>*]:mb-4 sm:[&>*]:mb-5 [&>*]:break-inside-avoid">
+        {currentItems.map((item, idx) => (
+          <DataItemCard
+            key={item.id}
+            item={item}
+            idx={idx}
+            variableRatio
             onSelect={onOpenItem}
             selectable={selectionMode}
             selected={selectedKeys.has(itemKey(item))}

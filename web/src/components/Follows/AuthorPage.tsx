@@ -2,7 +2,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'motion/react';
 import {
   ArrowLeft,
+  Columns3,
   ImageOff,
+  LayoutGrid,
+  List,
   Loader2,
   RefreshCw,
   Tag,
@@ -13,6 +16,7 @@ import { Account } from '../../types';
 import { PlayerModal } from './PlayerModal';
 import { FollowAvatar } from './FollowAvatar';
 import { FollowItemActionMenu } from './FollowItemActions';
+import { ViewMode, ViewModeOption, ViewModeSwitch, readViewMode } from '../ViewModeSwitch';
 
 interface AuthorPageProps {
   secUid: string;
@@ -25,6 +29,13 @@ interface AuthorPageProps {
 
 const PAGE_SIZE = 18;
 
+/** 博主主页支持的视图集合（网格 / 瀑布流 / 列表） */
+const VIEW_MODES: ViewModeOption<ViewMode>[] = [
+  { value: 'grid', icon: LayoutGrid, title: '网格视图：等高封面卡片' },
+  { value: 'waterfall', icon: Columns3, title: '瀑布流视图：按封面原始比例多列排布' },
+  { value: 'list', icon: List, title: '列表视图：紧凑行，快速扫标题' },
+];
+
 /** 格式化时长：douyin 为毫秒 / bilibili 为秒，按数量级归一到秒 → m:ss */
 const fmtMs = (ms?: number | null) => {
   if (!ms || ms <= 0) return '';
@@ -34,6 +45,72 @@ const fmtMs = (ms?: number | null) => {
 };
 
 const fmtDate = (iso?: string | null) => (iso || '').replace('T', ' ').slice(0, 16);
+
+/** 作者作品卡片：grid 固定 16:9 封面，瀑布流按图片原始比例撑开（自 AuthorPage 内联渲染抽离） */
+const AuthorPostCard: React.FC<{
+  it: api.FollowPostRow;
+  idx: number;
+  secUid: string;
+  variableRatio?: boolean;
+  onPlay: (it: api.FollowPostRow) => void;
+  onContextMenu: (e: React.MouseEvent, it: api.FollowPostRow) => void;
+}> = ({ it, idx, secUid, variableRatio = false, onPlay, onContextMenu }) => {
+  // 瀑布流：封面加载后按原始宽高比撑开，未加载前占位 3:4 防止布局抖动
+  const [ratio, setRatio] = useState(3 / 4);
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: Math.min(idx * 20, 200) / 1000 }}
+      onClick={() => onPlay(it)}
+      onContextMenu={(e) => onContextMenu(e, it)}
+      className="anim-card-enter bg-white dark:bg-[#161B26] rounded-[20px] border border-slate-200/80 dark:border-slate-800 shadow-2xs hover:shadow-lg transition-all duration-200 overflow-hidden cursor-pointer group"
+    >
+      <div
+        className={`relative bg-slate-100 dark:bg-slate-800 overflow-hidden ${variableRatio ? '' : 'aspect-video'}`}
+        style={variableRatio ? { aspectRatio: String(ratio) } : undefined}
+      >
+        {it.cover_url ? (
+          <img
+            src={api.followPostCoverUrl(secUid, it.content_id)}
+            alt={it.title || ''}
+            onLoad={(e) => {
+              if (!variableRatio) return;
+              const { naturalWidth, naturalHeight } = e.currentTarget;
+              if (naturalWidth && naturalHeight) setRatio(naturalWidth / naturalHeight);
+            }}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            loading="lazy"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-slate-300 dark:text-slate-600">
+            <ImageOff className="w-7 h-7" />
+          </div>
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
+        {/* 未读标记：已读半透明降权 */}
+        {!it.read && (
+          <span className="absolute top-2 left-2 w-2.5 h-2.5 rounded-full bg-sky-500 ring-2 ring-white/70 shadow" title="未读" />
+        )}
+        {fmtMs(it.duration) && (
+          <span className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-black/65 text-white font-mono text-[10px]">
+            {fmtMs(it.duration)}
+          </span>
+        )}
+      </div>
+      <div className="p-3">
+        <p className={`text-xs font-medium line-clamp-2 leading-snug ${
+          it.read
+            ? 'text-slate-400 dark:text-slate-500'
+            : 'text-slate-900 dark:text-white'
+        }`}>
+          {it.title || it.content_id}
+        </p>
+        <p className="text-[10px] text-slate-400 mt-1.5">{fmtDate(it.published_at)}</p>
+      </div>
+    </motion.div>
+  );
+};
 
 /** 博主主页路由（/follows/author/:secUid，多平台）：实时作品列表 + 播放器 + 已读标记。 */
 export const AuthorPage: React.FC<AuthorPageProps> = ({
@@ -52,6 +129,12 @@ export const AuthorPage: React.FC<AuthorPageProps> = ({
   const [playing, setPlaying] = useState<{ awemeId: string; title?: string } | null>(null);
   const [onlyUnread, setOnlyUnread] = useState(false);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; item: api.FollowPostRow } | null>(null);
+  // 视图模式（网格 / 瀑布流 / 列表，localStorage 记忆）
+  const [viewMode, setViewMode] = useState<ViewMode>(() => readViewMode('favapi_author_view_mode', 'grid'));
+  const handleViewModeChange = (mode: ViewMode) => {
+    setViewMode(mode);
+    localStorage.setItem('favapi_author_view_mode', mode);
+  };
 
   // 浏览账号：博主平台下的可用账号，默认取第一个
   const platformAccounts = useMemo(
@@ -179,22 +262,25 @@ export const AuthorPage: React.FC<AuthorPageProps> = ({
         </div>
       </div>
 
-      {/* 工具行：仅看未读开关 */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={() => setOnlyUnread((v) => !v)}
-          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all cursor-pointer ${
-            onlyUnread
-              ? 'bg-sky-500 border-sky-500 text-white shadow-sm'
-              : 'bg-white dark:bg-[#161B26] border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700'
-          }`}
-        >
-          <span className={`w-1.5 h-1.5 rounded-full ${onlyUnread ? 'bg-white' : 'bg-sky-500'}`} />
-          仅看未读（{items.filter((i) => !i.read).length}）
-        </button>
-        {onlyUnread && items.every((i) => i.read) && (
-          <span className="text-[11px] text-slate-400">当前已加载作品均已读，可加载更多</span>
-        )}
+      {/* 工具行：仅看未读开关 + 视图切换 */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setOnlyUnread((v) => !v)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-all cursor-pointer ${
+              onlyUnread
+                ? 'bg-sky-500 border-sky-500 text-white shadow-sm'
+                : 'bg-white dark:bg-[#161B26] border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700'
+            }`}
+          >
+            <span className={`w-1.5 h-1.5 rounded-full ${onlyUnread ? 'bg-white' : 'bg-sky-500'}`} />
+            仅看未读（{items.filter((i) => !i.read).length}）
+          </button>
+          {onlyUnread && items.every((i) => i.read) && (
+            <span className="text-[11px] text-slate-400">当前已加载作品均已读，可加载更多</span>
+          )}
+        </div>
+        <ViewModeSwitch modes={VIEW_MODES} value={viewMode} onChange={handleViewModeChange} />
       </div>
 
       {/* 作品网格 */}
@@ -209,56 +295,88 @@ export const AuthorPage: React.FC<AuthorPageProps> = ({
         </div>
       ) : items.length === 0 ? (
         <div className="text-center py-20 text-xs text-slate-400">该博主暂无可见作品</div>
-      ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+      ) : viewMode === 'waterfall' ? (
+        /* 瀑布流：封面按原始比例 CSS 多列排布（先竖后横，break-inside 防卡片跨列拆分） */
+        <div className="columns-2 sm:columns-3 lg:columns-4 xl:columns-5 gap-4 [&>*]:mb-4 [&>*]:break-inside-avoid">
           {(onlyUnread ? items.filter((i) => !i.read) : items).map((it, idx) => (
-            <motion.div
+            <AuthorPostCard
               key={it.content_id}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: Math.min(idx * 20, 200) / 1000 }}
-              onClick={() => setPlaying({ awemeId: it.content_id, title: it.title || undefined })}
-              onContextMenu={(e) => {
+              it={it}
+              idx={idx}
+              secUid={secUid}
+              variableRatio
+              onPlay={(x) => setPlaying({ awemeId: x.content_id, title: x.title || undefined })}
+              onContextMenu={(e, x) => {
                 e.preventDefault();
-                setCtxMenu({ x: e.clientX, y: e.clientY, item: it });
+                setCtxMenu({ x: e.clientX, y: e.clientY, item: x });
               }}
-              className="anim-card-enter bg-white dark:bg-[#161B26] rounded-[20px] border border-slate-200/80 dark:border-slate-800 shadow-2xs hover:shadow-lg transition-all duration-200 overflow-hidden cursor-pointer group"
-            >
-              <div className="relative aspect-video bg-slate-100 dark:bg-slate-800 overflow-hidden">
-                {it.cover_url ? (
-                  <img
-                    src={api.followPostCoverUrl(secUid, it.content_id)}
-                    alt={it.title || ''}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-slate-300 dark:text-slate-600">
-                    <ImageOff className="w-7 h-7" />
-                  </div>
-                )}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent pointer-events-none" />
-                {/* 未读标记：已读半透明降权 */}
-                {!it.read && (
-                  <span className="absolute top-2 left-2 w-2.5 h-2.5 rounded-full bg-sky-500 ring-2 ring-white/70 shadow" title="未读" />
-                )}
+            />
+          ))}
+        </div>
+      ) : viewMode === 'list' ? (
+        /* 列表视图：紧凑行（缩略图 + 标题 + 时长/发布时间 + 未读点） */
+        <div className="bg-white dark:bg-[#161B26] rounded-[20px] border border-slate-200/80 dark:border-slate-800 shadow-2xs overflow-hidden">
+          <div className="divide-y divide-slate-100 dark:divide-slate-800">
+            {(onlyUnread ? items.filter((i) => !i.read) : items).map((it, idx) => (
+              <div
+                key={it.content_id}
+                onClick={() => setPlaying({ awemeId: it.content_id, title: it.title || undefined })}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setCtxMenu({ x: e.clientX, y: e.clientY, item: it });
+                }}
+                style={{ animationDelay: `${Math.min(idx * 20, 200)}ms` }}
+                className={`anim-row-enter flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/60 ${
+                  it.read ? 'opacity-70' : ''
+                }`}
+              >
+                <div className="w-24 h-14 rounded-lg bg-slate-100 dark:bg-slate-800 overflow-hidden shrink-0">
+                  {it.cover_url ? (
+                    <img
+                      src={api.followPostCoverUrl(secUid, it.content_id)}
+                      alt={it.title || ''}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-slate-300 dark:text-slate-600">
+                      <ImageOff className="w-4 h-4" />
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-xs font-medium line-clamp-1 ${
+                    it.read ? 'text-slate-400 dark:text-slate-500' : 'text-slate-900 dark:text-white'
+                  }`}>
+                    {it.title || it.content_id}
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">{fmtDate(it.published_at)}</p>
+                </div>
+                {!it.read && <span className="w-2 h-2 rounded-full bg-sky-500 shrink-0" title="未读" />}
                 {fmtMs(it.duration) && (
-                  <span className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-black/65 text-white font-mono text-[10px]">
+                  <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-mono text-[10px] shrink-0">
                     {fmtMs(it.duration)}
                   </span>
                 )}
               </div>
-              <div className="p-3">
-                <p className={`text-xs font-medium line-clamp-2 leading-snug ${
-                  it.read
-                    ? 'text-slate-400 dark:text-slate-500'
-                    : 'text-slate-900 dark:text-white'
-                }`}>
-                  {it.title || it.content_id}
-                </p>
-                <p className="text-[10px] text-slate-400 mt-1.5">{fmtDate(it.published_at)}</p>
-              </div>
-            </motion.div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        /* 网格视图：等高封面卡片 */
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          {(onlyUnread ? items.filter((i) => !i.read) : items).map((it, idx) => (
+            <AuthorPostCard
+              key={it.content_id}
+              it={it}
+              idx={idx}
+              secUid={secUid}
+              onPlay={(x) => setPlaying({ awemeId: x.content_id, title: x.title || undefined })}
+              onContextMenu={(e, x) => {
+                e.preventDefault();
+                setCtxMenu({ x: e.clientX, y: e.clientY, item: x });
+              }}
+            />
           ))}
         </div>
       )}

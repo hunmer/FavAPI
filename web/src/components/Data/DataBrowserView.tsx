@@ -10,6 +10,7 @@ import { BrowserTagContextMenu, BrowserTagDeleteModal, BrowserGroupCreateModal }
 import { BrowserItemsDeleteModal, BrowserSingleDeleteModal } from './BrowserDeleteModals';
 import { AiTaggingModal } from './AiTaggingModal';
 import { useAiTagging } from './useAiTagging';
+import { ViewMode, readViewMode } from '../ViewModeSwitch';
 import * as api from '../../api';
 import { useSearchParams } from 'react-router-dom';
 
@@ -70,12 +71,9 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
   const [searchParams, setSearchParams] = useSearchParams();
 
   // View mode with memory (localStorage or fallback to grid)
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
-    const saved = localStorage.getItem('favapi_data_view_mode');
-    return saved === 'list' ? 'list' : 'grid';
-  });
+  const [viewMode, setViewMode] = useState<ViewMode>(() => readViewMode('favapi_data_view_mode', 'grid'));
 
-  const handleViewModeChange = (mode: 'grid' | 'list') => {
+  const handleViewModeChange = (mode: ViewMode) => {
     setViewMode(mode);
     localStorage.setItem('favapi_data_view_mode', mode);
   };

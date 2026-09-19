@@ -24,6 +24,8 @@ interface DataItemCardProps {
   /** 加入下载队列（默认 yt-dlp） */
   onDownload?: (item: ScrapedItem) => void;
   onDelete?: (item: ScrapedItem) => void;
+  /** 瀑布流视图：封面按图片原始宽高比呈现（默认固定 16:9） */
+  variableRatio?: boolean;
 }
 
 /** 数据浏览网格视图的封面卡片（自 DataBrowserView 抽离）。 */
@@ -40,11 +42,15 @@ export const DataItemCard: React.FC<DataItemCardProps> = ({
   onOpenWithAccount,
   onDownload,
   onDelete,
+  variableRatio = false,
 }) => {
   // mock 未收录的平台（如 threads）回退到后端 /platforms 的 display_name
   const platformMeta = PLATFORMS.find((p) => p.id === item.platform);
   const backendInfo = usePlatformInfo(item.platform);
   const platformName = platformMeta?.name || backendInfo?.display_name || item.platform;
+
+  // 瀑布流：封面加载后按原始宽高比撑开，未加载前占位 3:4 防止布局抖动
+  const [coverRatio, setCoverRatio] = useState(3 / 4);
 
   // 右键 / dots 共用的操作菜单（fixed 定位，menu.x/y 为弹出的锚点坐标）
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
@@ -65,12 +71,20 @@ export const DataItemCard: React.FC<DataItemCardProps> = ({
       style={{ animationDelay: `${Math.min(idx * 30, 240)}ms` }}
     >
       {/* Cover Image Container with corner badges */}
-      <div className="relative aspect-video w-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+      <div
+        className={`relative w-full bg-slate-100 dark:bg-slate-800 overflow-hidden ${variableRatio ? '' : 'aspect-video'}`}
+        style={variableRatio ? { aspectRatio: String(coverRatio) } : undefined}
+      >
         {item.coverUrl ? (
           <img
             /* 封面统一走后端接口：已本地化回本地文件，未本地化由后端跳转远程原图 */
             src={coverApiUrl(item.platform, item.id)}
             alt={item.title}
+            onLoad={(e) => {
+              if (!variableRatio) return;
+              const { naturalWidth, naturalHeight } = e.currentTarget;
+              if (naturalWidth && naturalHeight) setCoverRatio(naturalWidth / naturalHeight);
+            }}
             className={`w-full h-full object-cover group-hover:scale-104 transition-transform duration-300 ${selected ? 'opacity-80' : ''}`}
             referrerPolicy="no-referrer"
           />
