@@ -1109,6 +1109,7 @@ export interface FollowPostRow {
   cover_url?: string | null;
   duration?: number | null;
   published_at?: string | null;
+  url?: string | null; // 原站链接（tiktok/threads/instagram 等按 ID 拼不出的平台由列表下发）
   read: boolean;
 }
 
@@ -1124,6 +1125,7 @@ export interface PlayInfo {
   images: { url: string; width?: number; height?: number }[];
   music_url?: string | null;  // 图文作品的背景音乐直链
   iframe_url?: string | null; // 平台官方嵌入播放页（YouTube：直链绑定会话不可独立访问）
+  share_url?: string | null;  // 原站链接（tiktok/threads/instagram 等无法按 ID 拼链的平台由详情下发）
 }
 
 export interface FollowSyncResult {
@@ -1170,6 +1172,10 @@ export function fetchPlayInfo(awemeId: string, accountId: string): Promise<PlayI
 
 export function markFollowRead(contentId: string): Promise<{ read: boolean }> {
   return request(`/follows/read/${encodeURIComponent(contentId)}`, { method: 'POST' });
+}
+
+export function unmarkFollowRead(contentId: string): Promise<{ read: boolean }> {
+  return request(`/follows/read/${encodeURIComponent(contentId)}`, { method: 'DELETE' });
 }
 
 export function syncFollowPosts(body: { account_id?: string; sec_uids?: string[]; count?: number }): Promise<FollowSyncResult> {

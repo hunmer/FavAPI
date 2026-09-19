@@ -137,6 +137,11 @@ def _post_content_row(post: dict) -> dict | None:
             "quote_count": tpi.get("quote_count"),
         }, ensure_ascii=False),
         "raw_data": json.dumps(post, ensure_ascii=False),
+        # 原站链接（数字 pk 无法独立成链，需 username + shortcode）
+        "share_url": (
+            f"https://www.threads.com/@{user.get('username')}/post/{post.get('code')}"
+            if post.get("code") and user.get("username") else None
+        ),
     }
 
 
@@ -165,6 +170,11 @@ def parse_play_info(media: dict) -> dict:
         },
         "author": {"nickname": user.get("username"),
                    "sec_uid": str(user.get("pk") or user.get("id") or "")},
+        # 原站链接（数字 pk 无法独立成链，需 username + shortcode）
+        "share_url": (
+            f"https://www.threads.com/@{user.get('username')}/post/{media.get('code')}"
+            if media.get("code") and user.get("username") else None
+        ),
         # CDN 直链（cdninstagram.com）仅 UA 即可访问，媒体代理按域附加 UA
         "video_urls": videos,
         "images": images,

@@ -55,6 +55,11 @@ def parse_item(item: dict) -> dict:
         "statistics": json.dumps(statistics, ensure_ascii=False),
         "raw_data": json.dumps(item, ensure_ascii=False),
         "collected_at": collected_at,
+        # 原站链接（数字 id 无法独立成链，需作者 uniqueId）；图文以 /video/ 路径访问同样渲染
+        "share_url": (
+            f"https://www.tiktok.com/@{author.get('uniqueId')}/video/{item.get('id')}"
+            if author.get("uniqueId") and item.get("id") else None
+        ),
     }
 
 
@@ -280,6 +285,12 @@ def parse_play_info(item: dict) -> dict:
             })
     music_url = str((item.get("music") or {}).get("playUrl") or "")
     info["music_url"] = music_url if music_url.startswith("http") else None
+    # 原站链接（数字 item_id 无法独立成链，需作者 uniqueId）：图文走 /photo/，视频走 /video/
+    handle = str(author.get("uniqueId") or "").strip()
+    info["share_url"] = (
+        f"https://www.tiktok.com/@{handle}/{'photo' if images else 'video'}/{info['aweme_id']}"
+        if handle else None
+    )
     if not info["video_urls"] and not info["images"]:
         raise RuntimeError("详情响应无可用播放地址（作品可能已删除或设为私密）")
     return info

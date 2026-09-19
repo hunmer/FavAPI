@@ -299,6 +299,7 @@ async def author_posts(sec_uid: str, cursor: int | str = 0, count: int = 18, acc
             "cover_url": it.get("cover_url"),
             "duration": it.get("duration"),
             "published_at": it.get("collected_at"),  # 投稿列表 collected_at 即发布时间
+            "url": it.get("share_url"),  # 原站链接（tiktok/threads/instagram 等按 ID 拼不出的平台）
             "read": it["content_id"] in read_set,
         }
         for it in batch["items"] if it.get("content_id")

@@ -12,6 +12,7 @@ import * as api from '../../api';
 import { Account } from '../../types';
 import { PlayerModal } from './PlayerModal';
 import { FollowAvatar } from './FollowAvatar';
+import { FollowItemActionMenu } from './FollowItemActions';
 
 interface AuthorPageProps {
   secUid: string;
@@ -50,6 +51,7 @@ export const AuthorPage: React.FC<AuthorPageProps> = ({
   const [syncing, setSyncing] = useState(false);
   const [playing, setPlaying] = useState<{ awemeId: string; title?: string } | null>(null);
   const [onlyUnread, setOnlyUnread] = useState(false);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; item: api.FollowPostRow } | null>(null);
 
   // 浏览账号：博主平台下的可用账号，默认取第一个
   const platformAccounts = useMemo(
@@ -98,9 +100,9 @@ export const AuthorPage: React.FC<AuthorPageProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [secUid, platformAccounts]);
 
-  const handleRead = useCallback((contentId: string) => {
+  const handleReadChange = useCallback((contentId: string, read: boolean) => {
     setItems((prev) =>
-      prev.map((p) => (p.content_id === contentId ? { ...p, read: true } : p))
+      prev.map((p) => (p.content_id === contentId ? { ...p, read } : p))
     );
   }, []);
 
@@ -216,6 +218,10 @@ export const AuthorPage: React.FC<AuthorPageProps> = ({
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: Math.min(idx * 20, 200) / 1000 }}
               onClick={() => setPlaying({ awemeId: it.content_id, title: it.title || undefined })}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setCtxMenu({ x: e.clientX, y: e.clientY, item: it });
+              }}
               className="anim-card-enter bg-white dark:bg-[#161B26] rounded-[20px] border border-slate-200/80 dark:border-slate-800 shadow-2xs hover:shadow-lg transition-all duration-200 overflow-hidden cursor-pointer group"
             >
               <div className="relative aspect-video bg-slate-100 dark:bg-slate-800 overflow-hidden">
@@ -276,9 +282,30 @@ export const AuthorPage: React.FC<AuthorPageProps> = ({
         <PlayerModal
           awemeId={playing.awemeId}
           accountId={accountIdRef.current}
+          platform={platform}
           fallbackTitle={playing.title}
           onClose={() => setPlaying(null)}
-          onRead={handleRead}
+          onRead={(contentId) => handleReadChange(contentId, true)}
+          showToast={showToast}
+        />
+      )}
+
+      {/* 卡片右键菜单 */}
+      {ctxMenu && accountIdRef.current && (
+        <FollowItemActionMenu
+          item={{
+            platform,
+            contentId: ctxMenu.item.content_id,
+            title: ctxMenu.item.title,
+            accountId: accountIdRef.current,
+            url: ctxMenu.item.url,
+            read: ctxMenu.item.read,
+          }}
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          onClose={() => setCtxMenu(null)}
+          onReadChange={handleReadChange}
+          showToast={showToast}
         />
       )}
     </div>

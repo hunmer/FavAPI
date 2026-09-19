@@ -58,6 +58,8 @@ def _media_content_row(media: dict) -> dict | None:
             "play_count": media.get("play_count"),
         }, ensure_ascii=False),
         "raw_data": json.dumps(media, ensure_ascii=False),
+        # 原站链接（数字 pk 无法独立成链，需 shortcode）
+        "share_url": f"https://www.instagram.com/p/{media.get('code')}/" if media.get("code") else None,
     }
 
 
@@ -231,6 +233,8 @@ def parse_play_info(media: dict) -> dict:
         },
         "author": {"nickname": user.get("username"),
                    "sec_uid": str(user.get("pk") or user.get("id") or "")},
+        # 原站链接（数字 pk 无法独立成链，需 shortcode）
+        "share_url": f"https://www.instagram.com/p/{media.get('code')}/" if media.get("code") else None,
         # CDN 直链（scontent-*.cdninstagram.com）仅 UA 即可访问，媒体代理按域附加 UA
         "video_urls": videos,
         "images": images,
