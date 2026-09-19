@@ -118,6 +118,68 @@ POST_DETAIL_PV_FLAGS = {
     "__relay_internal__pv__BarcelonaIsInternalUserrelayprovider": False,
 }
 
+# ---------- 特别关注（follows）体系 ----------
+# 关注列表（BarcelonaFriendshipsFollowingTabQuery，2026-09 抓包）。
+# 根字段 data.user.following（Relay 连接：edges[].node / page_info）；
+# variables: {"first": N, "userID": "<数字用户 id>", [after]}；响应无 total，游标为
+# 不透明字符串（首页实测 "5" 这类计数值，翻页按原样回传 after）。
+FOLLOWING_DOC_ID = "27863003163400879"
+FOLLOWING_QUERY_NAME = "BarcelonaFriendshipsFollowingTabQuery"
+FOLLOWING_PV_FLAGS = {
+    "__relay_internal__pv__BarcelonaIsInternalUserrelayprovider": False,
+    "__relay_internal__pv__BarcelonaIsLoggedInrelayprovider": True,
+    "__relay_internal__pv__BarcelonaIsCrawlerrelayprovider": False,
+    "__relay_internal__pv__BarcelonaShouldShowFediverseListsrelayprovider": True,
+}
+FOLLOWING_PAGE_COUNT = 20  # 浏览器抓包每页条数
+
+# 博主主页作品（BarcelonaProfileThreadsTabDirectQuery，doc_id 从站点 bundle 的
+# threadsRelayOperation 模块提取）。连接挂在根字段别名 data.mediaData 下
+# （原始字段 xdt_api__v1__text_feed__user_id__profile__connection），edges[].node
+# .thread_items[0].post 为主帖（profile 时间线一贴一行，replies 不单列）；
+# variables: {"first": N, "userID": "<数字用户 id>", [after]}，end_cursor 为
+# base64 不透明游标。
+USER_POSTS_DOC_ID = "28525429603733671"
+USER_POSTS_QUERY_NAME = "BarcelonaProfileThreadsTabDirectQuery"
+# providedVariables 全集（bundle 元数据提取 34 项，实测缺失报 GraphQL 错误）；
+# 布尔取值参照同期浏览器抓包的 gate 值，仅 IsLoggedIn 按登录态置 True。
+USER_POSTS_PV_FLAGS = {
+    "__relay_internal__pv__BarcelonaIsLoggedInrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasProfileSelfReplyContextrelayprovider": False,
+    "__relay_internal__pv__BarcelonaHasDearAlgoConsumptionrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasMetaAiContentAttachmentsrelayprovider": False,
+    "__relay_internal__pv__BarcelonaShouldFetchPostAuthorFullNamerelayprovider": False,
+    "__relay_internal__pv__BarcelonaMessagesHasLiveChatMessagingrelayprovider": False,
+    "__relay_internal__pv__BarcelonaHasEventBadgerelayprovider": False,
+    "__relay_internal__pv__BarcelonaMessagingHasMetaAIBotrelayprovider": False,
+    "__relay_internal__pv__BarcelonaGenAIRepliesEnabledrelayprovider": False,
+    "__relay_internal__pv__BarcelonaIsSearchDiscoveryEnabledrelayprovider": False,
+    "__relay_internal__pv__BarcelonaHasCommunitiesrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasGameScoreSharerelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasPublicViewCountCardrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasCommunityEmojiUpdateCardrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasCommunityEntityCardrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasScorecardCommunityrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasSportTeamAllegianceCardrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasMusicrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasNewspaperLinkStylerelayprovider": False,
+    "__relay_internal__pv__BarcelonaHasMessagingrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasPodcastV2Consumptionrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasPodcastTranscriptConsumptionrelayprovider": True,
+    "__relay_internal__pv__BarcelonaShouldFulfillLightboxQueryrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasViewerRepliedrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasPrivateRepliesDeprecationrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasGhostPostEmojiActivationrelayprovider": False,
+    "__relay_internal__pv__BarcelonaOptionalCookiesEnabledrelayprovider": True,
+    "__relay_internal__pv__BarcelonaHasDearAlgoWebProductionrelayprovider": False,
+    "__relay_internal__pv__BarcelonaCanSeeSponsoredContentrelayprovider": False,
+    "__relay_internal__pv__BarcelonaHasWebFaviconsrelayprovider": False,
+    "__relay_internal__pv__BarcelonaIsCrawlerrelayprovider": False,
+    "__relay_internal__pv__BarcelonaHasCommunityTopContributorsrelayprovider": False,
+    "__relay_internal__pv__BarcelonaShouldShowFediverseM075Featuresrelayprovider": True,
+    "__relay_internal__pv__BarcelonaIsInternalUserrelayprovider": False,
+}
+
 DEFAULT_COUNT = 0   # 抓取数量缺省值：0 = 全部（用户反馈默认 20 反直觉）
 MAX_COUNT = 500
 WAIT_AFTER_GOTO_MS = 5000   # 打开收藏页后等待首批数据渲染

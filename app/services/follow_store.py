@@ -18,6 +18,7 @@ logger = logging.getLogger("favapi.follows")
 # 抖音系 CDN + B 站系 CDN（i0/i1/i2.hdslb.com 头像封面、upos-sz-mirror*.bilivideo.com 视频直链）
 # + 快手系 CDN（kwimgs 头像、yximgs 封面、kwaicdn/djvod.ndcimgs 视频直链，均仅 UA 即可访问）
 # + 小红书系 CDN（sns-avatar/sns-webpic/sns-video*.xhscdn.com 头像/封面/直链，需站内 referer）
+# + Threads CDN（scontent-*.cdninstagram.com 头像/封面/视频直链，仅 UA 即可访问）
 MEDIA_HOST_SUFFIXES = (
     "douyinvod.com", "douyinpic.com", "douyinstatic.com", "douyin.com", "byteimg.com",
     "bytecdn.cn", "snssdk.com", "bytedance.com", "zjcdn.com", "volccdn.com",
@@ -25,6 +26,7 @@ MEDIA_HOST_SUFFIXES = (
     "hdslb.com", "bilivideo.com", "bilivideo.cn",
     "kwimgs.com", "yximgs.com", "kwaicdn.com", "ndcimgs.com",
     "xhscdn.com",
+    "cdninstagram.com",
 )
 # 需要站内 referer 的平台 CDN（其余如 B 站直链不带 referer 最稳）
 DOUYIN_REFERER = "https://www.douyin.com/"

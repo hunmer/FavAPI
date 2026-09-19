@@ -16,6 +16,14 @@ Threads Web 走 GraphQL（POST /graphql/query，form-urlencoded）：
 登录态复用账号浏览器 profile：起一次无头 Chromium 读出 threads.com 域 cookies
 （profile 同时含 instagram.com 同名 cookie，必须按域过滤），后续请求纯 HTTP。
 threads.com 在部分网络环境需代理：与声明式平台同策略解析（env → Windows 注册表）。
+
+特别关注（follows）体系（2026-09 接入，doc_id 与 pv 标志见 constants）：
+- 关注列表 BarcelonaFriendshipsFollowingTabQuery：data.user.following 连接，
+  游标为不透明字符串（after 回传）；
+- 博主主页作品 BarcelonaProfileThreadsTabDirectQuery：连接挂在根字段别名
+  data.mediaData 下（doc_id 从站点 bundle 的 threadsRelayOperation 模块提取），
+  base64 end_cursor 翻页，一个 edge 一条主帖（自回复不单列）；
+- 播放信息复用帖子详情查询（fetch_post_media + parser.parse_play_info）。
 """
 import asyncio
 import json
@@ -30,7 +38,13 @@ from curl_cffi.requests.exceptions import HTTPError, RequestException
 
 from app.services import browser
 from . import constants
-from .parser import parse_post_links, parse_saved_media, parse_viewer_profile
+from .parser import (
+    parse_following_list,
+    parse_post_links,
+    parse_saved_media,
+    parse_user_posts,
+    parse_viewer_profile,
+)
 from ..base import LoginExpiredError
 
 logger = logging.getLogger("favapi.threads.api")
@@ -255,12 +269,11 @@ def resolve_post_id(cookie_header: str, source: str) -> str:
     return pk
 
 
-def fetch_post_detail(cookie_header: str, lsd: str, post_id: str) -> dict:
-    """按帖子 pk 拉取详情并解析可下载直链（同步阻塞，异步侧 to_thread 调用）。
+def fetch_post_media(cookie_header: str, lsd: str, post_id: str) -> dict:
+    """按帖子 pk 调 BarcelonaPostPageTargetQuery 返回原始 data.media（同步阻塞）。
 
-    BarcelonaPostPageTargetQuery（data.media 含 video_versions / image_versions2 /
-    carousel_media）；返回 {post_id, media_type, links, author_name, author_id}，
-    links 结构与小红书一致（kind=video/image/text），供 download_worker 消费。
+    下载直链解析（fetch_post_detail）与特别关注播放信息（parse_play_info）共用；
+    查询失败（帖子删除/私密）抛 RuntimeError。
     """
     data = _graphql_post(cookie_header, lsd, constants.POST_DETAIL_QUERY_NAME,
                          {"postID": str(post_id), **constants.POST_DETAIL_PV_FLAGS},
@@ -269,6 +282,17 @@ def fetch_post_detail(cookie_header: str, lsd: str, post_id: str) -> dict:
     if media is None:
         errors = "; ".join(str(e.get("message")) for e in (data.get("errors") or []))
         raise RuntimeError(f"帖子详情查询失败：{errors or str(data)[:200]}")
+    return media
+
+
+def fetch_post_detail(cookie_header: str, lsd: str, post_id: str) -> dict:
+    """按帖子 pk 拉取详情并解析可下载直链（同步阻塞，异步侧 to_thread 调用）。
+
+    BarcelonaPostPageTargetQuery（data.media 含 video_versions / image_versions2 /
+    carousel_media）；返回 {post_id, media_type, links, author_name, author_id}，
+    links 结构与小红书一致（kind=video/image/text），供 download_worker 消费。
+    """
+    media = fetch_post_media(cookie_header, lsd, post_id)
     links = parse_post_links(media)
     if not any(l.get("url") for l in links):
         # 纯文字帖只有文案链接，无直链不算失败；完全为空才视为异常
@@ -314,6 +338,110 @@ def unsave_media(cookie_header: str, lsd: str, media_id: str) -> dict:
                             constants.UNSAVE_QUERY_NAME, media_id)
     logger.info("unsave_media media_id=%s has_viewer_saved=%s", media_id, media.get("has_viewer_saved"))
     return media
+
+
+# ---------- 特别关注（follows）体系：关注列表 / 博主主页作品 ----------
+
+def self_user_id(cookie_header: str) -> str:
+    """当前登录账号的用户 id（cookie ds_user_id，与 GraphQL 的 userID 同号空间）。"""
+    return _cookie_value(cookie_header, "ds_user_id")
+
+
+def fetch_following_page(cookie_header: str, lsd: str, user_id: str, after: str = "") -> dict:
+    """拉取一页关注列表（同步阻塞，异步侧用 asyncio.to_thread 调用）。
+
+    after 为上一页响应的 end_cursor（首页传空）；返回 parse_following_list 的
+    结果 {followings, cursor, has_more}。
+    """
+    variables = {"first": constants.FOLLOWING_PAGE_COUNT,
+                 "userID": str(user_id), **constants.FOLLOWING_PV_FLAGS}
+    if after:
+        variables["after"] = after
+    data = _graphql_post(cookie_header, lsd, constants.FOLLOWING_QUERY_NAME,
+                         variables, constants.FOLLOWING_DOC_ID)
+    user = (data.get("data") or {}).get("user")
+    if user is None:
+        errors = "; ".join(str(e.get("message")) for e in (data.get("errors") or []))
+        raise RuntimeError(f"关注列表查询失败：{errors or str(data)[:200]}")
+    return parse_following_list(data)
+
+
+async def fetch_followings(cookie_header: str, user_id: str, count: int = 0,
+                           on_batch=None):
+    """按 end_cursor 游标翻页拉取关注列表，直到取满 count（0=全部）或 has_more=false。
+
+    返回 (全部 followings, 最后一批的 has_more)；on_batch({"page", "followings"}) 逐页回调。
+    """
+    after = ""
+    collected: list[dict] = []
+    page = 0
+    lsd = await asyncio.to_thread(fetch_lsd, cookie_header)
+    while True:
+        batch = await asyncio.to_thread(
+            fetch_following_page, cookie_header, lsd, user_id, after)
+        page += 1
+        collected.extend(batch["followings"])
+        logger.info(
+            "followings 第 %d 页：%d 条，累计 %d，has_more=%s",
+            page, len(batch["followings"]), len(collected), batch["has_more"],
+        )
+        if on_batch and batch["followings"]:
+            await on_batch({"page": page, "followings": batch["followings"]})
+        if not batch["has_more"] or not batch["cursor"]:
+            return collected, False
+        if count and len(collected) >= count:
+            return collected, True
+        after = batch["cursor"]
+        await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
+
+
+def fetch_user_posts_page(cookie_header: str, lsd: str, user_id: str,
+                          after: str = "", first: int = 0) -> dict:
+    """拉取一页博主主页作品（同步阻塞，异步侧用 asyncio.to_thread 调用）。
+
+    after 为上一页响应的 end_cursor（首页传空）；first 每页条数（0 =
+    constants.API_PAGE_COUNT）；返回 parse_user_posts 的结果 {items, cursor, has_more}。
+    """
+    variables = {"first": first or constants.API_PAGE_COUNT,
+                 "userID": str(user_id), **constants.USER_POSTS_PV_FLAGS}
+    if after:
+        variables["after"] = after
+    data = _graphql_post(cookie_header, lsd, constants.USER_POSTS_QUERY_NAME,
+                         variables, constants.USER_POSTS_DOC_ID)
+    media_data = (data.get("data") or {}).get("mediaData")
+    if media_data is None:
+        errors = "; ".join(str(e.get("message")) for e in (data.get("errors") or []))
+        raise RuntimeError(f"博主作品查询失败：{errors or str(data)[:200]}")
+    return parse_user_posts(data)
+
+
+async def fetch_user_posts(cookie_header: str, user_id: str, count: int = 0,
+                           on_batch=None):
+    """按 end_cursor 游标翻页拉取博主主页作品，直到取满 count（0=全部）或 has_more=false。
+
+    返回 (全部 items, 最后一批的 has_more)；on_batch({"page", "items"}) 逐页回调。
+    """
+    after = ""
+    collected: list[dict] = []
+    page = 0
+    lsd = await asyncio.to_thread(fetch_lsd, cookie_header)
+    while True:
+        batch = await asyncio.to_thread(
+            fetch_user_posts_page, cookie_header, lsd, user_id, after)
+        page += 1
+        collected.extend(batch["items"])
+        logger.info(
+            "user_posts 第 %d 页：%d 条，累计 %d，has_more=%s",
+            page, len(batch["items"]), len(collected), batch["has_more"],
+        )
+        if on_batch and batch["items"]:
+            await on_batch({"page": page, "items": batch["items"]})
+        if not batch["has_more"] or not batch["cursor"]:
+            return collected, False
+        if count and len(collected) >= count:
+            return collected, True
+        after = batch["cursor"]
+        await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
 
 
 async def unsave_multi(cookie_header: str, media_ids: list[str], on_progress=None) -> dict:

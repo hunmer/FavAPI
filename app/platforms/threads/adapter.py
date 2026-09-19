@@ -6,6 +6,7 @@ API 直连：profile cookies + curl_cffi 直连 GraphQL（浏览器模拟实现�
 （env → Windows 注册表），浏览器会话与直连共用。
 """
 import asyncio
+import json
 import logging
 import time
 
@@ -23,8 +24,10 @@ from app.platforms.base import (
     PARAM_DATE_TO,
 )
 from app.services import browser
+from app.utils import now_iso
 from . import api_client
 from . import constants
+from .parser import parse_play_info
 
 logger = logging.getLogger("favapi.threads")
 
@@ -45,6 +48,7 @@ class ThreadsAdapter(BasePlatformAdapter):
     supported_actions = ("list_favorites",)
     api_fetch_implemented = True  # 收藏列表支持 API 直连（params.method="api"）
     download_api_implemented = True  # 支持按帖子 ID/链接解析下载直链（视频/图文/文案）
+    follows_api_implemented = True  # 特别关注体系：关注列表 / 博主主页作品 / 播放 / 一键同步
     # 不填 count 默认抓全部（fetch_favorites_api 默认 0），覆盖通用 PARAM_COUNT 文案
     fetch_targets = (
         FetchTarget(
@@ -178,6 +182,98 @@ class ThreadsAdapter(BasePlatformAdapter):
             link.setdefault("author_name", result.get("author_name"))
             link.setdefault("author_id", result.get("author_id"))
         return result["links"]
+
+    # ---------- 特别关注（follows）体系 ----------
+
+    async def follows_profile_cookie(self, account: AccountContext) -> str:
+        return await api_client.profile_cookie_header(account.profile_path)
+
+    def follows_self_uid(self, cookie_header: str) -> str:
+        # ds_user_id 与 GraphQL userID / 用户 pk 同号空间（follow_authors 主键）
+        return api_client.self_user_id(cookie_header)
+
+    def follows_validate_uid(self, sec_uid: str) -> None:
+        if not str(sec_uid or "").isdigit():
+            raise ValueError("Threads 博主 ID 需为纯数字用户 id（主页地址 /@用户名 的数字 pk）")
+
+    async def follows_fetch_following(self, cookie_header: str, self_uid: str,
+                                      count: int = 0, on_batch=None) -> tuple[list[dict], bool]:
+        followings, has_more = await api_client.fetch_followings(
+            cookie_header, self_uid, count, on_batch=on_batch)
+        # 该查询不下发简介与帖子数，置 None 由前端兜底展示
+        mapped = [
+            {
+                "sec_uid": f["pk"], "uid": f["pk"], "unique_id": f["username"],
+                "nickname": f["full_name"] or f["username"], "signature": None,
+                "avatar_url": f["avatar_url"], "follower_count": f["follower_count"],
+                "aweme_count": None, "is_top": False,
+            }
+            for f in followings
+        ]
+        return mapped, has_more
+
+    async def follows_fetch_posts_page(self, cookie_header: str, sec_uid: str,
+                                       cursor: int | str = 0, count: int = 18) -> dict:
+        # cursor 为服务端 base64 不透明游标（契约扩展 int|str 原样透传）：
+        # 0/""/"0" = 首页，末页归 0（与小红书同款）
+        text = str(cursor or "").strip()
+        after = "" if text in ("", "0") else text
+        lsd = await asyncio.to_thread(api_client.fetch_lsd, cookie_header)
+        batch = await asyncio.to_thread(
+            api_client.fetch_user_posts_page, cookie_header, lsd, sec_uid, after,
+            max(1, min(count, 50)),
+        )
+        batch["cursor"] = batch["cursor"] if batch["has_more"] else 0
+        return batch
+
+    async def follows_play_info(self, cookie_header: str, content_id: str) -> dict:
+        post_id = str(content_id or "").strip()
+        if not post_id.isdigit():
+            raise ValueError("Threads 作品 ID 需为纯数字帖子 pk")
+        lsd = await asyncio.to_thread(api_client.fetch_lsd, cookie_header)
+        media = await asyncio.to_thread(api_client.fetch_post_media, cookie_header, lsd, post_id)
+        return parse_play_info(media)
+
+    async def sync_author_posts(self, account: AccountContext, author_row: dict,
+                                cookie_header: str, count: int) -> list[dict]:
+        """拉取单博主最新 count 条主帖，回填 last_synced_at / uid / 昵称 / 头像。
+
+        不负责入库：follows /sync 路由与 follow_sync 抓取目标（task 体系统一入库）共用本方法。
+        """
+        from app.database import db  # 延迟导入：平台层仅此方法触库
+        from app.services import follow_store
+
+        items, _ = await api_client.fetch_user_posts(cookie_header, author_row["sec_uid"], count)
+        items = items[:count]  # 翻页按页边界返回可能超出，按 count 截断保证入库量一致
+        author_id = next((it.get("author_id") for it in items if it.get("author_id")), None)
+        author_name = next((it.get("author_name") for it in items if it.get("author_name")), None)
+        # 作者头像：主帖 raw_data 的 user.profile_pic_url，作为库中无头像时的兜底
+        avatar_url = None
+        for it in items:
+            try:
+                raw = json.loads(it["raw_data"]) if isinstance(it.get("raw_data"), str) \
+                    else (it.get("raw_data") or {})
+            except (TypeError, ValueError):
+                raw = {}
+            url = str((raw.get("user") or {}).get("profile_pic_url") or "")
+            if url.startswith("http"):
+                avatar_url = url
+                break
+        await db.execute(
+            """UPDATE follow_authors SET last_synced_at = ?,
+                   uid = COALESCE(NULLIF(?, ''), uid),
+                   nickname = COALESCE(NULLIF(?, ''), nickname),
+                   avatar_url = COALESCE(NULLIF(?, ''), avatar_url)
+               WHERE sec_uid = ?""",
+            (now_iso(), author_id or "", author_name or "", avatar_url or "",
+             author_row["sec_uid"]),
+        )
+        if follow_store.avatar_local_path(author_row["sec_uid"]) is None:
+            source_url = (author_row.get("avatar_url") or "").strip() or avatar_url
+            if source_url:
+                await asyncio.to_thread(
+                    follow_store.download_avatar, author_row["sec_uid"], source_url)
+        return items
 
     async def login(self, account: AccountContext, timeout: float | None = None) -> bool:
         """打开有头浏览器等待用户登录；检测到 sessionid 即成功。"""

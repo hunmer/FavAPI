@@ -79,8 +79,9 @@ export const PLATFORMS: PlatformMeta[] = [
     color: '#000000',
     badgeBg: 'bg-slate-100 text-slate-600 border-slate-200',
     isSupported: true,
-    tagline: '已保存帖子收藏抓取，支持 API 直连与浏览器模拟',
+    tagline: '已保存帖子收藏抓取与博主追踪，支持 API 直连',
     apiFetch: true,
+    followsApi: true,
   },
   {
     id: 'tiktok',
