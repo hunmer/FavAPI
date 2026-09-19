@@ -120,6 +120,23 @@ curl -X POST http://127.0.0.1:8300/api/v1/fetch -H "Content-Type: application/js
 
 先用 [LifeArchiveProject/WeChatDataAnalysis](https://github.com/LifeArchiveProject/WeChatDataAnalysis) 导出微信收藏，再导入生成的 `conversations/.../messages.json`。`count` 限制本次导入数量，`cursor` 分批导入。
 
+## 命令行（CLI）
+
+`cli.py` 不依赖服务运行，直接调用各平台 API（共用同一 SQLite 数据与浏览器登录态），适合脚本 / 定时任务：
+
+```bash
+python cli.py platforms                  # 列出各平台可用的抓取目标与 API 操作（含参数名）
+python cli.py accounts                   # 列出账号（fetch/op 都需要 account_id）
+python cli.py fetch acc_xxx -p count=20  # 抓取收藏入库（action 缺省为平台首个抓取目标）
+python cli.py fetch acc_xxx list_likes -p method=api -p count=50
+python cli.py op acc_xxx list_history -p count=10   # 执行平台 API 操作，结果以 JSON 输出
+```
+
+- `fetch` 走 `POST /api/v1/fetch` 同一任务管线（校验 → 抓取 → 入库 → 任务记录），失败时退出码非 0 并输出 `error_message`
+- `op` 对应各平台 adapter 暴露的 API 操作（查询 / 写操作 / 管理类），`platforms` 子命令可查看全部 op_id 与参数
+- 参数用 `-p k=v` 重复传入，值自动转 int / bool（如 `-p count=20 -p method=api`）
+- 与正在运行的服务共用数据库和浏览器 profile，避免同时对同一账号发起抓取
+
 ## 配置（环境变量）
 
 | 变量 | 默认 | 说明 |
