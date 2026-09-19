@@ -2,4 +2,4 @@
 
 发版流程：改此版本号 → commit → git tag v<版本> → push tag（CI 自动构建发布）。
 """
-__version__ = "0.2.0"
+__version__ = "0.2.1"
