@@ -221,3 +221,65 @@ def parse_user_detail_html(html: str) -> dict | None:
             "videoCount": _as_int(stats.get("videoCount")),
         },
     }
+
+
+def parse_play_info(item: dict) -> dict:
+    """itemStruct（帖子详情 SSR）→ 前端播放器信息（follows PlayerModal 统一结构）。
+
+    视频：bitrateInfo 各档 + video.playAddr（去重，v19 主机优先）；
+    图文（imagePost.images 非空）：逐张原图直链；音乐 playUrl 附带。
+    duration 单位为秒（TikTok 原生秒，勿混入抖音毫秒语义）。
+    """
+    stats = item.get("stats") or {}
+    author = item.get("author") or {}
+    info = {
+        "aweme_id": str(item.get("id") or ""),
+        "desc": (item.get("desc") or "").strip(),
+        "create_time": _as_int(item.get("createTime")),
+        "aweme_type": 0,
+        "duration": _as_int((item.get("video") or {}).get("duration")),
+        "statistics": {
+            "digg_count": _as_int(stats.get("diggCount")),
+            "comment_count": _as_int(stats.get("commentCount")),
+            "share_count": _as_int(stats.get("shareCount")),
+            "collect_count": _as_int(stats.get("collectCount")),
+            "play_count": _as_int(stats.get("playCount")),
+        },
+        "author": {
+            "nickname": author.get("nickname"),
+            "sec_uid": author.get("secUid"),
+        },
+        "video_urls": [],
+        "images": [],
+    }
+
+    images = (item.get("imagePost") or {}).get("images") or []
+    if not images:
+        video = item.get("video") or {}
+        seen: set[str] = set()
+
+        def _push(url_list) -> None:
+            urls = [str(u) for u in url_list or [] if str(u or "").startswith("http")]
+            url = next((u for u in urls if "v19-webapp-prime" in u),
+                       urls[0] if urls else None)
+            if url and url not in seen:
+                seen.add(url)
+                info["video_urls"].append(url)
+
+        for br in video.get("bitrateInfo") or []:
+            _push((br.get("PlayAddr") or {}).get("UrlList"))
+        _push([video.get("playAddr")])
+    for img in images:
+        url_list = ((img.get("imageURL") or {}).get("urlList")) or []
+        url = next((str(u) for u in url_list if str(u or "").startswith("http")), None)
+        if url:
+            info["images"].append({
+                "url": url,
+                "width": _as_int(img.get("imageWidth")) or 0,
+                "height": _as_int(img.get("imageHeight")) or 0,
+            })
+    music_url = str((item.get("music") or {}).get("playUrl") or "")
+    info["music_url"] = music_url if music_url.startswith("http") else None
+    if not info["video_urls"] and not info["images"]:
+        raise RuntimeError("详情响应无可用播放地址（作品可能已删除或设为私密）")
+    return info

@@ -2,9 +2,12 @@
 
 - 同一 profile 目录串行使用（asyncio Lock），避免两个浏览器实例写同一个 profile
 - 全局并发上限（Semaphore），对应 PRD「初期单账号串行、多账号有限并发」
+- shared_page：跨调用复用的常驻页面（空闲自动关闭），供签名需真实页面的
+  页面通道高频使用（TikTok follows）
 """
 import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -60,21 +63,8 @@ async def session(profile_path: str, headless: bool | None = None, proxy: dict |
     lock = _locks.setdefault(_profile_key(profile_path), asyncio.Lock())
     async with lock, _semaphore:
         pw = await async_playwright().start()
-        launch_options = {
-            "user_data_dir": str(path),
-            "headless": headless,
-            # Playwright 1.49+ headless 默认用独立 headless_shell（未随手动安装提供），
-            # channel="chromium" 让 headless 走完整 Chromium 的新 headless 模式。
-            "channel": "chromium",
-            "viewport": {"width": 1280, "height": 860},
-            "args": ["--disable-blink-features=AutomationControlled"],
-        }
-        # Playwright 不会自动继承系统代理；调用方可显式传入 server / username / password。
-        if proxy:
-            launch_options["proxy"] = {"server": proxy} if isinstance(proxy, str) else proxy
         context = await pw.chromium.launch_persistent_context(
-            **launch_options,
-        )
+            **_launch_options(profile_path, headless, proxy))
         context.set_default_timeout(config.PAGE_TIMEOUT)
         session_key = _profile_key(profile_path)
         _active_sessions[session_key] = {"context": context, "headless": headless}
@@ -107,6 +97,123 @@ def open_tab(profile_path: str, url: str) -> dict | None:
     task = asyncio.create_task(_open())
     task.add_done_callback(lambda t: t.exception() and logger.warning("占用会话新开标签页失败：%s", t.exception()))
     return {"opened": True, "tab": True}
+
+
+# ---------- 共享页面会话（跨调用复用，空闲自动关闭） ----------
+
+# profile_key -> {pw, context, page, state, use_lock, closing, lock, close_task}
+_shared_pages: dict[str, dict] = {}
+
+
+def _launch_options(profile_path: str, headless: bool, proxy) -> dict:
+    path = Path(profile_path)
+    path.mkdir(parents=True, exist_ok=True)
+    options = {
+        "user_data_dir": str(path),
+        "headless": headless,
+        # Playwright 1.49+ headless 默认用独立 headless_shell（未随手动安装提供），
+        # channel="chromium" 让 headless 走完整 Chromium 的新 headless 模式。
+        "channel": "chromium",
+        "viewport": {"width": 1280, "height": 860},
+        "args": ["--disable-blink-features=AutomationControlled"],
+    }
+    if proxy:
+        options["proxy"] = {"server": proxy} if isinstance(proxy, str) else proxy
+    return options
+
+
+def _schedule_shared_close(key: str, ttl: float) -> None:
+    """重排共享页面的空闲关闭任务（每次使用完毕后调用）。"""
+    entry = _shared_pages.get(key)
+    if not entry or entry["closing"]:
+        return
+    if entry["close_task"]:
+        entry["close_task"].cancel()
+
+    async def _close():
+        await asyncio.sleep(ttl)
+        e = _shared_pages.get(key)
+        if e is not entry or e["closing"]:
+            return
+        e["closing"] = True  # 同步段置位：此后复用方一律走重建
+        async with e["use_lock"]:  # 等正在使用的调用退出
+            _shared_pages.pop(key, None)
+            try:
+                await e["context"].close()
+            except Exception:
+                logger.warning("共享页面上下文关闭异常（%s）", key, exc_info=True)
+            finally:
+                try:
+                    await e["pw"].stop()
+                finally:
+                    e["lock"].release()  # 归还 profile 锁
+
+    entry["close_task"] = asyncio.create_task(_close())
+
+
+@asynccontextmanager
+async def shared_page(profile_path: str, url: str, *, headless: bool = False,
+                      proxy: dict | str | None = None, idle_ttl: float = 30.0,
+                      init=None):
+    """获取/创建常驻共享页面（同 profile 复用同一 Chromium 实例），空闲 idle_ttl 秒后自动关闭。
+
+    适用于「高频单页请求但签名需真实页面上下文」的场景（TikTok follows 页面
+    通道）：避免每次请求冷启动浏览器（既是延迟也是风控扣分来源）。
+    init(page) 仅在实例创建时执行一次（等签名 SDK / 校验登录态），返回值缓存到
+    entry["state"]，与 page 一起以 (page, state) yield；init 抛异常时实例立即
+    销毁并向上抛。
+
+    与 session() 共用同一把 profile 锁：实例存活期间锁由池持有，其他 session()
+    调用排队等待（池空闲关闭后放行）；同一 page 的并发使用经 use_lock 串行化。
+    """
+    key = _profile_key(profile_path)
+    entry = _shared_pages.get(key)
+    if entry is not None and not entry["closing"] and not entry["page"].is_closed():
+        entry["close_task"].cancel()  # 同步段：与 _close 的 closing 置位互斥
+        async with entry["use_lock"]:
+            try:
+                yield entry["page"], entry["state"]
+            finally:
+                _schedule_shared_close(key, idle_ttl)
+        return
+
+    # 新建实例：拿 profile 锁（与 session 互斥），整个池生命周期持有不释放
+    global _semaphore
+    if _semaphore is None:
+        _semaphore = asyncio.Semaphore(config.MAX_CONCURRENT_BROWSERS)
+    lock = _locks.setdefault(key, asyncio.Lock())
+    await lock.acquire()
+    try:
+        async with _semaphore:
+            pw = await async_playwright().start()
+            context = await pw.chromium.launch_persistent_context(
+                **_launch_options(profile_path, headless, proxy))
+            context.set_default_timeout(config.PAGE_TIMEOUT)
+            page = await context.new_page()
+            await page.goto(url, wait_until="commit", timeout=config.PAGE_TIMEOUT)
+            try:
+                state = await init(page) if init is not None else None
+            except Exception:
+                try:
+                    await context.close()
+                finally:
+                    await pw.stop()
+                raise
+        entry = {
+            "pw": pw, "context": context, "page": page, "state": state,
+            "use_lock": asyncio.Lock(), "closing": False, "lock": lock,
+            "close_task": None,
+        }
+        _shared_pages[key] = entry
+    except Exception:
+        lock.release()
+        raise
+
+    try:
+        async with entry["use_lock"]:
+            yield entry["page"], entry["state"]
+    finally:
+        _schedule_shared_close(key, idle_ttl)
 
 
 # ---------- 手动浏览（不自动关闭，供账号详情页人工操作） ----------

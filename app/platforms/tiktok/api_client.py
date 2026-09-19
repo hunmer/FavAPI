@@ -35,6 +35,7 @@ import json
 import logging
 import os
 import re
+from contextlib import asynccontextmanager
 from urllib.parse import urlencode
 
 from curl_cffi import requests
@@ -47,6 +48,7 @@ from .parser import (
     parse_item_detail_html,
     parse_item_list,
     parse_following_list,
+    parse_play_info,
     parse_user_detail_html,
 )
 from ..base import LoginExpiredError
@@ -276,25 +278,19 @@ def fetch_user_detail(handle: str, cookie_header: str | None = None) -> dict:
     return info
 
 
-def fetch_post_detail(item_id: str) -> dict:
-    """按 item_id 拉取帖子详情并解析可下载直链（同步阻塞，异步侧 to_thread 调用）。
+def _fetch_item_ssr(item_id: str) -> tuple[dict, str]:
+    """帖子详情 SSR 数据源（公开访客可见）→ (itemStruct, 会话 cookie 头)。
 
     JS Reverse 2026-09 结论：详情 XHR /api/item/detail 有签名强校验
     （X-Gnarly 与完整 query 绑定，改动任一参数即 HTTP 200 空响应），不可直连；
-    可用数据源是帖子页 HTML 的服务端渲染段 webapp.video-detail（公开，访客
-    可见）。图文帖必须以 /video/{id} 路径访问才有该段（/photo/ 路径不渲染，
-    /embed 页无完整数据），URL 中 handle 不参与定位（占位即可）。
-
-    视频直链（v16/v19-webapp-prime CDN）下载需页面会话 cookie（tt_chain_token，
-    URL 内 tk=tt_chain_token 对应），实测仅 UA 或仅 ttwid 均 403 —— 会话 cookie
-    随返回值 cookie_header 下发，由调用方注入下载请求头；v16 主机对部分出口
-    IP 拒绝（403），parser 已优先 v19 URL。
-    返回 {"item_id", "links", "cookie_header", "author_name", "author_id"}。
+    可用数据源是帖子页 HTML 的服务端渲染段 webapp.video-detail。图文帖必须以
+    /video/{id} 路径访问才有该段（/photo/ 路径不渲染，/embed 页无完整数据），
+    URL 中 handle 不参与定位（占位即可）。会话 cookie（tt_chain_token 等）
+    供视频 CDN 直链访问（URL 内 tk=tt_chain_token 对应，仅 UA 实测 403）。
     """
     if not str(item_id).isdigit():
         raise ValueError(f"TikTok 帖子 ID 需为纯数字：{item_id}")
     url = constants.POST_DETAIL_URL.format(item_id=item_id)
-    logger.info("fetch_post_detail 请求：item_id=%s", item_id)
     session = requests.Session()
     response = session.get(
         url,
@@ -306,10 +302,23 @@ def fetch_post_detail(item_id: str) -> dict:
     if not item:
         raise RuntimeError(
             f"解析 TikTok 帖子详情失败：{item_id}（作品可能已删除/设为私密，或页面结构变化）")
+    cookie_header = "; ".join(f"{c.name}={c.value}" for c in session.cookies.jar)
+    return item, cookie_header
+
+
+def fetch_post_detail(item_id: str) -> dict:
+    """按 item_id 拉取帖子详情并解析可下载直链（同步阻塞，异步侧 to_thread 调用）。
+
+    视频直链（v16/v19-webapp-prime CDN）下载需页面会话 cookie（tt_chain_token），
+    会话 cookie 随返回值 cookie_header 下发，由调用方注入下载请求头；
+    v16 主机对部分出口 IP 拒绝（403），parser 已优先 v19 URL。
+    返回 {"item_id", "links", "cookie_header", "author_name", "author_id"}。
+    """
+    logger.info("fetch_post_detail 请求：item_id=%s", item_id)
+    item, cookie_header = _fetch_item_ssr(item_id)
     links = parse_download_links(item)
     if not links:
         raise RuntimeError("详情响应无可下载内容（作品可能已删除或设为私密）")
-    cookie_header = "; ".join(f"{c.name}={c.value}" for c in session.cookies.jar)
     author = item.get("author") or {}
     return {
         "item_id": str(item.get("id") or item_id),
@@ -318,6 +327,18 @@ def fetch_post_detail(item_id: str) -> dict:
         "author_name": author.get("nickname"),
         "author_id": str(author.get("uniqueId") or author.get("id") or ""),
     }
+
+
+def fetch_post_play_info(item_id: str) -> tuple[dict, str]:
+    """按 item_id 拉取播放器信息（同步阻塞，匿名 SSR 通道，无需登录态）。
+
+    返回 (parse_play_info 结果, 会话 cookie 头)：TikTok 视频直链绑定获取会话
+    （跨会话 cookie 实测 403），调用方需把会话 cookie 随各直链登记到媒体代理
+    （follow_store.register_media_cookie），/follows/media 按 URL 精确注入。
+    """
+    logger.info("fetch_post_play_info 请求：item_id=%s", item_id)
+    item, cookie_header = _fetch_item_ssr(item_id)
+    return parse_play_info(item), cookie_header
 
 
 def fetch_app_context(cookie_header: str) -> dict:
@@ -382,12 +403,15 @@ def resolve_self_sec_uid(cookie_header: str) -> str | None:
 # 对 X-Dynosaur 签名强校验且与 query 逐字绑定（缺失或改任一参数值 → HTTP 200 空响应），
 # 与 /api/item/detail 的 X-Gnarly 同款策略，curl_cffi 直连不可行；
 # webmssdk 会 hook 页面主世界的 window.fetch 自动加签（X-Gnarly/X-Dynosaur 在请求头），
-# 与抖音写接口同款页面通道：起一次 Chromium，页面内 fetch 翻页，一次会话拉全量。
+# 与抖音写接口同款页面通道：起一次 Chromium，页面内 fetch 翻页，一次会话拉全量；
+# 浏览场景经 browser.shared_page 跨调用复用页面实例（空闲自动关闭）——冷启动
+# 既是延迟大头也是风控扣分来源（实测连续起会话会触发概率性空响应拦截）。
 # playwright 的 page.evaluate 恰好运行在主世界（非 CDP isolated world），能用到 hook。
 #
-# ⚠️ 必须有头（headless=False）：TikTok 风控对 headless 环境的签名请求持续空响应
-# （实测 8 连拒、充分等待无效），有头偶发首次空响应、同页重发即过（签名会重新
-# 生成），_page_fetch_json 内置重试。
+# ⚠️ 必须有头（headless=False）：风控为概率性评分（连续请求累积扣分触发空响应，
+# 冷却后恢复），实测有头恢复快（首拒后重发即过）、headless 连续被拒恢复慢；
+# stealth 补丁（伪造 webdriver/plugins 等）实测反而更易被拒，勿引入。
+# _page_fetch_json 内置空响应重试。
 # ---------------------------------------------------------------------------
 
 _PAGE_FETCH_JS = """async (payload) => {
@@ -406,28 +430,37 @@ _PAGE_FETCH_RETRIES = 3
 _PAGE_FETCH_RETRY_INTERVAL_SEC = 1.5
 
 
-async def _open_fetch_page(ctx):
-    """打开 foryou 页并等待 webmssdk 的 fetch hook 生效，返回 (page, self_uid)。
+async def _fetch_page_init(page):
+    """共享页面初始化（仅实例创建时执行一次）：等签名 hook + 校验页面登录态。
 
-    先经 common-app-context 校验页面登录态（follows 两接口都要求登录态），
-    失效抛 LoginExpiredError。self_uid 即 odinId（登录后两者同值，作 query 参数）。
+    返回 {"self_uid"}：uid 即 odinId（登录后两者同值，作列表 query 参数）。
     """
     from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
-    page = await ctx.new_page()
-    await page.goto(constants.FETCH_PAGE_URL, wait_until="commit", timeout=60000)
     try:
         await page.wait_for_function(_FETCH_HOOK_READY_JS, timeout=20000)
         text = await page.evaluate(
             _PAGE_FETCH_JS, {"path": "/node-webapp/api/common-app-context", "query": ""})
         user = (json.loads(text) if text and text.strip() else {}).get("user") or {}
     except (PlaywrightTimeoutError, json.JSONDecodeError, ValueError):
-        await page.close()
         raise RuntimeError("TikTok 签名 SDK（webmssdk fetch hook）未初始化，页面加载异常")
     if not user.get("secUid"):
-        await page.close()
         raise LoginExpiredError("TikTok 登录态失效（页面会话未登录），请重新登录")
-    return page, str(user.get("uid") or "")
+    return {"self_uid": str(user.get("uid") or "")}
+
+
+@asynccontextmanager
+async def _fetch_page(profile_path: str):
+    """获取 follows 页面通道的共享页面（同 profile 跨调用复用，空闲自动关闭）。
+
+    复用实例的连续请求不再冷启动浏览器——既是延迟大头也是风控扣分来源
+    （实测连续起会话会触发概率性空响应拦截）。
+    """
+    async with browser.shared_page(
+        profile_path, constants.FETCH_PAGE_URL, headless=False,
+        proxy=resolve_proxy(), init=_fetch_page_init,
+    ) as (page, state):
+        yield page, state["self_uid"]
 
 
 async def _page_fetch_json(page, api_path: str, params: dict, api: str) -> dict:
@@ -490,56 +523,48 @@ def _user_list_params(sec_uid: str, odin_id: str, max_cursor: int, count: int) -
 
 async def fetch_post_page_via_page(profile_path: str, sec_uid: str, cursor: int = 0,
                                    count: int = constants.API_PAGE_COUNT) -> dict:
-    """页面通道拉取一页博主发布作品（同步阻塞语义，浏览场景单页翻页用）。
+    """页面通道拉取一页博主发布作品（浏览场景单页翻页用，页面实例跨调用复用）。
 
     返回 parse_item_list 的结果 {items, cursor, has_more, total}；
     cursor 为毫秒时间戳（首页传 0，响应值供下一页入参）。
     """
-    async with browser.session(profile_path, headless=False, proxy=resolve_proxy()) as ctx:
-        page, odin_id = await _open_fetch_page(ctx)
-        try:
-            data = await _page_fetch_json(
-                page, constants.POST_LIST_PATH,
-                _post_list_params(sec_uid, odin_id, cursor, count), "post/item_list")
-            return parse_item_list(data)
-        finally:
-            await page.close()
+    async with _fetch_page(profile_path) as (page, odin_id):
+        data = await _page_fetch_json(
+            page, constants.POST_LIST_PATH,
+            _post_list_params(sec_uid, odin_id, cursor, count), "post/item_list")
+        return parse_item_list(data)
 
 
 async def fetch_post_via_page(profile_path: str, sec_uid: str, count: int = 0,
                               on_batch=None):
     """页面通道按毫秒游标翻页拉取博主发布作品，直到取满 count（0=全部）或 hasMore=false。
 
-    单次浏览器会话内完成全部翻页；返回 (全部 items, 最后一批的 has_more)。
+    单次页面会话内完成全部翻页；返回 (全部 items, 最后一批的 has_more)。
     """
-    async with browser.session(profile_path, headless=False, proxy=resolve_proxy()) as ctx:
-        page, odin_id = await _open_fetch_page(ctx)
-        try:
-            cursor = 0
-            collected: list[dict] = []
-            page_no = 0
-            while True:
-                data = await _page_fetch_json(
-                    page, constants.POST_LIST_PATH,
-                    _post_list_params(sec_uid, odin_id, cursor, constants.API_PAGE_COUNT),
-                    "post/item_list")
-                batch = parse_item_list(data)
-                page_no += 1
-                collected.extend(batch["items"])
-                logger.info(
-                    "post(via page) 第 %d 页：%d 条，累计 %d，hasMore=%s",
-                    page_no, len(batch["items"]), len(collected), batch["has_more"],
-                )
-                if on_batch and batch["items"]:
-                    await on_batch({"page": page_no, "items": batch["items"]})
-                if not batch["has_more"] or not batch["cursor"]:
-                    return collected, False
-                if count and len(collected) >= count:
-                    return collected, True
-                cursor = batch["cursor"]
-                await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
-        finally:
-            await page.close()
+    async with _fetch_page(profile_path) as (page, odin_id):
+        cursor = 0
+        collected: list[dict] = []
+        page_no = 0
+        while True:
+            data = await _page_fetch_json(
+                page, constants.POST_LIST_PATH,
+                _post_list_params(sec_uid, odin_id, cursor, constants.API_PAGE_COUNT),
+                "post/item_list")
+            batch = parse_item_list(data)
+            page_no += 1
+            collected.extend(batch["items"])
+            logger.info(
+                "post(via page) 第 %d 页：%d 条，累计 %d，hasMore=%s",
+                page_no, len(batch["items"]), len(collected), batch["has_more"],
+            )
+            if on_batch and batch["items"]:
+                await on_batch({"page": page_no, "items": batch["items"]})
+            if not batch["has_more"] or not batch["cursor"]:
+                return collected, False
+            if count and len(collected) >= count:
+                return collected, True
+            cursor = batch["cursor"]
+            await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
 
 
 async def fetch_following_via_page(profile_path: str, sec_uid: str, count: int = 0,
@@ -549,35 +574,31 @@ async def fetch_following_via_page(profile_path: str, sec_uid: str, count: int =
     翻页：首页 maxCursor=0，下一页传上一页响应的 minCursor（秒级时间戳）；
     返回 (全部 followings, 最后一批的 has_more)。
     """
-    async with browser.session(profile_path, headless=False, proxy=resolve_proxy()) as ctx:
-        page, odin_id = await _open_fetch_page(ctx)
-        try:
-            max_cursor = 0
-            collected: list[dict] = []
-            page_no = 0
-            while True:
-                data = await _page_fetch_json(
-                    page, constants.FOLLOWING_LIST_PATH,
-                    _user_list_params(sec_uid, odin_id, max_cursor,
-                                      constants.FOLLOWING_PAGE_COUNT),
-                    "user/list")
-                batch = parse_following_list(data)
-                page_no += 1
-                collected.extend(batch["followings"])
-                logger.info(
-                    "following(via page) 第 %d 页：%d 条，累计 %d，hasMore=%s",
-                    page_no, len(batch["followings"]), len(collected), batch["has_more"],
-                )
-                if on_batch and batch["followings"]:
-                    await on_batch({"page": page_no, "followings": batch["followings"]})
-                if not batch["has_more"] or not batch["followings"]:
-                    return collected, False
-                if count and len(collected) >= count:
-                    return collected, True
-                next_cursor = batch["cursor"]
-                if not next_cursor or next_cursor == max_cursor:
-                    return collected, False  # 游标未推进，防御死循环
-                max_cursor = next_cursor
-                await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
-        finally:
-            await page.close()
+    async with _fetch_page(profile_path) as (page, odin_id):
+        max_cursor = 0
+        collected: list[dict] = []
+        page_no = 0
+        while True:
+            data = await _page_fetch_json(
+                page, constants.FOLLOWING_LIST_PATH,
+                _user_list_params(sec_uid, odin_id, max_cursor,
+                                  constants.FOLLOWING_PAGE_COUNT),
+                "user/list")
+            batch = parse_following_list(data)
+            page_no += 1
+            collected.extend(batch["followings"])
+            logger.info(
+                "following(via page) 第 %d 页：%d 条，累计 %d，hasMore=%s",
+                page_no, len(batch["followings"]), len(collected), batch["has_more"],
+            )
+            if on_batch and batch["followings"]:
+                await on_batch({"page": page_no, "followings": batch["followings"]})
+            if not batch["has_more"] or not batch["followings"]:
+                return collected, False
+            if count and len(collected) >= count:
+                return collected, True
+            next_cursor = batch["cursor"]
+            if not next_cursor or next_cursor == max_cursor:
+                return collected, False  # 游标未推进，防御死循环
+            max_cursor = next_cursor
+            await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)

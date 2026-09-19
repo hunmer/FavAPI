@@ -3,16 +3,21 @@
 浏览器模式（登录 / 滚动拦截）完全复用 DeclarativeAdapter（platforms/tiktok/
 platform.json）；本类在其上叠加 API 直连能力：收藏 / 喜欢两个抓取目标
 （fetch_by_action 分发）+ get_profile / list_favorites / list_likes /
-resolve_download_urls 四个 API 操作。
+resolve_download_urls 四个 API 操作 + 特别关注（follows）体系。
 
 secUid 两个列表接口都要求入参且不落 cookie：登录成功后 refresh_profile
 从浏览器会话提取（头像链接 → 个人主页 SSR 数据）回填账号 extra，运行期
 extra 缺失时从 /favorites SSR 现提取兜底。
+
+follows 体系走页面通道（签名强校验，见 api_client 末尾逆向结论）：
+cookie 仅为登录态凭证（TTL 缓存），实际请求在共享页面会话内完成，
+profile 路径经 cookie → profile 映射传递（follows API 层只下发 cookie）。
 """
 import asyncio
 import json
 import logging
 import re
+import time
 from pathlib import Path
 
 from app import config
@@ -29,6 +34,7 @@ from app.platforms.base import (
 )
 from app.platforms.declarative import DeclarativeAdapter
 from app.services import browser
+from app.utils import now_iso
 from . import api_client
 from . import constants
 
@@ -36,11 +42,14 @@ logger = logging.getLogger("favapi.tiktok")
 
 # 帖子链接中的 item_id（/video/{id} 与 /photo/{id} 两种路径）
 _ITEM_URL_PATTERN = re.compile(r"(?:video|photo)/(\d{6,})")
+# TikTok 博主主键 secUid 的格式（MS4wLjAB 固定前缀 + base62 变体）
+_SEC_UID_FULL = re.compile(r"MS4wLjAB[A-Za-z0-9_.-]+")
 
 
 class TikTokAdapter(DeclarativeAdapter):
     api_fetch_implemented = True  # 收藏列表支持 API 直连（params.method="api"）
     download_api_implemented = True  # 支持按帖子 ID/链接解析下载直链（平台下载 → aria2c）
+    follows_api_implemented = True  # 特别关注体系：关注列表 / 博主主页作品 / 播放 / 一键同步
     # 可抓取入库的列表目标（source 为 favorites 来源标记；空 = 收藏列表）
     fetch_targets = (
         FetchTarget(
@@ -126,6 +135,110 @@ class TikTokAdapter(DeclarativeAdapter):
     def __init__(self, base_dir: Path):
         spec = json.loads((Path(base_dir) / "platform.json").read_text(encoding="utf-8"))
         super().__init__(spec, base_dir=Path(base_dir))
+        # follows 登录态缓存：cookie TTL 缓存 + cookie → (profile, secUid) 映射
+        # （follows API 层只下发 cookie 头，页面通道所需的 profile 与身份从这里找回）
+        self._follows_cookie_cache: dict[str, dict] = {}
+        self._follows_by_cookie: dict[str, tuple[str, str]] = {}
+
+    # ---------- 特别关注（follows）体系 ----------
+
+    async def follows_profile_cookie(self, account: AccountContext) -> str:
+        """取登录 cookie（TTL 缓存 120s；TikTok follows 请求实际走页面通道，
+        cookie 仅作登录态凭证与 profile/身份的关联键）。"""
+        cached = self._follows_cookie_cache.get(account.account_id)
+        if cached and time.monotonic() - cached["ts"] < 120:
+            return cached["cookie"]
+        cookie = await api_client.profile_cookie_header(account.profile_path)
+        sec_uid = str((await self._owner_extra(account)).get("sec_uid") or "")
+        if not sec_uid:
+            try:  # extra 缺失时现提取（顺带完成真实登录校验）
+                me = await asyncio.to_thread(api_client.fetch_app_context, cookie)
+                sec_uid = me.get("sec_uid") or ""
+            except Exception as exc:
+                logger.warning("follows secUid 提取失败：%s", exc)
+        self._follows_by_cookie[cookie] = (account.profile_path, sec_uid)
+        self._follows_cookie_cache[account.account_id] = {"cookie": cookie, "ts": time.monotonic()}
+        return cookie
+
+    def follows_self_uid(self, cookie_header: str) -> str:
+        return self._follows_by_cookie.get(cookie_header, ("", ""))[1]
+
+    def follows_validate_uid(self, sec_uid: str) -> None:
+        if not _SEC_UID_FULL.fullmatch(sec_uid or ""):
+            raise ValueError(
+                "TikTok 博主主键需为 secUid（MS4wLjAB 开头的字符串），"
+                "见个人主页源码中的 secUid 字段")
+
+    def _follows_profile_of(self, cookie_header: str) -> str:
+        profile = self._follows_by_cookie.get(cookie_header, ("", ""))[0]
+        if not profile:
+            raise RuntimeError("页面通道缺少账号上下文（profile），请重新发起请求")
+        return profile
+
+    async def follows_fetch_following(self, cookie_header: str, self_uid: str,
+                                      count: int = 0, on_batch=None) -> tuple[list[dict], bool]:
+        # 条目结构已由 parse_following_list 对齐 follows 契约统一结构
+        return await api_client.fetch_following_via_page(
+            self._follows_profile_of(cookie_header), self_uid, count, on_batch=on_batch)
+
+    async def follows_fetch_posts_page(self, cookie_header: str, sec_uid: str,
+                                       cursor: int | str = 0, count: int = 18) -> dict:
+        # TikTok cursor 为服务端毫秒时间戳游标（首页 0），末页归 0 对齐统一语义
+        batch = await api_client.fetch_post_page_via_page(
+            self._follows_profile_of(cookie_header), sec_uid,
+            max(0, int(cursor or 0)), min(count, 35))
+        batch["cursor"] = batch["cursor"] if batch["has_more"] else 0
+        return batch
+
+    async def follows_play_info(self, cookie_header: str, content_id: str) -> dict:
+        m = _ITEM_URL_PATTERN.search(str(content_id or ""))
+        item_id = m.group(1) if m else str(content_id or "").strip()
+        if not item_id.isdigit():
+            raise ValueError("TikTok 作品 ID 需为纯数字帖子 ID（或含 /video/、/photo/ 的链接）")
+        # 匿名 SSR 通道解析（无需登录态）；视频直链绑定该会话（跨会话 cookie 403），
+        # 会话 cookie 随各直链登记到媒体代理，/follows/media 按 URL 精确注入
+        from app.services import follow_store
+
+        info, session_cookie = await asyncio.to_thread(
+            api_client.fetch_post_play_info, item_id)
+        media_urls = list(info.get("video_urls") or [])
+        media_urls += [img.get("url") for img in info.get("images") or []]
+        if info.get("music_url"):
+            media_urls.append(info["music_url"])
+        for url in media_urls:
+            follow_store.register_media_cookie(url, session_cookie)
+        return info
+
+    async def sync_author_posts(self, account: AccountContext, author_row: dict,
+                                cookie_header: str, count: int) -> list[dict]:
+        """拉取单博主最新 count 条作品（通用 content 行），并回填 last_synced_at / 身份字段。
+
+        不负责入库：follows /sync 路由与 follow_sync 抓取目标（task 体系统一入库）共用本方法。
+        author_id 改写为博主 secUid（contents 表未读数按 author_id = follow_authors.sec_uid 关联）。
+        """
+        from app.database import db  # 延迟导入：平台层仅此方法触库
+        from app.services import follow_store
+
+        items, _ = await api_client.fetch_post_via_page(
+            account.profile_path, author_row["sec_uid"], count)
+        items = items[:count]
+        sec_uid = author_row["sec_uid"]
+        for it in items:
+            it["author_id"] = sec_uid
+        author_name = next((it.get("author_name") for it in items if it.get("author_name")), None)
+        await db.execute(
+            """UPDATE follow_authors SET last_synced_at = ?,
+                   uid = COALESCE(NULLIF(?, ''), uid),
+                   nickname = COALESCE(NULLIF(?, ''), nickname)
+               WHERE sec_uid = ?""",
+            (now_iso(), "", author_name or "", sec_uid),
+        )
+        # 列表接口不带作者头像：本地文件缺失时按库中 URL（关注列表入库）补下自愈
+        if follow_store.avatar_local_path(sec_uid) is None:
+            source_url = (author_row.get("avatar_url") or "").strip()
+            if source_url:
+                await asyncio.to_thread(follow_store.download_avatar, sec_uid, source_url)
+        return items
 
     async def fetch_favorites(self, account: AccountContext, params: dict,
                               on_batch=None) -> FetchResult:

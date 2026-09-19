@@ -84,6 +84,17 @@ export const PLATFORMS: PlatformMeta[] = [
     followsApi: true,
   },
   {
+    id: 'instagram',
+    name: 'Instagram',
+    icon: 'instagram',
+    color: '#E1306C',
+    badgeBg: 'bg-[#FDEEF5] text-[#E1306C] border-[#F9D0E4]',
+    isSupported: true,
+    tagline: '收藏帖子抓取与博主追踪，支持 API 直连（需代理出网）',
+    apiFetch: true,
+    followsApi: true,
+  },
+  {
     id: 'tiktok',
     name: 'TikTok',
     icon: 'tiktok',
@@ -92,6 +103,7 @@ export const PLATFORMS: PlatformMeta[] = [
     isSupported: true,
     tagline: '收藏/点赞视频抓取与用户信息查询，支持 API 直连与浏览器模拟',
     apiFetch: true,
+    followsApi: true,
   },
   {
     id: 'zhihu',

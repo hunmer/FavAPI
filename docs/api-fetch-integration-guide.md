@@ -163,6 +163,7 @@ curl ... -d '{"platform":"bilibili",...,"params":{"method":"api"}}'   # → 400 
 | youtube | ✅ | ❌ | 按需接入 |
 | kuaishou | ✅ | ✅ | 2026-09 接入：`__NS_hxfalcon` 签名强校验（缺失/伪造 → result=50），签名 VM 从站点 bundle 剥离到 `kuaishou/sig_vm.js`，经 `sig4.cjs`（Node CLI ≥16，系统依赖）离线生成；坑见 `kuaishou/api_client.py` 模块 docstring（profile 混入 live/id 域 cookie 必须按 domain 过滤，否则多个 userId 并存 → result=109；VM 必须间接 eval + 事件循环内执行；换行符必须 LF） |
 | threads | ✅ | ✅ | 2026-09 接入：GraphQL（`/graphql/query`），直连需 `x-csrftoken` + lsd + 完整 relay pv 标志（`constants.SAVED_PV_FLAGS`）；代理沿用声明式 auto 解析 |
+| instagram | — | ✅ | 2026-09 接入（仅 API 直连）：REST v1（收藏 `feed/saved/posts`、关注 `friendships/{uid}/following`、详情 `media/{pk}/info`，最小头集 x-csrftoken + x-ig-app-id）+ GraphQL 投稿查询（form 最小集 lsd/variables/doc_id，av/fb_dtsg 可省；variables 按 username 定位 + 3 个 Polaris pv 标志）；lsd 从首页 HTML 提取；需代理出网；CDN（scontent-*.cdninstagram.com）直链仅 UA；博主主键 = username（投稿 GraphQL 不认数字 pk）；坑详见 `instagram/api_client.py` 模块 docstring |
 | tiktok | ✅ | ✅ | 2026-09 接入（外部扩展模式同快手）：签名（X-Gnarly/X-Bogus/msToken/X-Dynosaur/verifyFp）**全部不做强校验**，但 query 需保留 msToken+X-Bogus=1 占位（全删触发空响应软拦截）；收藏 `user/collect/item_list` 强登录态（复制出的 cookie 数分钟即被拒，必须 profile 活会话，status_code=8 → LoginExpiredError）；点赞 `favorite/item_list` 半公开（私密点赞返回空列表非报错）；用户信息走个人主页 HTML 的 `__UNIVERSAL_DATA_FOR_REHYDRATION__` SSR 解析（`/api/user/detail/` 对非浏览器上下文返回空 userInfo）；secUid 不落 cookie，登录后 refresh_profile 从浏览器提取回填 extra；坑详见 `tiktok/api_client.py` 模块 docstring |
 
 ## 6. 快速回顧：一次成功接入的样子

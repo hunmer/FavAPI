@@ -23,6 +23,7 @@ from app.services.follow_store import (
     avatar_local_path,
     download_avatar,
     is_allowed_media_url,
+    media_cookies,
     media_proxy,
     media_referer,
     upgrade_media_url,
@@ -504,6 +505,9 @@ def proxy_media(url: str, request: Request):
     referer = media_referer(url)
     if referer:
         headers["referer"] = referer
+    cookies = media_cookies(url)  # TikTok 系 CDN 需会话 cookie（tt_chain_token）
+    if cookies:
+        headers["cookie"] = cookies
     range_header = request.headers.get("range")
     if range_header:
         headers["range"] = range_header

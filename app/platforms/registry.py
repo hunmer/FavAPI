@@ -92,6 +92,7 @@ def _info(adapter: BasePlatformAdapter) -> dict:
 # 导入即注册（抖音 / Bilibili / 小红书）
 from app.platforms.bilibili.adapter import BilibiliAdapter  # noqa: E402
 from app.platforms.douyin.adapter import DouyinAdapter  # noqa: E402
+from app.platforms.instagram.adapter import InstagramAdapter  # noqa: E402
 from app.platforms.kuaishou.adapter import KuaishouAdapter  # noqa: E402
 from app.platforms.threads.adapter import ThreadsAdapter  # noqa: E402
 from app.platforms.tiktok.adapter import TikTokAdapter  # noqa: E402
@@ -106,6 +107,7 @@ register(WeChatAdapter())
 load_declarative()
 register(YouTubeAdapter(config.PLATFORMS_DIR / "youtube"))
 register(ThreadsAdapter(config.PLATFORMS_DIR / "threads"))
+register(InstagramAdapter(config.PLATFORMS_DIR / "instagram"))
 # 快手：声明式注册之上叠加 API 直连能力（浏览器模式仍走 DeclarativeAdapter）
 register(KuaishouAdapter(config.PLATFORMS_DIR / "kuaishou"))
 # TikTok：同快手模式，外部声明 + API 直连（收藏/点赞/用户信息）

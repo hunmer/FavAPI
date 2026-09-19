@@ -5,6 +5,7 @@ follows API 层与各平台 adapter（同步作品回填头像）共用，避免
 
 import logging
 import re
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -30,9 +31,15 @@ MEDIA_HOST_SUFFIXES = (
     # YouTube 系 CDN（i.ytimg.com 封面、yt3.googleusercontent.com / yt3.ggpht.com
     # 头像、googlevideo.com 视频直链），仅 UA 即可访问但需代理出网
     "ytimg.com", "googleusercontent.com", "ggpht.com", "googlevideo.com", "gstatic.com",
+    # TikTok 系 CDN（p16/p19*-sign*.tiktokcdn.com 头像封面、v16/v19-webapp-prime
+    # 视频直链），需会话 cookie（见 media_cookies）且需代理出网
+    "tiktokcdn.com", "tiktokcdn-us.com", "tiktok.com", "tiktokv.us", "byteoversea.com",
 )
-# 需要经代理出网的平台 CDN（YouTube 系；国内平台直连最快）
-_PROXY_SUFFIXES = ("ytimg.com", "googleusercontent.com", "ggpht.com", "googlevideo.com", "gstatic.com")
+# 需要经代理出网的平台 CDN（YouTube / TikTok 系国际站；国内平台直连最快）
+_PROXY_SUFFIXES = (
+    "ytimg.com", "googleusercontent.com", "ggpht.com", "googlevideo.com", "gstatic.com",
+    "tiktokcdn.com", "tiktokcdn-us.com", "tiktok.com", "tiktokv.us", "byteoversea.com",
+)
 # 需要站内 referer 的平台 CDN（其余如 B 站直链不带 referer 最稳）
 DOUYIN_REFERER = "https://www.douyin.com/"
 _DOUYIN_REFERER_SUFFIXES = (
@@ -41,6 +48,30 @@ _DOUYIN_REFERER_SUFFIXES = (
 )
 XHS_REFERER = "https://www.xiaohongshu.com/"
 _XHS_REFERER_SUFFIXES = ("xhscdn.com",)
+TIKTOK_REFERER = "https://www.tiktok.com/"
+_TIKTOK_SUFFIXES = (
+    "tiktokcdn.com", "tiktokcdn-us.com", "tiktok.com", "tiktokv.us", "byteoversea.com",
+)
+# TikTok CDN 会话 cookie 缓存（tt_chain_token + ttwid；匿名访问首页即下发）
+_TIKTOK_COOKIE_TTL_SEC = 3600
+_tiktok_cookie_cache: dict = {"cookie": "", "ts": 0.0}
+# 直链 URL → 获取会话 cookie 的登记表（TikTok 视频直链绑定获取会话，跨会话 403）：
+# play_info 拉到直链时登记，媒体代理按 URL 精确注入；FIFO 上限防膨胀
+_media_cookie_map: dict[str, str] = {}
+_MEDIA_COOKIE_MAX = 256
+
+
+def register_media_cookie(url: str, cookie: str) -> None:
+    """登记某直链 URL 的专属会话 cookie（TikTok 视频直链绑定获取会话）。
+
+    由 follows_play_info 类调用方在拿到直链后登记；直链 URL 自带 expire
+    （约 2 天）且会话 cookie 短时效，超限 FIFO 淘汰最旧项即可。
+    """
+    if not url or not cookie:
+        return
+    if len(_media_cookie_map) >= _MEDIA_COOKIE_MAX:
+        _media_cookie_map.pop(next(iter(_media_cookie_map)))
+    _media_cookie_map[url] = cookie
 
 MEDIA_UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
             "(KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36")
@@ -70,13 +101,52 @@ def upgrade_media_url(url: str) -> str:
 
 
 def media_referer(url: str) -> str:
-    """按目标 CDN 域选 referer：抖音/小红书系需站内 referer，其余（B 站 CDN）直链不带最稳。"""
+    """按目标 CDN 域选 referer：抖音/小红书/TikTok 系需站内 referer，其余（B 站 CDN）直链不带最稳。"""
     host = urlparse(url or "").hostname or ""
     if any(host == s or host.endswith("." + s) for s in _XHS_REFERER_SUFFIXES):
         return XHS_REFERER
+    if any(host == s or host.endswith("." + s) for s in _TIKTOK_SUFFIXES):
+        return TIKTOK_REFERER
     return DOUYIN_REFERER if any(
         host == s or host.endswith("." + s) for s in _DOUYIN_REFERER_SUFFIXES
     ) else ""
+
+
+def _host_in(url: str, suffixes: tuple[str, ...]) -> bool:
+    host = urlparse(url or "").hostname or ""
+    return any(host == s or host.endswith("." + s) for s in suffixes)
+
+
+def media_cookies(url: str) -> str:
+    """按目标 CDN 域返回需注入的 cookie 头。
+
+    TikTok 系 CDN：视频直链带 tk=tt_chain_token 校验（仅 UA 实测 403）且
+    **绑定获取直链的会话**（跨会话 cookie 同样 403），优先查 register_media_cookie
+    登记的 URL 级 cookie；未登记（如头像/封面图片）匿名访问 tiktok.com 首页
+    换取 tt_chain_token/ttwid（TTL 缓存），换取失败返回空串。
+    """
+    registered = _media_cookie_map.get(url)
+    if registered:
+        return registered
+    if not _host_in(url, _TIKTOK_SUFFIXES):
+        return ""
+    now = time.monotonic()
+    if _tiktok_cookie_cache["cookie"] and now - _tiktok_cookie_cache["ts"] < _TIKTOK_COOKIE_TTL_SEC:
+        return _tiktok_cookie_cache["cookie"]
+    try:
+        resp = curl_requests.get(
+            TIKTOK_REFERER, headers={"user-agent": MEDIA_UA},
+            impersonate="chrome", timeout=20, proxy=media_proxy(url),
+        )
+        cookie = "; ".join(f"{c.name}={c.value}" for c in resp.cookies.jar
+                           if c.name in ("tt_chain_token", "ttwid"))
+        if "tt_chain_token" in cookie:
+            _tiktok_cookie_cache.update(cookie=cookie, ts=now)
+            return cookie
+        logger.warning("TikTok CDN cookie 换取失败（无 tt_chain_token）")
+    except Exception:
+        logger.warning("TikTok CDN cookie 换取异常", exc_info=True)
+    return ""
 
 
 def media_proxy(url: str) -> str | None:
@@ -137,6 +207,9 @@ def download_avatar(sec_uid: str, url: str) -> Path | None:
         referer = media_referer(url)
         if referer:
             headers["referer"] = referer
+        cookies = media_cookies(url)  # TikTok 系 CDN 需会话 cookie
+        if cookies:
+            headers["cookie"] = cookies
         resp = curl_requests.get(
             url, headers=headers, impersonate="chrome", timeout=20,
             proxy=media_proxy(url),

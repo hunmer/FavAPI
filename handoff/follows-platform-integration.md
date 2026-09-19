@@ -13,8 +13,11 @@ follows 是与「抓取/操作」平行的第三条通道（路由 `app/api/foll
 
 2026-09-19 已完成平台解耦：**follows.py 零平台依赖**，全部按账号/博主的 `platform`
 字段经 `registry.get_adapter()` 分发到 adapter 的 `follows_*` 能力方法。
-已接入：douyin（原有逻辑包装）、bilibili（新增）。未提交的改动见 `git status`
-（涉及 base/registry/follow_store/follows.py + 两平台 adapter + 前端 6 文件）。
+已接入：douyin（原有逻辑包装）、bilibili（新增）、threads、instagram（同日新增，纯 API 直连）。
+未提交的改动见 `git status`（涉及 base/registry/follow_store/follows.py + 各平台 adapter + 前端文件）。
+
+> Instagram 特例：博主主键（sec_uid）用 **username**（投稿 GraphQL 只认 username，
+> 与主页 URL 一致）；数字 pk 存 `uid` 列回填。接口细节见 `instagram/api_client.py` docstring。
 
 ## 2. 架构与数据流
 
