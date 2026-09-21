@@ -517,6 +517,8 @@ export interface FavoriteListOpts {
   pubStart?: string;
   pubEnd?: string;
   tags?: string[];
+  /** 标签状态过滤：untagged=从未打标 / no_match=已打标但无命中标签（与 tags 互斥） */
+  tagStatus?: 'untagged' | 'no_match';
   q?: string;
   limit?: number;
   offset?: number;
@@ -538,6 +540,7 @@ export async function listFavorites(opts: FavoriteListOpts = {}): Promise<{ tota
   if (opts.pubStart) p.set('pub_start', opts.pubStart);
   if (opts.pubEnd) p.set('pub_end', opts.pubEnd);
   if (opts.tags?.length) p.set('tags', opts.tags.join(','));
+  if (opts.tagStatus) p.set('tag_status', opts.tagStatus);
   if (opts.q) p.set('q', opts.q);
   if (opts.sortBy) p.set('sort_by', opts.sortBy);
   if (opts.sortOrder) p.set('sort_order', opts.sortOrder);
@@ -718,7 +721,12 @@ export interface TagGroupRow {
   tags: string[];
 }
 
-export async function listTags(limit = 100): Promise<{ tags: TagStatRow[]; groups: TagGroupRow[] }> {
+export interface TagStatusCounts {
+  untagged_count: number;
+  no_match_count: number;
+}
+
+export async function listTags(limit = 100): Promise<{ tags: TagStatRow[]; groups: TagGroupRow[] } & TagStatusCounts> {
   return request(`/tags?limit=${limit}`);
 }
 

@@ -59,6 +59,11 @@ export const BrowserFilterPanel: React.FC<{
   selectedTags: string[];
   onToggleTag: (t: string) => void;
   onClearTags: () => void;
+  /** 标签状态过滤（与具体标签互斥）：'' | untagged（从未打标）| no_match（已打标无命中） */
+  tagStatus: string;
+  onTagStatusChange: (status: string) => void;
+  /** 未打标 / 无命中计数（/tags 接口附带） */
+  tagStatusCounts?: api.TagStatusCounts;
   onTagContextMenu: (x: number, y: number, tag: string) => void;
   editingGroup: { group: string; value: string } | null;
   onEditingGroupChange: (g: { group: string; value: string } | null) => void;
@@ -94,6 +99,9 @@ export const BrowserFilterPanel: React.FC<{
   selectedTags,
   onToggleTag,
   onClearTags,
+  tagStatus,
+  onTagStatusChange,
+  tagStatusCounts,
   onTagContextMenu,
   editingGroup,
   onEditingGroupChange,
@@ -403,6 +411,37 @@ export const BrowserFilterPanel: React.FC<{
               </button>
             </div>
           </div>
+          {/* 标签状态快捷筛选：按打标状态过滤（与具体标签互斥） */}
+          <div className="flex flex-wrap gap-1.5">
+            {([
+              { value: 'untagged', label: '未打标', count: tagStatusCounts?.untagged_count, title: '从未执行过 AI 打标（tags 为空）' },
+              { value: 'no_match', label: '无匹配标签', count: tagStatusCounts?.no_match_count, title: '已打过标（有最后打标时间）但没有命中任何标签' },
+            ] as const).map(({ value, label, count, title }) => {
+              const active = tagStatus === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => onTagStatusChange(value)}
+                  title={title}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all cursor-pointer active:scale-95 ${
+                    active
+                      ? 'bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 border-slate-800 dark:border-slate-200 shadow-xs'
+                      : count
+                        ? 'bg-amber-50/70 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-100 dark:border-amber-900 hover:bg-amber-100 dark:hover:bg-amber-900/40'
+                        : 'bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-100 dark:border-slate-700 hover:border-slate-200'
+                  }`}
+                >
+                  {label}
+                  {typeof count === 'number' && (
+                    <span className={`ml-1 text-[10px] ${active ? 'text-white/70 dark:text-slate-500' : 'text-amber-500/80'}`}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
           {(() => {
             const countByTag = new Map(tagStats.map((t) => [t.tag, t.count]));
             return (
@@ -538,6 +577,8 @@ export const BrowserFilterPanel: React.FC<{
           {selectedAuthor !== 'all' && <span>（作者：{selectedAuthor}）</span>}
           {selectedSource !== 'all' && <span>（来源：{selectedSource}）</span>}
           {selectedTags.length > 0 && <span>（含任一选中标签）</span>}
+          {tagStatus === 'untagged' && <span>（未打标）</span>}
+          {tagStatus === 'no_match' && <span>（无匹配标签）</span>}
         </div>
         </div>
 

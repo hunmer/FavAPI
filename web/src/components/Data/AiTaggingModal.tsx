@@ -117,14 +117,14 @@ export const AiTaggingModal: React.FC<{
                 </label>
                 <input
                   type="number"
-                  min="1"
+                  min="0"
                   max="2000"
                   value={limit}
-                  onChange={(e) => onLimitChange(Number(e.target.value))}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-600"
+                  onChange={(e) => onLimitChange(Math.max(0, Number(e.target.value) || 0))}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-600"
                 />
                 <p className="text-[11px] text-slate-400 mt-1">
-                  本次最多处理多少条未打标内容（逐条实时推送打标结果）。
+                  本次最多处理多少条未打标内容；0 = 不限制（处理全部，逐条实时推送结果）。
                 </p>
               </div>
 
@@ -163,11 +163,16 @@ export const AiTaggingModal: React.FC<{
                 </button>
               </div>
 
-              {/* 实时进度 */}
+              {/* 实时进度（limit=0 不限制时进度条脉动，无分母） */}
               <div>
                 <div className="flex items-center justify-between text-xs text-slate-500 mb-1.5">
                   <span>
-                    已处理 <strong className="text-slate-800 dark:text-slate-200">{progress.processed}</strong> / {progress.limit || limit} 条
+                    已处理 <strong className="text-slate-800 dark:text-slate-200">{progress.processed}</strong>
+                    {(progress.limit || limit) > 0 ? (
+                      <> / {progress.limit || limit} 条</>
+                    ) : (
+                      <> 条（不限制）</>
+                    )}
                   </span>
                   <span>
                     已打标 <strong className="text-violet-600">{progress.tagged}</strong> 条
@@ -175,8 +180,12 @@ export const AiTaggingModal: React.FC<{
                 </div>
                 <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-violet-500 rounded-full transition-all duration-500"
-                    style={{ width: `${Math.min(100, (progress.processed / (progress.limit || limit)) * 100)}%` }}
+                    className={`h-full bg-violet-500 rounded-full transition-all duration-500 ${(progress.limit || limit) > 0 ? '' : 'animate-pulse'}`}
+                    style={{
+                      width: (progress.limit || limit) > 0
+                        ? `${Math.min(100, (progress.processed / (progress.limit || limit)) * 100)}%`
+                        : '100%',
+                    }}
                   />
                 </div>
               </div>

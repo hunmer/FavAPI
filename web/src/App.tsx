@@ -80,6 +80,7 @@ export function App() {
   const [agents, setAgents] = useState<api.AgentConfigRow[]>([]);
   const [tagStats, setTagStats] = useState<api.TagStatRow[]>([]);
   const [tagGroups, setTagGroups] = useState<api.TagGroupRow[]>([]);
+  const [tagStatusCounts, setTagStatusCounts] = useState<api.TagStatusCounts>({ untagged_count: 0, no_match_count: 0 });
   const [stats, setStats] = useState<api.StatsData | null>(null);
   const [browserOpenIds, setBrowserOpenIds] = useState<Set<string>>(new Set());
   /** 下载队列进行中数量（pending+running），Sidebar 下载图标 badge 用 */
@@ -223,9 +224,10 @@ export function App() {
 
   const reloadTags = useCallback(async () => {
     try {
-      const { tags, groups } = await api.listTags();
+      const { tags, groups, untagged_count, no_match_count } = await api.listTags();
       setTagStats(tags);
       setTagGroups(groups);
+      setTagStatusCounts({ untagged_count, no_match_count });
     } catch {
       /* 静默 */
     }
@@ -782,6 +784,7 @@ export function App() {
                   externalSearchQuery={searchQuery}
                   tagStats={tagStats}
                   tagGroups={tagGroups}
+                  tagStatusCounts={tagStatusCounts}
                   agents={agents}
                   showToast={showToast}
                   onTaggingDone={() => {

@@ -28,6 +28,7 @@ interface SavedFilters {
   pub_start: string;
   pub_end: string;
   tags: string[];
+  tag_status: string;
   q: string;
 }
 
@@ -47,6 +48,7 @@ interface DataBrowserViewProps {
   externalSearchQuery?: string;
   tagStats?: api.TagStatRow[];
   tagGroups?: api.TagGroupRow[];
+  tagStatusCounts?: api.TagStatusCounts;
   agents: api.AgentConfigRow[];
   onTaggingDone: () => void;
   /** 卡片菜单动作结果的轻提示（App 侧全局 toast） */
@@ -63,6 +65,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
   externalSearchQuery,
   tagStats = [],
   tagGroups = [],
+  tagStatusCounts,
   agents,
   onTaggingDone,
   showToast,
@@ -129,6 +132,10 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
     () => urlInit.get('tags')?.split(',').filter(Boolean)
       ?? (Array.isArray(savedFilters?.tags) ? savedFilters.tags : [])
   );
+  // 标签状态过滤（与具体标签互斥）：untagged=从未打标 / no_match=已打标但无命中
+  const [tagStatus, setTagStatus] = useState<string>(
+    () => urlInit.get('tag_status') || savedFilters?.tag_status || ''
+  );
 
   // 切换账号：账号过滤收敛来源与作者候选，一并重置
   const handleSelectAccount = (id: string) => {
@@ -138,9 +145,15 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
   };
 
   const toggleTag = (tag: string) => {
+    setTagStatus('');  // 具体标签与标签状态过滤互斥
     setSelectedTags((prev) =>
       prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
     );
+  };
+
+  const handleTagStatusChange = (status: string) => {
+    setSelectedTags([]);  // 互斥：选中状态过滤时清空具体标签
+    setTagStatus((prev) => (prev === status ? '' : status));
   };
 
   // 外部全局搜索词变化时同步（挂载时为空则跳过，避免覆盖记忆恢复的搜索词）
@@ -463,6 +476,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
       pub_start: selectedPubDate,
       pub_end: selectedPubEndDate,
       tags: selectedTags,
+      tag_status: tagStatus,
       q: debouncedQuery.trim(),
     }));
     const next = new URLSearchParams();
@@ -474,6 +488,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
     if (selectedPubDate) next.set('pub_start', selectedPubDate);
     if (selectedPubEndDate) next.set('pub_end', selectedPubEndDate);
     if (selectedTags.length) next.set('tags', selectedTags.join(','));
+    if (tagStatus) next.set('tag_status', tagStatus);
     if (debouncedQuery.trim()) next.set('q', debouncedQuery.trim());
     const nextString = next.toString();
     const currentString = searchParamsString;
@@ -492,7 +507,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
     }
     if (nextString === currentString) return;
     setSearchParams(next, { replace: true });
-  }, [selectedAccountId, selectedSource, selectedAuthor, selectedDate, selectedEndDate, selectedPubDate, selectedPubEndDate, selectedTags, debouncedQuery, searchParams, searchParamsString, setSearchParams, urlChangedSincePreviousRender]);
+  }, [selectedAccountId, selectedSource, selectedAuthor, selectedDate, selectedEndDate, selectedPubDate, selectedPubEndDate, selectedTags, tagStatus, debouncedQuery, searchParams, searchParamsString, setSearchParams, urlChangedSincePreviousRender]);
 
   // 当前过滤条件（不含分页）：列表查询与「全选所有」共用，useMemo 保持引用稳定避免请求循环
   const filterOpts = useMemo<api.FavoriteListOpts>(
@@ -505,9 +520,10 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
       pubStart: selectedPubDate || undefined,
       pubEnd: selectedPubEndDate || undefined,
       tags: selectedTags.length ? selectedTags : undefined,
+      tagStatus: tagStatus === 'untagged' || tagStatus === 'no_match' ? tagStatus : undefined,
       q: debouncedQuery.trim() || undefined,
     }),
-    [selectedAccountId, selectedSource, selectedAuthor, selectedDate, selectedEndDate, selectedPubDate, selectedPubEndDate, selectedTags, debouncedQuery]
+    [selectedAccountId, selectedSource, selectedAuthor, selectedDate, selectedEndDate, selectedPubDate, selectedPubEndDate, selectedTags, tagStatus, debouncedQuery]
   );
 
   // 列表：过滤条件（含分页）变化 → 防抖后向服务端发起查询（连续调整过滤只发最后一次请求）
@@ -606,7 +622,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
   // Reset page on filter change
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedAccountId, selectedSource, selectedAuthor, selectedTags, searchQuery, pageSize, selectedDate, selectedEndDate, selectedPubDate, selectedPubEndDate, sortBy, sortAsc]);
+  }, [selectedAccountId, selectedSource, selectedAuthor, selectedTags, tagStatus, searchQuery, pageSize, selectedDate, selectedEndDate, selectedPubDate, selectedPubEndDate, sortBy, sortAsc]);
 
   // 服务端总数缩小后当前页越界：回退到最后一页
   useEffect(() => {
@@ -623,7 +639,8 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
     selectedEndDate !== '' ||
     selectedPubDate !== '' ||
     selectedPubEndDate !== '' ||
-    selectedTags.length > 0;
+    selectedTags.length > 0 ||
+    tagStatus !== '';
 
   const clearAllFilters = () => {
     setSearchQuery('');
@@ -631,6 +648,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
     setSelectedSource('all');
     setSelectedAuthor('all');
     setSelectedTags([]);
+    setTagStatus('');
     setSelectedPubDate('');
     setSelectedPubEndDate('');
     handleDateFilterChange('', '');  // 同步清除 URL ?date= / ?date_end=
@@ -672,9 +690,12 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
         onPubEndChange={setSelectedPubEndDate}
         tagStats={tagStats}
         tagGroups={tagGroups}
+        tagStatusCounts={tagStatusCounts}
         selectedTags={selectedTags}
         onToggleTag={toggleTag}
         onClearTags={() => setSelectedTags([])}
+        tagStatus={tagStatus}
+        onTagStatusChange={handleTagStatusChange}
         onTagContextMenu={(x, y, tag) => setCtxMenu({ x, y, tag })}
         editingGroup={editingGroup}
         onEditingGroupChange={setEditingGroup}

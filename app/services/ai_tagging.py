@@ -80,7 +80,11 @@ async def _guarded_run(task_id: str, agent: dict, platform: str, params: dict):
 
 
 def _resolve_limit(params: dict) -> int:
-    return max(1, min(int((params or {}).get("limit") or DEFAULT_LIMIT), 2000))
+    """limit=0 表示不限制（处理全部待打标内容）；未传时默认 DEFAULT_LIMIT。"""
+    raw = (params or {}).get("limit")
+    if raw is None or raw == "":
+        return DEFAULT_LIMIT
+    return max(0, min(int(raw), 2000))
 
 
 async def _run_tagging_task(task_id: str, agent: dict, platform: str, params: dict) -> dict:
@@ -127,8 +131,8 @@ async def _tagging_stream(agent: dict, platform: str, limit: int):
     """
     processed = 0
     batch_no = 0
-    while processed < limit:
-        size = min(BATCH_SIZE, limit - processed)
+    while limit <= 0 or processed < limit:  # limit=0：不限制，直到无待打标内容
+        size = BATCH_SIZE if limit <= 0 else min(BATCH_SIZE, limit - processed)
         items = await _pending_contents(platform, size)
         if not items:
             if batch_no == 0:

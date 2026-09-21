@@ -122,6 +122,8 @@ async def list_favorites(
     pub_start: str | None = None,
     pub_end: str | None = None,
     tags: str | None = Query(None, description="逗号分隔多标签，OR 匹配"),
+    tag_status: str | None = Query(None, pattern="^(untagged|no_match)$",
+                                   description="untagged=从未打标 / no_match=已打标但无命中标签"),
     q: str | None = None,
     limit: int = Query(50, ge=1, le=5000),
     offset: int = Query(0, ge=0),
@@ -131,7 +133,7 @@ async def list_favorites(
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
     result = await data_store.list_favorites(
         account_id, platform, tag, folder, author, date_start, date_end, pub_start, pub_end,
-        tag_list, q, source=source, limit=limit, offset=offset,
+        tag_list, q, source=source, tag_status=tag_status, limit=limit, offset=offset,
         sort_by=sort_by, sort_order=sort_order,
     )
     result["items"] = [FavoriteItem(**i).model_dump() for i in result["items"]]
@@ -163,7 +165,10 @@ async def clear_favorites(account_id: str | None = Query(None, min_length=1)):
 
 @router.get("/tags")
 async def list_tags(limit: int = Query(100, ge=1, le=500)):
-    """AI 打标标签聚合统计（按引用内容数倒序）+ 分组定义（tag_groups 表 + 库中未匹配的「其他」组）。"""
+    """AI 打标标签聚合统计（按引用内容数倒序）+ 分组定义（tag_groups 表 + 库中未匹配的「其他」组）。
+
+    附带打标状态计数：untagged=从未打标，no_match=已打标（tagged_at 有值）但无命中标签。
+    """
     from app.services import tag_store
 
     stats = await data_store.list_tag_stats(limit)
@@ -172,4 +177,13 @@ async def list_tags(limit: int = Query(100, ge=1, le=500)):
     others = sorted({s["tag"] for s in stats if s["tag"] not in grouped})
     if others:
         groups.append({"group": "其他", "tags": others})
-    return {"tags": stats, "groups": groups}
+    untagged_count = await _count("SELECT COUNT(*) AS n FROM contents WHERE tags IS NULL")
+    no_match_count = await _count(
+        "SELECT COUNT(*) AS n FROM contents WHERE tags IS NOT NULL AND json_array_length(tags) = 0"
+    )
+    return {
+        "tags": stats,
+        "groups": groups,
+        "untagged_count": untagged_count,
+        "no_match_count": no_match_count,
+    }

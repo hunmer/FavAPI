@@ -20,7 +20,7 @@ export function useAiTagging(opts: {
   const [showTagModal, setShowTagModal] = useState(false);
   const [tagAgentId, setTagAgentId] = useState('');
   const [tagPlatform, setTagPlatform] = useState('');
-  const [tagLimit, setTagLimit] = useState(50);
+  const [tagLimit, setTagLimit] = useState(0);
   const [tagStarting, setTagStarting] = useState(false);
   // idle=表单 / running=任务执行中 / success / failed
   const [tagPhase, setTagPhase] = useState<'idle' | 'running' | 'success' | 'failed'>('idle');
@@ -41,7 +41,7 @@ export function useAiTagging(opts: {
     // 预选当前筛选账号所属平台（未选具体账号则全部）
     setTagAgentId(agents[0]?.agent_id || '');
     setTagPlatform(accounts.find((a) => a.id === selectedAccountId)?.platform || '');
-    setTagLimit(50);
+    setTagLimit(0);
     setTagPhase('idle');
     setTagResult(null);
     setTagProgress({ processed: 0, tagged: 0, limit: 0, results: [] });

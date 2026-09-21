@@ -229,6 +229,7 @@ async def list_favorites(
     tags: list[str] | None = None,
     q: str | None = None,
     source: str | None = None,
+    tag_status: str | None = None,
     limit: int = 50,
     offset: int = 0,
     sort_by: str | None = None,
@@ -240,6 +241,7 @@ async def list_favorites(
     - folder/author/source 精确匹配，空值占位（'默认收藏夹'/'—'/'收藏列表'）匹配 NULL 或空串
     - date_start/date_end 按 fetched_at 前 10 位（YYYY-MM-DD）闭区间比较，可只填一端
     - tags 多标签 OR；q 模糊匹配标题/作者/标签
+    - tag_status：untagged=从未打标（tags IS NULL）/ no_match=已打标但无命中（空标签数组，tagged_at 有值）
     排序：sort_by 白名单 collected（收藏时间）/ duration（时长），NULL 恒排末尾；
     默认按 fetched_at（抓取入库时间），sort_order 仅支持 asc/desc。
     """
@@ -287,6 +289,10 @@ async def list_favorites(
         placeholders = ",".join("?" for _ in tags)
         where.append(f"EXISTS (SELECT 1 FROM json_each(c.tags) WHERE json_each.value IN ({placeholders}))")
         params.extend(tags)
+    if tag_status == "untagged":
+        where.append("c.tags IS NULL")
+    elif tag_status == "no_match":
+        where.append("(c.tags IS NOT NULL AND json_array_length(c.tags) = 0)")
     if q:
         like = f"%{q}%"
         where.append(

@@ -250,18 +250,37 @@ class Database:
         if dl_cols and "quality" not in dl_cols:
             await self.conn.execute("ALTER TABLE downloads ADD COLUMN quality TEXT")
 
-        # 标签分组：首次启动物化内置体系，此后编辑/新建分组均以库为准
-        from app.taxonomy import BUILTIN_TAG_GROUPS
+        # 标签分组：按内置体系版本号物化/增量合并（新增分组插入、内置新标签追加到组尾，
+        # 不动用户已有顺序与自定义标签）；只在版本提升时合并一次，日常重启不干扰标签管理
+        from app.taxonomy import BUILTIN_TAG_GROUPS, TAXONOMY_VERSION
 
-        row = await self.query_one("SELECT COUNT(*) AS n FROM tag_groups")
-        if not row or row["n"] == 0:
-            import json as _json
+        import json as _json
 
+        ver_row = await self.query_one("PRAGMA user_version")
+        if (ver_row or {}).get("user_version", 0) < TAXONOMY_VERSION:
+            existing = await self.query_all("SELECT group_name, tags FROM tag_groups")
+            current: dict[str, list[str]] = {}
+            for row in existing:
+                try:
+                    current[row["group_name"]] = list(_json.loads(row["tags"] or "[]"))
+                except (TypeError, _json.JSONDecodeError):
+                    current[row["group_name"]] = []
             for group, tags in BUILTIN_TAG_GROUPS:
-                await self.conn.execute(
-                    "INSERT OR IGNORE INTO tag_groups (group_name, tags) VALUES (?, ?)",
-                    (group, _json.dumps(tags, ensure_ascii=False)),
-                )
+                merged = current.get(group)
+                if merged is None:
+                    await self.conn.execute(
+                        "INSERT INTO tag_groups (group_name, tags) VALUES (?, ?)",
+                        (group, _json.dumps(tags, ensure_ascii=False)),
+                    )
+                else:
+                    added = [t for t in tags if t not in merged]
+                    if added:
+                        merged.extend(added)
+                        await self.conn.execute(
+                            "UPDATE tag_groups SET tags = ? WHERE group_name = ?",
+                            (_json.dumps(merged, ensure_ascii=False), group),
+                        )
+            await self.conn.execute(f"PRAGMA user_version = {int(TAXONOMY_VERSION)}")
 
     async def _migrate_contents_v2(self):
         """contents v2：raw_data 外置为 data/raw_data/{platform}/{id}.json 文件；
