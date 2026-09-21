@@ -15,9 +15,15 @@ async def list_agents():
 
 @router.post("", status_code=201)
 async def create_agent(body: AgentCreate):
-    if not (body.name.strip() and body.base_url.strip() and body.api_key.strip() and body.model_id.strip()):
-        raise HTTPException(status_code=400, detail="name / base_url / api_key / model_id 均不能为空")
-    row = await agent_store.create_agent(body.name.strip(), body.base_url.strip(), body.api_key.strip(), body.model_id.strip())
+    is_jev = body.provider == "jev"
+    if not (body.name.strip() and body.api_key.strip()):
+        raise HTTPException(status_code=400, detail="name / api_key 不能为空")
+    if not is_jev and not (body.base_url.strip() and body.model_id.strip()):
+        raise HTTPException(status_code=400, detail="OpenAI 兼容方式必须填写 base_url / model_id")
+    row = await agent_store.create_agent(
+        body.name.strip(), body.base_url.strip(), body.api_key.strip(),
+        body.model_id.strip(), body.provider,
+    )
     return AgentOut(**row).model_dump()
 
 

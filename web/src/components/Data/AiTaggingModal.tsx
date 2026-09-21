@@ -83,7 +83,8 @@ export const AiTaggingModal: React.FC<{
                 >
                   {agents.map((a) => (
                     <option key={a.agent_id} value={a.agent_id}>
-                      {a.name}（{a.model_id}）
+                      {a.name}
+                      {a.provider === 'jev' ? '（Jev 判定式）' : a.model_id ? `（${a.model_id}）` : ''}
                     </option>
                   ))}
                 </select>
@@ -123,7 +124,7 @@ export const AiTaggingModal: React.FC<{
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-600"
                 />
                 <p className="text-[11px] text-slate-400 mt-1">
-                  本次最多处理多少条未打标内容（分批请求模型，每批 20 条）。
+                  本次最多处理多少条未打标内容（逐条实时推送打标结果）。
                 </p>
               </div>
 
@@ -184,18 +185,22 @@ export const AiTaggingModal: React.FC<{
               <div ref={listRef} className="max-h-56 overflow-y-auto border border-slate-100 dark:border-slate-800 rounded-2xl divide-y divide-slate-50 dark:divide-slate-800 bg-slate-50/50 dark:bg-slate-800/60">
                 {progress.results.length === 0 ? (
                   <div className="py-6 text-center text-xs text-slate-400">
-                    等待第一批结果（每批 20 条，取决于模型响应速度）...
+                    等待第一条打标结果（逐条推送，取决于模型响应速度）...
                   </div>
                 ) : (
                   progress.results.map((r, i) => (
                     <div key={i} className="px-3.5 py-2.5 flex flex-col gap-1 anim-row-enter">
                       <div className="text-xs font-medium text-slate-800 dark:text-slate-200 line-clamp-1">{r.title}</div>
                       <div className="flex flex-wrap gap-1">
-                        {r.tags.map((t) => (
+                        {r.tags.length > 0 ? r.tags.map((t) => (
                           <span key={t} className="px-1.5 py-0.5 rounded bg-violet-50 dark:bg-violet-950 text-violet-600 dark:text-violet-400 text-[10px] font-medium border border-violet-100 dark:border-violet-900">
                             #{t}
                           </span>
-                        ))}
+                        )) : (
+                          <span className="px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800 text-slate-400 text-[10px] border border-slate-100 dark:border-slate-700">
+                            无命中标签
+                          </span>
+                        )}
                       </div>
                     </div>
                   ))

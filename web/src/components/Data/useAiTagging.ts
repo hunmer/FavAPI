@@ -5,7 +5,7 @@ import * as api from '../../api';
 /**
  * 一键 AI 打标的状态与流程（自 DataBrowserView 抽离）。
  *
- * SSE 流式接收每批打标结果实时追加到进度；tagProgressRef 同步最新进度，
+ * SSE 流式接收每条打标结果实时追加到进度；tagProgressRef 同步最新进度，
  * 供停止/异常回调读取（避免闭包陈旧值）。
  */
 export function useAiTagging(opts: {
@@ -25,7 +25,7 @@ export function useAiTagging(opts: {
   // idle=表单 / running=任务执行中 / success / failed
   const [tagPhase, setTagPhase] = useState<'idle' | 'running' | 'success' | 'failed'>('idle');
   const [tagResult, setTagResult] = useState<{ processed: number; tagged: number; error?: string; taskId?: string } | null>(null);
-  // SSE 实时进度：每批打标结果流式追加
+  // SSE 实时进度：每条打标结果流式追加
   const [tagProgress, setTagProgress] = useState<{ processed: number; tagged: number; limit: number; results: Array<{ title: string; tags: string[] }> }>({ processed: 0, tagged: 0, limit: 0, results: [] });
   const tagAbortRef = useRef<AbortController | null>(null);
   // 同步最新进度到 ref，供停止/异常回调读取（避免闭包陈旧值）
@@ -48,12 +48,12 @@ export function useAiTagging(opts: {
     setShowTagModal(true);
   };
 
-  const appendBatch = (batch: api.TagStreamEvent) => {
+  const appendItem = (ev: api.TagStreamEvent) => {
     setTagProgress((prev) => ({
-      processed: batch.processed ?? prev.processed,
-      tagged: batch.tagged ?? prev.tagged,
-      limit: batch.limit ?? prev.limit,
-      results: [...prev.results, ...(batch.items || []).map((it) => ({ title: it.title || it.content_id, tags: it.tags }))],
+      processed: ev.processed ?? prev.processed + 1,
+      tagged: ev.tagged ?? prev.tagged,
+      limit: ev.limit ?? prev.limit,
+      results: [...prev.results, { title: ev.title || ev.content_id || '', tags: ev.tags || [] }],
     }));
   };
 
@@ -70,8 +70,8 @@ export function useAiTagging(opts: {
             setTagPhase('running');
             setTagResult({ processed: 0, tagged: 0, taskId: ev.task_id });
             setTagProgress({ processed: 0, tagged: 0, limit: ev.limit ?? tagLimit, results: [] });
-          } else if (ev.type === 'batch') {
-            appendBatch(ev);
+          } else if (ev.type === 'item') {
+            appendItem(ev);
           }
         },
         abort.signal
@@ -80,11 +80,11 @@ export function useAiTagging(opts: {
       setTagResult({ processed: done.processed ?? 0, tagged: done.tagged ?? 0, taskId: done.task_id });
       onDone();  // 刷新收藏列表与标签统计
     } catch (err: any) {
-      // 用户主动中止：已推流的批次结果保留在进度里
+      // 用户主动中止：已推流的条目结果保留在进度里
       if (abort.signal.aborted) {
         const latest = tagProgressRef.current;
         setTagPhase('failed');
-        setTagResult({ processed: latest.processed, tagged: latest.tagged, error: '已手动停止（已完成批次保留）' });
+        setTagResult({ processed: latest.processed, tagged: latest.tagged, error: '已手动停止（已完成条目保留）' });
         onDone();
       } else {
         setTagPhase('failed');

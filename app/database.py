@@ -52,9 +52,10 @@ CREATE TABLE IF NOT EXISTS contents (
 CREATE TABLE IF NOT EXISTS ai_agents (
     agent_id        TEXT PRIMARY KEY,
     name            TEXT NOT NULL,
-    base_url        TEXT NOT NULL,    -- OpenAI 兼容服务地址，如 https://api.openai.com/v1
+    base_url        TEXT NOT NULL,    -- OpenAI 兼容服务地址，如 https://api.openai.com/v1；jev 方式为 https://api.typesafe.ai
     api_key         TEXT NOT NULL,
-    model_id        TEXT NOT NULL,
+    model_id        TEXT NOT NULL,    -- jev 方式无需模型，留空
+    provider        TEXT DEFAULT 'openai',  -- 打标方式：openai（默认）/ jev
     created_at      TEXT
 );
 
@@ -236,6 +237,11 @@ class Database:
             await self.conn.execute("ALTER TABLE fetch_tasks ADD COLUMN new_favorites INTEGER")
         if "progress" not in task_cols:
             await self.conn.execute("ALTER TABLE fetch_tasks ADD COLUMN progress TEXT")
+
+        async with self.conn.execute("PRAGMA table_info(ai_agents)") as cur:
+            agent_cols = [row[1] for row in await cur.fetchall()]
+        if agent_cols and "provider" not in agent_cols:
+            await self.conn.execute("ALTER TABLE ai_agents ADD COLUMN provider TEXT DEFAULT 'openai'")
 
         async with self.conn.execute("PRAGMA table_info(downloads)") as cur:
             dl_cols = [row[1] for row in await cur.fetchall()]

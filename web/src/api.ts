@@ -71,12 +71,15 @@ export interface FavoriteRow {
   tagged_at?: string | null;
 }
 
+export type AgentProvider = 'openai' | 'jev';
+
 export interface AgentConfigRow {
   agent_id: string;
   name: string;
   base_url: string;
   api_key: string;
   model_id: string;
+  provider?: AgentProvider;
   created_at?: string | null;
 }
 
@@ -679,11 +682,11 @@ export async function listAgents(): Promise<AgentConfigRow[]> {
   return data.agents;
 }
 
-export async function createAgent(body: { name: string; base_url: string; api_key: string; model_id: string }) {
+export async function createAgent(body: { name: string; base_url: string; api_key: string; model_id: string; provider?: AgentProvider }) {
   return request<AgentConfigRow>('/ai/agents', { method: 'POST', body: JSON.stringify(body) });
 }
 
-export async function updateAgent(id: string, body: { name?: string; base_url?: string; api_key?: string; model_id?: string }) {
+export async function updateAgent(id: string, body: { name?: string; base_url?: string; api_key?: string; model_id?: string; provider?: AgentProvider }) {
   return request<AgentConfigRow>(`/ai/agents/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
 }
 
@@ -782,16 +785,19 @@ export async function saveContentTags(contentId: string, tags: string[]) {
 }
 
 export interface TagStreamEvent {
-  type: 'task' | 'batch' | 'done' | 'error';
+  type: 'task' | 'item' | 'done' | 'error';
   task_id?: string;
   limit?: number;
   processed?: number;
   tagged?: number;
-  items?: Array<{ content_id: string; title?: string; tags: string[] }>;
+  // type=item：单条打标结果（逐条实时推送）
+  content_id?: string;
+  title?: string;
+  tags?: string[];
   error_message?: string;
 }
 
-/** 一键打标（SSE 流式）：逐批回调进度，结束返回 done 载荷；抛错对应 error 事件。 */
+/** 一键打标（SSE 流式）：逐条回调进度，结束返回 done 载荷；抛错对应 error 事件。 */
 export async function tagStream(
   body: { agent_id: string; platform?: string; limit?: number },
   onEvent: (ev: TagStreamEvent) => void,

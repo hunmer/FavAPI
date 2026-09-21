@@ -25,7 +25,7 @@ import {
   RotateCcw,
   Check
 } from 'lucide-react';
-import { AgentConfigRow, AgentTestResult, backfillCovers, clearAllFavorites, clearDownloadLogs, CoverStatus, DownloaderId, DOWNLOAD_QUALITIES, ToolchainStatus, fetchAppSettings, fetchCoverStatus, fetchToolchain, qualityLabel, updateAppSettings, uploadAvatar } from '../../api';
+import { AgentConfigRow, AgentProvider, AgentTestResult, backfillCovers, clearAllFavorites, clearDownloadLogs, CoverStatus, DownloaderId, DOWNLOAD_QUALITIES, ToolchainStatus, fetchAppSettings, fetchCoverStatus, fetchToolchain, qualityLabel, updateAppSettings, uploadAvatar } from '../../api';
 import { applyPrimaryColor, PRIMARY_PRESETS, readPrimaryColorId } from '../../primaryColor';
 import { TerminalDialog } from '../TerminalDialog';
 import { confirmDialog } from '../AlertDialog';
@@ -41,8 +41,8 @@ interface SettingsViewProps {
   avatarUrl: string | null;
   onAvatarChange: (url: string) => void;
   agents: AgentConfigRow[];
-  onCreateAgent: (body: { name: string; base_url: string; api_key: string; model_id: string }) => Promise<AgentConfigRow>;
-  onUpdateAgent: (id: string, body: { name: string; base_url: string; api_key?: string; model_id: string }) => Promise<void>;
+  onCreateAgent: (body: { name: string; base_url: string; api_key: string; model_id: string; provider?: AgentProvider }) => Promise<AgentConfigRow>;
+  onUpdateAgent: (id: string, body: { name: string; base_url: string; api_key?: string; model_id: string; provider?: AgentProvider }) => Promise<void>;
   onDeleteAgent: (id: string) => Promise<void>;
   onTestAgent: (id: string) => Promise<AgentTestResult>;
 }
@@ -284,13 +284,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   }, []);
 
   // ---------- AI Agent 配置管理 ----------
-  const emptyAgentForm = { name: '', base_url: '', api_key: '', model_id: '' };
+  const emptyAgentForm = { name: '', base_url: '', api_key: '', model_id: '', provider: 'openai' as AgentProvider };
   const [showAgentForm, setShowAgentForm] = useState(false);
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
   const [agentForm, setAgentForm] = useState(emptyAgentForm);
   const [agentSaving, setAgentSaving] = useState(false);
   // agent_id -> 测试状态：'testing' 或测试结果
   const [agentTests, setAgentTests] = useState<Record<string, 'testing' | AgentTestResult>>({});
+  const isJevForm = agentForm.provider === 'jev';
 
   const openAgentCreate = () => {
     setEditingAgentId(null);
@@ -300,15 +301,31 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const openAgentEdit = (a: AgentConfigRow) => {
     setEditingAgentId(a.agent_id);
-    setAgentForm({ name: a.name, base_url: a.base_url, api_key: '', model_id: a.model_id });
+    setAgentForm({ name: a.name, base_url: a.base_url, api_key: '', model_id: a.model_id, provider: a.provider ?? 'openai' });
     setShowAgentForm(true);
+  };
+
+  // 切换打标方式：jev 预填官方地址，openai 且当前是 jev 预填值时还原为空
+  const switchAgentProvider = (provider: AgentProvider) => {
+    setAgentForm((f) => ({
+      ...f,
+      provider,
+      base_url:
+        provider === 'jev'
+          ? f.base_url.trim() || 'https://api.typesafe.ai'
+          : f.base_url.trim() === 'https://api.typesafe.ai' ? '' : f.base_url,
+    }));
   };
 
   const submitAgentForm = async (e: React.FormEvent) => {
     e.preventDefault();
-    const { name, base_url, api_key, model_id } = agentForm;
-    if (!name.trim() || !base_url.trim() || !model_id.trim() || (!editingAgentId && !api_key.trim())) {
-      onShowToast('名称 / Base URL / Model ID 必填（新建时 API Key 也必填）', 'error');
+    const { name, base_url, api_key, model_id, provider } = agentForm;
+    if (!name.trim() || (!editingAgentId && !api_key.trim())) {
+      onShowToast(isJevForm ? '名称必填（新建时 API Key 也必填）' : '名称 / API Key 必填（新建时必填）', 'error');
+      return;
+    }
+    if (!isJevForm && !(base_url.trim() && model_id.trim())) {
+      onShowToast('OpenAI 兼容方式必须填写 Base URL / Model ID', 'error');
       return;
     }
     setAgentSaving(true);
@@ -316,13 +333,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       if (editingAgentId) {
         await onUpdateAgent(editingAgentId, {
           name: name.trim(),
-          base_url: base_url.trim(),
+          base_url: (isJevForm ? base_url.trim() || 'https://api.typesafe.ai' : base_url).trim(),
           model_id: model_id.trim(),
+          provider,
           ...(api_key.trim() ? { api_key: api_key.trim() } : {}),  // 留空表示保留原 Key
         });
         onShowToast(`Agent「${name.trim()}」已更新`);
       } else {
-        await onCreateAgent({ name: name.trim(), base_url: base_url.trim(), api_key: api_key.trim(), model_id: model_id.trim() });
+        await onCreateAgent({
+          name: name.trim(),
+          base_url: (isJevForm ? base_url.trim() || 'https://api.typesafe.ai' : base_url).trim(),
+          api_key: api_key.trim(),
+          model_id: model_id.trim(),
+          provider,
+        });
         onShowToast(`Agent「${name.trim()}」已创建`);
       }
       setShowAgentForm(false);
@@ -872,7 +896,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
               <div>
                 <h4 className="text-sm font-bold text-slate-900 dark:text-white">AI Agent 智能打标配置</h4>
-                <p className="text-[11px] text-slate-400">OpenAI 兼容接口（Base URL / API Key / Model ID），供定时智能打标任务使用</p>
+                <p className="text-[11px] text-slate-400">OpenAI 兼容接口（Base URL / API Key / Model ID）或 Jev 判定式打标，供智能打标任务使用</p>
               </div>
             </div>
             <button
@@ -902,9 +926,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-bold text-slate-900 dark:text-white">{a.name}</span>
-                      <span className="px-2 py-0.5 rounded-md bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-400 text-[10px] font-bold border border-violet-100 dark:border-violet-900 font-mono">
-                        {a.model_id}
+                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border font-mono ${
+                        a.provider === 'jev'
+                          ? 'bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400 border-teal-100 dark:border-teal-900'
+                          : 'bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-400 border-violet-100 dark:border-violet-900'
+                      }`}>
+                        {a.provider === 'jev' ? 'Jev 判定式' : 'OpenAI 兼容'}
                       </span>
+                      {a.model_id && (
+                        <span className="px-2 py-0.5 rounded-md bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-400 text-[10px] font-bold border border-violet-100 dark:border-violet-900 font-mono">
+                          {a.model_id}
+                        </span>
+                      )}
                     </div>
                     <div className="text-[11px] text-slate-400 font-mono mt-1 truncate">{a.base_url}</div>
                     {test === 'testing' ? (
@@ -965,25 +998,64 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 {editingAgentId ? '编辑 Agent 配置' : '新建 Agent 配置'}
                 <span className="ml-2 font-normal text-slate-400">API Key 留空表示保留原值（仅编辑时）</span>
               </div>
+              {/* 打标方式切换 */}
+              <div className="md:col-span-2 flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">打标方式</label>
+                <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700 w-fit">
+                  <button
+                    type="button"
+                    onClick={() => switchAgentProvider('openai')}
+                    className={`px-4 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                      !isJevForm
+                        ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    OpenAI 兼容接口
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => switchAgentProvider('jev')}
+                    className={`px-4 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                      isJevForm
+                        ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Jev 判定式
+                  </button>
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  {isJevForm
+                    ? 'TypeSafe（Jev 模型）两阶段判定：先召回标签分组，再对候选标签逐一概率判定，标签完全来自库内分组体系'
+                    : '批量标题喂 chat 接口自由生成标签，可新建标签池外的新标签'}
+                </p>
+              </div>
               <input
                 type="text"
                 value={agentForm.name}
                 onChange={(e) => setAgentForm((f) => ({ ...f, name: e.target.value }))}
-                placeholder="配置名称，如 DeepSeek / 本地 Ollama"
+                placeholder="配置名称，如 DeepSeek / 本地 Ollama / Jev"
                 className={`${agentInputCls} font-sans`}
               />
-              <input
-                type="text"
-                value={agentForm.model_id}
-                onChange={(e) => setAgentForm((f) => ({ ...f, model_id: e.target.value }))}
-                placeholder="Model ID，如 deepseek-chat"
-                className={agentInputCls}
-              />
+              {isJevForm ? (
+                <div className="flex flex-col gap-1.5 justify-end">
+                  <label className="text-[11px] text-slate-400">Jev 方式由官方托管模型判定，无需填写 Model ID</label>
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  value={agentForm.model_id}
+                  onChange={(e) => setAgentForm((f) => ({ ...f, model_id: e.target.value }))}
+                  placeholder="Model ID，如 deepseek-chat"
+                  className={agentInputCls}
+                />
+              )}
               <input
                 type="text"
                 value={agentForm.base_url}
                 onChange={(e) => setAgentForm((f) => ({ ...f, base_url: e.target.value }))}
-                placeholder="Base URL，如 https://api.deepseek.com/v1"
+                placeholder={isJevForm ? 'https://api.typesafe.ai（留空使用官方地址）' : 'Base URL，如 https://api.deepseek.com/v1'}
                 className={agentInputCls}
               />
               <input

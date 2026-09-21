@@ -12,10 +12,10 @@ router = APIRouter(prefix="/api/v1/ai/tag", tags=["ai-tagging"])
 
 @router.post("/stream")
 async def tag_stream(req: FetchRequest):
-    """一次性流式打标：event 格式 data: {"type": "task" | "batch" | "done" | "error", ...}。
+    """一次性流式打标：event 格式 data: {"type": "task" | "item" | "done" | "error", ...}。
 
-    batch 事件携带本批打标结果（title + tags），done/error 后流结束；
-    客户端中途断开时任务标记失败，已入库批次保留。
+    item 事件逐条携带打标结果（title + tags），done/error 后流结束；
+    客户端中途断开时任务标记失败，已入库条目保留。
     """
     try:
         agent = await validate_tagging(req.params)

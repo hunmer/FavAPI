@@ -167,11 +167,15 @@ class NotificationOut(BaseModel):
 
 # ---------- AI Agent 配置 ----------
 
+AGENT_PROVIDERS = ("openai", "jev")
+
+
 class AgentCreate(BaseModel):
     name: str
     base_url: str  # OpenAI 兼容服务地址，如 https://api.openai.com/v1
     api_key: str
     model_id: str
+    provider: str = "openai"  # 打标方式：openai / jev
 
 
 class AgentUpdate(BaseModel):
@@ -179,6 +183,7 @@ class AgentUpdate(BaseModel):
     base_url: str | None = None
     api_key: str | None = None
     model_id: str | None = None
+    provider: str | None = None
 
 
 class AgentOut(BaseModel):
@@ -187,4 +192,5 @@ class AgentOut(BaseModel):
     base_url: str
     api_key: str
     model_id: str
+    provider: str = "openai"
     created_at: str | None = None

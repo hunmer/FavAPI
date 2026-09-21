@@ -588,7 +588,7 @@ export function App() {
     reloadSchedules();
   };
 
-  const handleCreateAgent = async (agentBody: { name: string; base_url: string; api_key: string; model_id: string }) => {
+  const handleCreateAgent = async (agentBody: { name: string; base_url: string; api_key: string; model_id: string; provider?: api.AgentProvider }) => {
     const created = await api.createAgent(agentBody);
     await reloadAgents();
     showToast(`AI Agent 配置「${created.name}」已保存`);
@@ -597,7 +597,7 @@ export function App() {
 
   const handleUpdateAgent = async (
     id: string,
-    body: { name: string; base_url: string; api_key?: string; model_id: string }
+    body: { name: string; base_url: string; api_key?: string; model_id: string; provider?: api.AgentProvider }
   ) => {
     await api.updateAgent(id, body);
     await reloadAgents();
