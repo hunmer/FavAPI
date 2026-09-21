@@ -564,6 +564,26 @@ export async function favoriteFacets(accountId?: string, folder?: string): Promi
   return request(`/favorites/facets?${p.toString()}`);
 }
 
+// ---------- 手动录入链接 ----------
+
+export interface ManualFavoriteResult {
+  created: boolean;
+  content_id: string;
+  platform: string;
+}
+
+/** 手动录入链接到收藏库（不绑定账号，来源标记「手动录入」）；同链接重复录入返回 created=false。 */
+export async function createManualFavorite(body: { url: string; title?: string; note?: string }): Promise<ManualFavoriteResult> {
+  return request('/favorites/manual', { method: 'POST', body: JSON.stringify(body) });
+}
+
+/** 上传自定义封面（手动录入条目等）；jpg/png/webp/gif，最大 10MB，覆盖旧封面。 */
+export async function uploadCover(platform: string, contentId: string, file: File): Promise<{ ok: boolean }> {
+  const form = new FormData();
+  form.append('file', file);
+  return request(`/covers/${encodeURIComponent(platform)}/${encodeURIComponent(contentId)}`, { method: 'POST', body: form });
+}
+
 // ---------- 抓取 ----------
 
 export async function uploadWechatJson(accountId: string, file: File): Promise<{ json_path: string }> {
@@ -773,13 +793,26 @@ export async function tagUsage(tag: string): Promise<{ tag: string; count: numbe
   return request(`/tags/${encodeURIComponent(tag)}/usage`);
 }
 
+/** 重命名标签：同步更新所有内容 tags 与分组定义。 */
+export async function renameTag(oldTag: string, newName: string): Promise<{ contents_updated: number; groups_updated: number }> {
+  return request(`/tags/${encodeURIComponent(oldTag)}`, { method: 'PUT', body: JSON.stringify({ name: newName }) });
+}
+
 export async function createTagGroup(name: string, tags: string[] = []): Promise<TagGroupRow> {
   return request('/tag-groups', { method: 'POST', body: JSON.stringify({ name, tags }) });
 }
 
-/** 智能创建标签：关键词 → AI 联想分组+标签建议（仅 OpenAI 兼容 Agent）。 */
-export async function suggestTagGroups(agentId: string, keyword: string): Promise<{ keyword: string; groups: Array<{ name: string; tags: string[] }> }> {
-  return request('/ai/tag/suggest', { method: 'POST', body: JSON.stringify({ agent_id: agentId, keyword }) });
+/** 智能创建标签：关键词 → AI 联想分组+标签建议（仅 OpenAI 兼容 Agent）。
+ * 传 sessionId + instruction 为「继续优化」轮：后端内存保存对话历史，AI 基于上一版建议调整。 */
+export async function suggestTagGroups(
+  agentId: string,
+  keyword: string,
+  opts: { sessionId?: string; instruction?: string } = {}
+): Promise<{ keyword: string; groups: Array<{ name: string; tags: string[] }>; session_id: string }> {
+  return request('/ai/tag/suggest', {
+    method: 'POST',
+    body: JSON.stringify({ agent_id: agentId, keyword, session_id: opts.sessionId, instruction: opts.instruction }),
+  });
 }
 
 /** 一键应用智能建议：分组不存在则创建，已存在则标签追加去重。 */
@@ -817,7 +850,7 @@ export interface TagStreamEvent {
 
 /** 一键打标（SSE 流式）：逐条回调进度，结束返回 done 载荷；抛错对应 error 事件。 */
 export async function tagStream(
-  body: { agent_id: string; platform?: string; limit?: number },
+  body: { agent_id: string; platform?: string; limit?: number; includeNoMatch?: boolean },
   onEvent: (ev: TagStreamEvent) => void,
   signal?: AbortSignal
 ): Promise<TagStreamEvent> {
@@ -828,7 +861,12 @@ export async function tagStream(
       platform: body.platform || '',
       account_id: '',
       action: 'ai_tag',
-      params: { agent_id: body.agent_id, platform: body.platform || '', limit: body.limit },
+      params: {
+        agent_id: body.agent_id,
+        platform: body.platform || '',
+        limit: body.limit,
+        include_no_match: body.includeNoMatch || undefined,
+      },
     }),
     signal,
   });

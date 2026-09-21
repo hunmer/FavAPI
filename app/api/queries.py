@@ -141,9 +141,29 @@ async def list_favorites(
 
 
 class FavoriteRef(BaseModel):
-    account_id: str
+    account_id: str | None = None  # 手动录入条目无账号（NULL），前端空串归一为此
     platform: str
     content_id: str
+
+
+class ManualFavoriteCreate(BaseModel):
+    url: str = Field(min_length=1)
+    title: str = ""
+    note: str = ""
+
+
+@router.post("/favorites/manual", status_code=201)
+async def create_manual_favorite(body: ManualFavoriteCreate):
+    """手动录入链接入库：无协议时自动补 https://，域名无法解析返回 422。"""
+    import re
+    from urllib.parse import urlparse
+
+    url = body.url.strip()
+    if not re.match(r"^https?://", url, re.IGNORECASE):
+        url = f"https://{url}"
+    if not urlparse(url).hostname:
+        raise HTTPException(status_code=422, detail="链接格式无效，请检查后重试")
+    return await data_store.create_manual_favorite(url, body.title.strip(), body.note.strip())
 
 
 class FavoritesBatchDelete(BaseModel):

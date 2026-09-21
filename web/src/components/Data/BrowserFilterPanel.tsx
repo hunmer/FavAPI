@@ -59,6 +59,8 @@ export const BrowserFilterPanel: React.FC<{
   selectedTags: string[];
   onToggleTag: (t: string) => void;
   onClearTags: () => void;
+  /** 标签重命名（更新所有内容与分组定义）；reject 时保持编辑态 */
+  onRenameTag: (oldTag: string, newName: string) => Promise<void>;
   /** 标签状态过滤（与具体标签互斥）：'' | untagged（从未打标）| no_match（已打标无命中） */
   tagStatus: string;
   onTagStatusChange: (status: string) => void;
@@ -99,6 +101,7 @@ export const BrowserFilterPanel: React.FC<{
   selectedTags,
   onToggleTag,
   onClearTags,
+  onRenameTag,
   tagStatus,
   onTagStatusChange,
   tagStatusCounts,
@@ -115,6 +118,26 @@ export const BrowserFilterPanel: React.FC<{
   const [sourceListOpen, setSourceListOpen] = useState(false);
   const [authorListOpen, setAuthorListOpen] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  // 标签行内重命名：editingTag=正在编辑的标签名（跨分组唯一）
+  const [editingTag, setEditingTag] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [tagRenaming, setTagRenaming] = useState(false);
+
+  const submitTagRename = async () => {
+    if (!editingTag || tagRenaming) return;
+    const nv = editValue.trim().replace(/^#+/, '').trim();
+    if (!nv || nv === editingTag) {
+      setEditingTag(null);
+      return;
+    }
+    setTagRenaming(true);
+    try {
+      await onRenameTag(editingTag, nv);
+      setEditingTag(null);  // 失败（reject）保持编辑态
+    } finally {
+      setTagRenaming(false);
+    }
+  };
 
   return (
     <aside className="w-full lg:w-60 xl:w-64 shrink-0 lg:self-stretch">
@@ -527,18 +550,43 @@ export const BrowserFilterPanel: React.FC<{
                           {g.tags.map((t) => {
                             const active = selectedTags.includes(t);
                             const count = countByTag.get(t);
+                            if (editingTag === t) {
+                              /* 行内重命名：Enter 应用 / Esc 取消 */
+                              return (
+                                <input
+                                  key={t}
+                                  autoFocus
+                                  type="text"
+                                  value={editValue}
+                                  disabled={tagRenaming}
+                                  onChange={(e) => setEditValue(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') submitTagRename();
+                                    if (e.key === 'Escape') setEditingTag(null);
+                                  }}
+                                  onBlur={() => setEditingTag(null)}
+                                  className={`px-2 py-1 rounded-lg text-[11px] font-medium border transition-all w-24 outline-none focus:ring-1 ${
+                                    active
+                                      ? 'bg-violet-600 text-white border-violet-600 focus:ring-violet-400'
+                                      : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-violet-300 dark:border-violet-700 focus:ring-violet-500'
+                                  }`}
+                                />
+                              );
+                            }
                             return (
-                              <button
+                              <div
                                 key={t}
-                                type="button"
+                                role="button"
+                                tabIndex={0}
                                 onClick={() => onToggleTag(t)}
+                                onKeyDown={(e) => e.key === 'Enter' && onToggleTag(t)}
                                 onContextMenu={(e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
                                   onTagContextMenu(e.clientX, e.clientY, t);
                                 }}
-                                title="左键筛选 · 右键管理"
-                                className={`px-2 py-1 rounded-lg text-[11px] font-medium border transition-all cursor-pointer active:scale-95 ${
+                                title="左键筛选 · 右键管理 · 铅笔重命名"
+                                className={`group/tag relative px-2 py-1 pr-2.5 rounded-lg text-[11px] font-medium border transition-all cursor-pointer active:scale-95 ${
                                   active
                                     ? 'bg-violet-600 text-white border-violet-600 shadow-xs'
                                     : count
@@ -552,7 +600,20 @@ export const BrowserFilterPanel: React.FC<{
                                     {count}
                                   </span>
                                 ) : null}
-                              </button>
+                                {/* hover 重命名入口 */}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingTag(t);
+                                    setEditValue(t);
+                                  }}
+                                  title="重命名标签"
+                                  className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-300 hover:text-violet-600 dark:hover:text-violet-400 hover:border-violet-300 shadow-xs hidden group-hover/tag:flex items-center justify-center cursor-pointer"
+                                >
+                                  <Pencil className="w-2.5 h-2.5" />
+                                </button>
+                              </div>
                             );
                           })}
                         </div>

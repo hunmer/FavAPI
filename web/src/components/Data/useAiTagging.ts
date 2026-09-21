@@ -21,6 +21,8 @@ export function useAiTagging(opts: {
   const [tagAgentId, setTagAgentId] = useState('');
   const [tagPlatform, setTagPlatform] = useState('');
   const [tagLimit, setTagLimit] = useState(0);
+  // 打标范围：false=仅未打标；true=也包含「已打标但无命中」（空标签数组）的内容重打
+  const [tagIncludeNoMatch, setTagIncludeNoMatch] = useState(false);
   const [tagStarting, setTagStarting] = useState(false);
   // idle=表单 / running=任务执行中 / success / failed
   const [tagPhase, setTagPhase] = useState<'idle' | 'running' | 'success' | 'failed'>('idle');
@@ -42,6 +44,7 @@ export function useAiTagging(opts: {
     setTagAgentId(agents[0]?.agent_id || '');
     setTagPlatform(accounts.find((a) => a.id === selectedAccountId)?.platform || '');
     setTagLimit(0);
+    setTagIncludeNoMatch(false);
     setTagPhase('idle');
     setTagResult(null);
     setTagProgress({ processed: 0, tagged: 0, limit: 0, results: [] });
@@ -64,7 +67,7 @@ export function useAiTagging(opts: {
     tagAbortRef.current = abort;
     try {
       const done = await api.tagStream(
-        { agent_id: tagAgentId, platform: tagPlatform, limit: tagLimit },
+        { agent_id: tagAgentId, platform: tagPlatform, limit: tagLimit, includeNoMatch: tagIncludeNoMatch },
         (ev) => {
           if (ev.type === 'task') {
             setTagPhase('running');
@@ -103,6 +106,7 @@ export function useAiTagging(opts: {
     tagAgentId, setTagAgentId,
     tagPlatform, setTagPlatform,
     tagLimit, setTagLimit,
+    tagIncludeNoMatch, setTagIncludeNoMatch,
     tagStarting,
     tagPhase, setTagPhase,
     tagResult, setTagResult,

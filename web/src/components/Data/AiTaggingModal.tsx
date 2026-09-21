@@ -12,6 +12,11 @@ export const AiTaggingModal: React.FC<{
   onPlatformChange: (p: string) => void;
   limit: number;
   onLimitChange: (n: number) => void;
+  /** 打标范围：false=仅未打标；true=也包含「已打标但无命中」（空标签数组）的内容重打 */
+  includeNoMatch: boolean;
+  onIncludeNoMatchChange: (v: boolean) => void;
+  /** 未打标 / 无匹配计数（选项展示用） */
+  tagStatusCounts?: api.TagStatusCounts;
   starting: boolean;
   phase: 'idle' | 'running' | 'success' | 'failed';
   result: { processed: number; tagged: number; error?: string; taskId?: string } | null;
@@ -29,6 +34,9 @@ export const AiTaggingModal: React.FC<{
   onPlatformChange,
   limit,
   onLimitChange,
+  includeNoMatch,
+  onIncludeNoMatchChange,
+  tagStatusCounts,
   starting,
   phase,
   result,
@@ -109,6 +117,30 @@ export const AiTaggingModal: React.FC<{
                     </option>
                   ))}
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wider">
+                  打标范围
+                </label>
+                <select
+                  value={includeNoMatch ? 'all' : 'untagged'}
+                  onChange={(e) => onIncludeNoMatchChange(e.target.value === 'all')}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm bg-white dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-600"
+                >
+                  <option value="untagged">
+                    仅未打标内容{typeof tagStatusCounts?.untagged_count === 'number' ? `（${tagStatusCounts.untagged_count}）` : ''}
+                  </option>
+                  <option value="all">
+                    包含无匹配标签（重新打标）
+                    {typeof tagStatusCounts?.no_match_count === 'number' ? `（+${tagStatusCounts.no_match_count}）` : ''}
+                  </option>
+                </select>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  {includeNoMatch
+                    ? '已打标但未命中任何标签的内容（空标签）也会重新参与判定。'
+                    : '只处理从未打过标的内容；「打过但无匹配」的内容默认跳过。'}
+                </p>
               </div>
 
               <div>

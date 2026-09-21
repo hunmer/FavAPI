@@ -7,6 +7,7 @@ import { BrowserFilterPanel } from './BrowserFilterPanel';
 import { BrowserToolbar, BrowserSelectionBar } from './BrowserToolbar';
 import { BrowserContent } from './BrowserContent';
 import { BrowserTagContextMenu, BrowserTagDeleteModal, BrowserGroupCreateModal } from './BrowserTagModals';
+import { BrowserManualItemModal } from './BrowserManualItemModal';
 import { BrowserItemsDeleteModal, BrowserSingleDeleteModal } from './BrowserDeleteModals';
 import { AiTaggingModal } from './AiTaggingModal';
 import { useAiTagging } from './useAiTagging';
@@ -274,6 +275,9 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [itemsDeleteConfirm, setItemsDeleteConfirm] = useState(false);
   const [itemsDeleting, setItemsDeleting] = useState(false);
+
+  // ---------- 手动录入链接 ----------
+  const [manualItemOpen, setManualItemOpen] = useState(false);
 
   const itemKey = (item: ScrapedItem) => `${item.accountId}|${item.platform}|${item.id}`;
 
@@ -694,6 +698,17 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
         selectedTags={selectedTags}
         onToggleTag={toggleTag}
         onClearTags={() => setSelectedTags([])}
+        onRenameTag={async (oldTag, newName) => {
+          try {
+            const r = await api.renameTag(oldTag, newName);
+            setSelectedTags((prev) => prev.map((t) => (t === oldTag ? newName : t)));  // 选中过滤随迁
+            showToast?.(`标签「${oldTag}」已重命名为「${newName}」（更新 ${r.contents_updated} 条内容、${r.groups_updated} 个分组）`, 'success');
+            handleRefresh();
+          } catch (err: any) {
+            showToast?.(`标签重命名失败：${err?.message || '未知错误'}`, 'error');
+            throw err;  // 面板保持编辑态
+          }
+        }}
         tagStatus={tagStatus}
         onTagStatusChange={handleTagStatusChange}
         onTagContextMenu={(x, y, tag) => setCtxMenu({ x, y, tag })}
@@ -723,6 +738,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
           selectedCount={selectedKeys.size}
           agentsAvailable={agents.length > 0}
           onOpenTagModal={tagging.openTagModal}
+          onAddManualItem={() => setManualItemOpen(true)}
           sortBy={sortBy}
           onSortByChange={handleSortByChange}
           sortAsc={sortAsc}
@@ -858,6 +874,26 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
         />
       )}
 
+      {/* 手动录入链接弹窗（工具栏「录入链接」） */}
+      {manualItemOpen && (
+        <BrowserManualItemModal
+          onClose={() => setManualItemOpen(false)}
+          onCreated={(r) => {
+            setManualItemOpen(false);
+            handleRefresh();
+            if (!r.created && r.coverUploaded === false) {
+              showToast?.('该链接已在收藏库中，但封面上传失败', 'error');
+            } else if (!r.created) {
+              showToast?.('该链接已在收藏库中', 'info');
+            } else if (r.coverUploaded === false) {
+              showToast?.('链接已加入收藏库，但封面上传失败', 'error');
+            } else {
+              showToast?.('链接已加入收藏库', 'success');
+            }
+          }}
+        />
+      )}
+
       {/* 新建分组弹窗（手动创建 / 智能创建双 tab） */}
       {showGroupCreate && (
         <BrowserGroupCreateModal
@@ -892,6 +928,9 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
           onPlatformChange={tagging.setTagPlatform}
           limit={tagging.tagLimit}
           onLimitChange={tagging.setTagLimit}
+          includeNoMatch={tagging.tagIncludeNoMatch}
+          onIncludeNoMatchChange={tagging.setTagIncludeNoMatch}
+          tagStatusCounts={tagStatusCounts}
           starting={tagging.tagStarting}
           phase={tagging.tagPhase}
           result={tagging.tagResult}

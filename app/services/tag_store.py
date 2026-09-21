@@ -91,7 +91,7 @@ async def upsert_groups(groups: list[dict]) -> dict:
     return {"created": created, "merged": merged, "added_tags": added_tags}
 
 
-# ---------- 标签删除 ----------
+# ---------- 标签删除 / 重命名 ----------
 
 async def tag_usage(tag: str) -> int:
     row = await db.query_one(
@@ -100,6 +100,46 @@ async def tag_usage(tag: str) -> int:
         (tag,),
     )
     return (row or {}).get("n") or 0
+
+
+async def rename_tag(old: str, new: str) -> dict:
+    """重命名标签：所有内容 tags 与分组定义中的 old → new（去重保序，不动 tagged_at）。"""
+    old, new = old.strip().strip("#").strip(), new.strip().strip("#").strip()
+    if not old or not new:
+        raise ValueError("标签名不能为空")
+    if old == new:
+        return {"contents_updated": 0, "groups_updated": 0}
+    rows = await db.query_all(
+        """SELECT content_id, tags FROM contents
+           WHERE EXISTS (SELECT 1 FROM json_each(contents.tags) WHERE json_each.value = ?)""",
+        (old,),
+    )
+    for r in rows:
+        try:
+            tags = json.loads(r["tags"] or "[]")
+        except (TypeError, json.JSONDecodeError):
+            tags = []
+        dedup: list[str] = []
+        for t in (new if t == old else t for t in tags):
+            if t not in dedup:
+                dedup.append(t)
+        await db.execute(
+            "UPDATE contents SET tags = ? WHERE content_id = ?",
+            (json.dumps(dedup, ensure_ascii=False), r["content_id"]),
+        )
+    groups_updated = 0
+    for g in await list_groups():
+        if old in g["tags"]:
+            dedup = []
+            for t in (new if t == old else t for t in g["tags"]):
+                if t not in dedup:
+                    dedup.append(t)
+            await db.execute(
+                "UPDATE tag_groups SET tags = ? WHERE group_name = ?",
+                (json.dumps(dedup, ensure_ascii=False), g["group"]),
+            )
+            groups_updated += 1
+    return {"contents_updated": len(rows), "groups_updated": groups_updated}
 
 
 async def delete_tag(tag: str, delete_favorites: bool = False) -> dict:

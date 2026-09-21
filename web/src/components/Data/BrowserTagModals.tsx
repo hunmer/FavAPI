@@ -102,6 +102,98 @@ export const BrowserTagDeleteModal: React.FC<{
   </div>
 );
 
+/** 智能创建·继续优化对话框：展示历史优化要求 + 输入新要求（叠在新建分组弹窗之上） */
+export const SuggestRefineModal: React.FC<{
+  baseKeyword: string;
+  history: string[];
+  busy: boolean;
+  error: string;
+  onClose: () => void;
+  onSubmit: (instruction: string) => void;
+}> = ({ baseKeyword, history, busy, error, onClose, onSubmit }) => {
+  const [text, setText] = useState('');
+  return (
+    <div
+      className="fixed inset-0 z-[80] bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 anim-backdrop-enter"
+      onClick={() => !busy && onClose()}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="anim-modal-enter bg-white dark:bg-[#161B26] w-full max-w-sm rounded-[28px] shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden"
+      >
+        <div className="p-5 bg-slate-50 dark:bg-slate-800 border-b border-slate-100 dark:border-slate-800">
+          <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <Wand2 className="w-4 h-4 text-violet-600" />
+            继续优化建议
+          </h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            AI 会结合对话历史，基于「{baseKeyword}」的上一版建议按新要求调整
+          </p>
+        </div>
+        <div className="p-5 space-y-4">
+          {/* 历史优化要求 */}
+          <div>
+            <span className="text-xs font-bold text-slate-600 dark:text-slate-400 block mb-2">
+              历史优化要求{history.length > 0 ? `（${history.length} 轮）` : ''}
+            </span>
+            {history.length === 0 ? (
+              <p className="text-[11px] text-slate-400">还没有优化要求，直接在下方输入第一条。</p>
+            ) : (
+              <div className="flex flex-col gap-1.5 max-h-40 overflow-y-auto pr-0.5">
+                {history.map((h, i) => (
+                  <div key={i} className="flex items-start gap-2 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700">
+                    <span className="shrink-0 mt-0.5 w-4 h-4 rounded-full bg-violet-100 dark:bg-violet-950 text-violet-600 dark:text-violet-400 text-[9px] font-bold flex items-center justify-center">
+                      {i + 1}
+                    </span>
+                    <span className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed break-all">{h}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          {/* 新要求 */}
+          <div className="flex flex-col gap-2">
+            <textarea
+              autoFocus
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  if (text.trim() && !busy) onSubmit(text.trim());
+                }
+              }}
+              rows={2}
+              placeholder="新的优化要求，如：标签更偏新手向、去掉商业化分组"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-600 resize-none"
+            />
+            {error && <p className="text-[11px] text-rose-600 break-all">{error}</p>}
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={busy}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100 rounded-xl cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => text.trim() && onSubmit(text.trim())}
+                disabled={busy || !text.trim()}
+                className="px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer"
+              >
+                {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+                {busy ? '优化中...' : '提交优化'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /** 新建标签分组弹窗：手动创建 / 智能创建（关键词 → AI 联想分组与标签，默认全选可切换）双 tab */
 export const BrowserGroupCreateModal: React.FC<{
   groups: api.TagGroupRow[];
@@ -129,23 +221,55 @@ export const BrowserGroupCreateModal: React.FC<{
   // AI 建议：[{name, tags}]（name 可编辑）；selected 存 `${组索引}::${标签}`（改名不失配），默认全选
   const [suggestions, setSuggestions] = useState<Array<{ name: string; tags: string[] }>>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // 多轮优化：baseKeyword=首次联想的关键词（重新生成用）；sessionId=后端内存会话（继续优化用）
+  const [baseKeyword, setBaseKeyword] = useState('');
+  const [sessionId, setSessionId] = useState('');
+  // 继续优化对话框：历史用户要求（前端维护，重新生成/新联想时清空）
+  const [showRefine, setShowRefine] = useState(false);
+  const [refineHistory, setRefineHistory] = useState<string[]>([]);
+  const [refineError, setRefineError] = useState('');
 
   const existingNames = new Set(groups.map((g) => g.group));
   const tagKey = (groupIdx: number, tag: string) => `${groupIdx}::${tag}`;
+  const hasSuggested = suggestions.length > 0;
 
+  const applySuggestionResult = (r: { groups: Array<{ name: string; tags: string[] }>; session_id: string }) => {
+    setSuggestions(r.groups);
+    setSelected(new Set(r.groups.flatMap((g, gi) => g.tags.map((t) => tagKey(gi, t)))));
+    setSessionId(r.session_id);
+  };
+
+  /** 联想 / 重新生成：无会话时用输入框关键词首次联想；已有建议时用输入框新词或原关键词全新生成（清空优化历史） */
   const runSuggest = async () => {
-    if (!smartAgentId || !keyword.trim() || suggesting) return;
+    if (!smartAgentId || suggesting) return;
+    const kw = (hasSuggested ? keyword.trim() || baseKeyword : keyword.trim());
+    if (!kw) return;
     setSuggesting(true);
     setSmartError('');
-    setSuggestions([]);
-    setSelected(new Set());
     try {
-      const r = await api.suggestTagGroups(smartAgentId, keyword.trim());
-      setSuggestions(r.groups);
-      // 默认全选
-      setSelected(new Set(r.groups.flatMap((g, gi) => g.tags.map((t) => tagKey(gi, t)))));
+      applySuggestionResult(await api.suggestTagGroups(smartAgentId, kw));
+      setBaseKeyword(kw);
+      setRefineHistory([]);
+      setRefineError('');
+      setKeyword('');
     } catch (err: any) {
       setSmartError(err?.message || 'AI 生成失败');
+    } finally {
+      setSuggesting(false);
+    }
+  };
+
+  /** 继续优化（对话框提交）：指令追加到后端会话让 AI 基于上一版建议调整，成功后计入历史 */
+  const refineSuggest = async (instruction: string) => {
+    if (!smartAgentId || !sessionId || suggesting) return;
+    setSuggesting(true);
+    setRefineError('');
+    try {
+      applySuggestionResult(await api.suggestTagGroups(smartAgentId, baseKeyword, { sessionId, instruction }));
+      setRefineHistory((prev) => [...prev, instruction]);
+      setShowRefine(false);
+    } catch (err: any) {
+      setRefineError(err?.message || 'AI 优化失败');
     } finally {
       setSuggesting(false);
     }
@@ -161,6 +285,30 @@ export const BrowserGroupCreateModal: React.FC<{
         return next;
       });
     }
+  };
+
+  // ---------- 跨分组拖拽 ----------
+  const [dragging, setDragging] = useState<{ gi: number; tag: string } | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+
+  /** 把标签从 fromGi 组移动到 toGi 组；勾选状态随组索引同步迁移 */
+  const moveTag = (fromGi: number, tag: string, toGi: number) => {
+    if (fromGi === toGi) return;
+    setSuggestions((prev) => {
+      const next = prev.map((g) => ({ ...g, tags: [...g.tags] }));
+      const fi = next[fromGi].tags.indexOf(tag);
+      if (fi < 0) return prev;
+      next[fromGi].tags.splice(fi, 1);
+      next[toGi].tags.push(tag);
+      return next;
+    });
+    setSelected((prev) => {
+      if (!prev.has(tagKey(fromGi, tag))) return prev;
+      const next = new Set(prev);
+      next.delete(tagKey(fromGi, tag));
+      next.add(tagKey(toGi, tag));
+      return next;
+    });
   };
 
   const toggleTagKey = (key: string) => {
@@ -350,21 +498,53 @@ export const BrowserGroupCreateModal: React.FC<{
                       value={keyword}
                       onChange={(e) => setKeyword(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && runSuggest()}
-                      placeholder="关键词，如：咖啡 / 摄影后期 / 独立游戏"
+                      placeholder={hasSuggested
+                        ? `关键词（默认「${baseKeyword}」，可修改后重新生成）`
+                        : '关键词，如：咖啡 / 摄影后期 / 独立游戏'}
                       className="flex-1 min-w-0 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm dark:bg-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-600"
                     />
-                    <button
-                      type="button"
-                      onClick={runSuggest}
-                      disabled={suggesting || !keyword.trim()}
-                      className="px-4 py-2.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shrink-0 cursor-pointer"
-                    >
-                      {suggesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
-                      {suggesting ? '生成中...' : '联想'}
-                    </button>
+                    {hasSuggested ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={runSuggest}
+                          disabled={suggesting}
+                          title="丢弃优化上下文，用当前关键词重新联想"
+                          className="px-3.5 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl flex items-center gap-1.5 shrink-0 cursor-pointer disabled:opacity-50"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${suggesting ? 'animate-spin' : ''}`} />
+                          重新生成
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRefineError('');
+                            setShowRefine(true);
+                          }}
+                          disabled={suggesting}
+                          title="在对话框中查看历史要求并输入新的优化要求"
+                          className="px-3.5 py-2.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shrink-0 cursor-pointer"
+                        >
+                          <Wand2 className="w-3.5 h-3.5" />
+                          继续优化{refineHistory.length > 0 ? `（${refineHistory.length}）` : ''}
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={runSuggest}
+                        disabled={suggesting || !keyword.trim()}
+                        className="px-4 py-2.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shrink-0 cursor-pointer"
+                      >
+                        {suggesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+                        {suggesting ? '生成中...' : '联想'}
+                      </button>
+                    )}
                   </div>
                   <p className="text-[11px] text-slate-400">
-                    AI 按关键词联想相关分组与标签（避开现有体系），生成后默认全选，点击可切换。
+                    {hasSuggested
+                      ? '「继续优化」在对话框中追加要求，AI 结合历史迭代建议；「重新生成」丢弃上下文重来。'
+                      : 'AI 按关键词联想相关分组与标签（避开现有体系），生成后默认全选，点击可切换。'}
                   </p>
                 </div>
 
@@ -374,25 +554,14 @@ export const BrowserGroupCreateModal: React.FC<{
 
                 {suggestions.length > 0 && (
                   <div className="flex flex-col gap-3 max-h-64 overflow-y-auto pr-0.5">
-                    {/* 换一批：保留关键词与 Agent 重新联想（temperature>0 结果不同） */}
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] text-slate-400">点击分组名可编辑；改成现有分组名即为并入</span>
-                      <button
-                        type="button"
-                        onClick={runSuggest}
-                        disabled={suggesting}
-                        className="px-2 py-1 rounded-lg text-[11px] font-semibold text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950 border border-violet-100 dark:border-violet-900 disabled:opacity-50 flex items-center gap-1 cursor-pointer shrink-0"
-                      >
-                        <RefreshCw className={`w-3 h-3 ${suggesting ? 'animate-spin' : ''}`} />
-                        换一批
-                      </button>
-                    </div>
+                    <span className="text-[11px] text-slate-400">点击分组名可编辑；标签可拖拽到其他分组；改成现有分组名即为并入</span>
                     {suggestions.map((g, gi) => {
                       const name = g.name.trim();
                       const exists = existingNames.has(name);
                       const keys = g.tags.map((t) => tagKey(gi, t));
-                      const groupOn = keys.every((k) => selected.has(k));
+                      const groupOn = keys.length > 0 && keys.every((k) => selected.has(k));
                       const unnamed = !name;
+                      const isDropTarget = dragging !== null && dragOverIdx === gi && dragging.gi !== gi && !unnamed;
                       return (
                         <div key={gi}>
                           <div className="flex items-center gap-1.5 py-0.5">
@@ -431,16 +600,47 @@ export const BrowserGroupCreateModal: React.FC<{
                               </button>
                             )}
                           </div>
-                          <div className="flex flex-wrap gap-1.5 mt-1.5">
+                          <div
+                            onDragOver={(e) => {
+                              if (dragging && dragging.gi !== gi && !unnamed) {
+                                e.preventDefault();
+                                setDragOverIdx(gi);
+                              }
+                            }}
+                            onDragLeave={() => setDragOverIdx((v) => (v === gi ? null : v))}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              if (dragging && !unnamed) moveTag(dragging.gi, dragging.tag, gi);
+                              setDragging(null);
+                              setDragOverIdx(null);
+                            }}
+                            className={`flex flex-wrap gap-1.5 mt-1.5 p-1.5 -m-1.5 rounded-xl transition-all ${
+                              isDropTarget ? 'bg-violet-50 dark:bg-violet-950/40 ring-2 ring-violet-300 dark:ring-violet-700' : ''
+                            }`}
+                          >
                             {g.tags.map((t) => {
                               const on = selected.has(tagKey(gi, t));
+                              const isDragging = dragging?.gi === gi && dragging?.tag === t;
                               return (
                                 <button
                                   key={t}
                                   type="button"
+                                  draggable={!unnamed}
+                                  onDragStart={(e) => {
+                                    if (unnamed) return;
+                                    setDragging({ gi, tag: t });
+                                    e.dataTransfer.effectAllowed = 'move';
+                                  }}
+                                  onDragEnd={() => {
+                                    setDragging(null);
+                                    setDragOverIdx(null);
+                                  }}
                                   onClick={() => !unnamed && toggleTagKey(tagKey(gi, t))}
                                   disabled={unnamed}
+                                  title={unnamed ? undefined : '点击勾选 · 拖拽到其他分组'}
                                   className={`px-2 py-1 rounded-lg text-[11px] font-medium border transition-all cursor-pointer active:scale-95 disabled:cursor-not-allowed ${
+                                    isDragging ? 'opacity-40' : ''
+                                  } ${
                                     on && !unnamed
                                       ? 'bg-violet-600 text-white border-violet-600'
                                       : 'bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-100 dark:border-slate-700 hover:border-slate-300 disabled:opacity-50'
@@ -450,6 +650,11 @@ export const BrowserGroupCreateModal: React.FC<{
                                 </button>
                               );
                             })}
+                            {g.tags.length === 0 && (
+                              <span className="text-[10px] text-slate-300 dark:text-slate-600 px-1 py-1">
+                                （空分组：拖入标签或应用时跳过）
+                              </span>
+                            )}
                           </div>
                         </div>
                       );
@@ -484,6 +689,18 @@ export const BrowserGroupCreateModal: React.FC<{
               </>
             )}
           </div>
+        )}
+
+        {/* 继续优化对话框（叠加在当前弹窗之上） */}
+        {showRefine && (
+          <SuggestRefineModal
+            baseKeyword={baseKeyword}
+            history={refineHistory}
+            busy={suggesting}
+            error={refineError}
+            onClose={() => !suggesting && setShowRefine(false)}
+            onSubmit={refineSuggest}
+          />
         )}
       </div>
     </div>

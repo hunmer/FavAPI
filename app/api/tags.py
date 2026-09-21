@@ -24,6 +24,10 @@ class ContentTagsUpdate(BaseModel):
     tags: list[str]
 
 
+class TagRename(BaseModel):
+    name: str
+
+
 @router.delete("/tags/{tag}")
 async def delete_tag(tag: str, delete_favorites: bool = False):
     """删除标签：从所有内容的 tags 中移除；可选一并删除相关收藏关系（favorites 行）。"""
@@ -32,6 +36,15 @@ async def delete_tag(tag: str, delete_favorites: bool = False):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return result
+
+
+@router.put("/tags/{tag}")
+async def rename_tag(tag: str, body: TagRename):
+    """重命名标签：同步更新所有内容 tags 与分组定义（不动打标时间）。"""
+    try:
+        return await tag_store.rename_tag(tag, body.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.get("/tags/{tag}/usage")

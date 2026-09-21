@@ -68,6 +68,17 @@ def delete_cover_files(rows: list[dict]) -> int:
     return deleted
 
 
+def save_upload(platform: str, content_id: str, data: bytes, ext: str) -> None:
+    """手动上传的封面落盘（与下载本地化同规则命名），并清掉旧扩展名残留。"""
+    folder = covers_dir() / _safe_id(platform)
+    folder.mkdir(parents=True, exist_ok=True)
+    dest = folder / f"{_safe_id(content_id)}{ext}"
+    dest.write_bytes(data)
+    for old in folder.glob(f"{_safe_id(content_id)}.*"):
+        if old != dest:
+            old.unlink(missing_ok=True)
+
+
 def clear_cover_dir() -> int:
     """清空整个封面缓存目录（重置收藏夹等全量清理场景）；返回删除的文件数。"""
     import shutil

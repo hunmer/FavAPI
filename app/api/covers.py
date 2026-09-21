@@ -1,11 +1,48 @@
 """封面图统一读取入口与一键补齐。"""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
 
 from app.database import db
 from app.services import cover_worker
 
 router = APIRouter(prefix="/api/v1/covers", tags=["covers"])
+
+# 手动上传封面：MIME → 落盘扩展名（与下载本地化的文件命名规则一致）
+_COVER_EXT_BY_TYPE = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+}
+_COVER_MAX_BYTES = 10 * 1024 * 1024
+
+
+@router.post("/{platform}/{content_id}")
+async def upload_cover(platform: str, content_id: str, file: UploadFile = File(...)):
+    """手动上传封面（手动录入条目等）：写入封面缓存目录并标记已本地化，覆盖旧封面。"""
+    row = await db.query_one(
+        "SELECT 1 AS x FROM contents WHERE platform = ? AND content_id = ?",
+        (platform, content_id),
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="内容不存在")
+    ext = _COVER_EXT_BY_TYPE.get((file.content_type or "").lower())
+    if ext is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"不支持的图片格式：{file.content_type or '未知'}（支持 jpg/png/webp/gif）",
+        )
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=422, detail="封面文件为空")
+    if len(data) > _COVER_MAX_BYTES:
+        raise HTTPException(status_code=422, detail="封面超过 10MB 上限")
+    cover_worker.save_upload(platform, content_id, data, ext)
+    await db.execute(
+        "UPDATE contents SET cover_file = 1 WHERE platform = ? AND content_id = ?",
+        (platform, content_id),
+    )
+    return {"ok": True}
 
 
 @router.get("/{platform}/{content_id}")

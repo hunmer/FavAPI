@@ -41,14 +41,22 @@ async def tag_stream(req: FetchRequest):
 
 class TagSuggestRequest(BaseModel):
     agent_id: str
-    keyword: str
+    keyword: str = ""
+    # 继续优化：带 session_id + instruction 在同一会话上下文里让 AI 调整上一版建议
+    session_id: str | None = None
+    instruction: str | None = None
 
 
 @router.post("/suggest")
 async def tag_suggest(req: TagSuggestRequest):
-    """智能创建标签：关键词 → AI 联想分组+标签建议（仅 OpenAI 兼容 Agent）。"""
+    """智能创建标签：关键词 → AI 联想分组+标签建议（仅 OpenAI 兼容 Agent）。
+
+    传 session_id + instruction 为「继续优化」轮：后端内存保存对话历史，AI 基于上一版建议调整。
+    返回 session_id 供后续优化轮续接（约 30 分钟有效，进程重启失效）。
+    """
+    instruction = (req.instruction or "").strip() or None
     keyword = (req.keyword or "").strip()
-    if not keyword:
+    if not instruction and not keyword:
         raise HTTPException(status_code=400, detail="关键词不能为空")
     try:
         agent = await validate_tagging({"agent_id": req.agent_id})
@@ -57,9 +65,12 @@ async def tag_suggest(req: TagSuggestRequest):
     from app.services import tag_store
 
     try:
-        suggestions = await suggest_groups(agent, keyword, await tag_store.list_groups())
+        suggestions, session_id = await suggest_groups(
+            agent, keyword, await tag_store.list_groups(),
+            session_id=req.session_id, instruction=instruction,
+        )
     except TaggingValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"AI 生成失败：{str(exc)[:300]}")
-    return {"keyword": keyword, "groups": suggestions}
+    return {"keyword": keyword, "groups": suggestions, "session_id": session_id}

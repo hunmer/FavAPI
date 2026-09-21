@@ -1,7 +1,9 @@
 """抓取结果与任务记录的持久化。"""
 import asyncio
+import hashlib
 import json
 from datetime import datetime
+from urllib.parse import urlparse
 
 from app.database import db
 from app.services import raw_store
@@ -115,6 +117,67 @@ async def save_fetch_result(account: dict, items: list[dict], source: str = "") 
     }
 
 
+# 手动录入条目的入库来源标记（favorites.source）
+MANUAL_SOURCE = "手动录入"
+
+# 手动录入：URL 域名 → 已知平台（其余归入 link，仅作图标/名称展示）
+_MANUAL_HOST_PLATFORMS = {
+    "douyin.com": "douyin", "iesdouyin.com": "douyin",
+    "bilibili.com": "bilibili", "b23.tv": "bilibili",
+    "xiaohongshu.com": "xiaohongshu", "xhslink.com": "xiaohongshu",
+    "youtube.com": "youtube", "youtu.be": "youtube",
+    "kuaishou.com": "kuaishou",
+    "tiktok.com": "tiktok",
+    "threads.net": "threads", "threads.com": "threads",
+    "instagram.com": "instagram",
+    "weibo.com": "weibo", "weibo.cn": "weibo",
+    "zhihu.com": "zhihu",
+}
+
+
+def manual_platform(url: str) -> str:
+    """按 URL 域名识别平台；未收录域名返回 link。"""
+    host = (urlparse(url).hostname or "").lower()
+    parts = host.split(".")
+    for i in range(len(parts)):
+        platform = _MANUAL_HOST_PLATFORMS.get(".".join(parts[i:]))
+        if platform:
+            return platform
+    return "link"
+
+
+async def create_manual_favorite(url: str, title: str = "", note: str = "") -> dict:
+    """手动录入链接：不绑定账号（account_id NULL），写 contents + favorites，URL/备注存 raw_data。
+
+    content_id 由「平台 + 规范化 URL」哈希生成，同链接重复录入返回 created=False。
+    """
+    platform = manual_platform(url)
+    content_id = f"manual_{hashlib.sha1(f'{platform}|{url}'.encode()).hexdigest()[:20]}"
+    existing = await db.query_one(
+        "SELECT 1 FROM favorites WHERE account_id IS NULL AND platform = ? AND content_id = ? AND source = ?",
+        (platform, content_id, MANUAL_SOURCE),
+    )
+    if existing:
+        return {"created": False, "content_id": content_id, "platform": platform}
+
+    # URL 与备注写入 raw_data，list_favorites 由此还原 url / description
+    raw_store.save(platform, content_id, {"url": url, "content": note or ""})
+    await db.execute(
+        """INSERT INTO contents (content_id, platform, account_id, title, description)
+           VALUES (?, ?, NULL, ?, ?)
+           ON CONFLICT(platform, content_id) DO UPDATE SET
+             title = excluded.title, description = excluded.description""",
+        (content_id, platform, title or url, note or ""),
+    )
+    await db.execute(
+        """INSERT INTO favorites (account_id, platform, content_id,
+               fav_media_id, fav_title, source, collected_at, fetched_at)
+           VALUES (NULL, ?, ?, '', '', ?, NULL, ?)""",
+        (platform, content_id, MANUAL_SOURCE, now_iso()),
+    )
+    return {"created": True, "content_id": content_id, "platform": platform}
+
+
 async def purge_orphan_contents(ids: list[str] | None = None) -> dict:
     """清理不再被任何收藏关系引用的 contents 行，并删除对应封面缓存与 raw_data 文件。
 
@@ -152,11 +215,12 @@ async def delete_favorites(refs: list[dict]) -> dict:
     """批量删除收藏关系行，并联动清理不再被引用的 contents 行与封面缓存文件。
 
     refs: [{account_id, platform, content_id}]，按三元组精确删除。
+    account_id 用 IS 比较（NULL 安全）：手动录入条目无账号（NULL），空串归一为 NULL。
     executemany 一次提交（全选数千条时避免逐条往返）。
     """
-    rows = [(r.get("account_id"), r.get("platform"), r.get("content_id")) for r in refs]
+    rows = [(r.get("account_id") or None, r.get("platform"), r.get("content_id")) for r in refs]
     cur = await db.executemany(
-        "DELETE FROM favorites WHERE account_id = ? AND platform = ? AND content_id = ?",
+        "DELETE FROM favorites WHERE account_id IS ? AND platform = ? AND content_id = ?",
         rows,
     )
     purged = await purge_orphan_contents([r[2] for r in rows])

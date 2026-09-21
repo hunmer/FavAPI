@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutGrid, List, Columns3, Loader2, Sparkles, X, CheckSquare, Download, Trash2, ArrowUp, ArrowDown } from 'lucide-react';
+import { LayoutGrid, List, Columns3, Loader2, Sparkles, X, CheckSquare, Download, Trash2, ArrowUp, ArrowDown, Link2 } from 'lucide-react';
 import { ViewMode, ViewModeOption, ViewModeSwitch } from '../ViewModeSwitch';
 
 /** 列表排序字段：default 按抓取入库时间，collected 收藏时间，duration 时长 */
@@ -24,6 +24,8 @@ export const BrowserToolbar: React.FC<{
   selectedCount: number;
   agentsAvailable: boolean;
   onOpenTagModal: () => void;
+  /** 打开手动录入链接弹窗 */
+  onAddManualItem: () => void;
   sortBy: BrowserSortBy;
   onSortByChange: (by: BrowserSortBy) => void;
   sortAsc: boolean;
@@ -39,6 +41,7 @@ export const BrowserToolbar: React.FC<{
   selectedCount,
   agentsAvailable,
   onOpenTagModal,
+  onAddManualItem,
   sortBy,
   onSortByChange,
   sortAsc,
@@ -54,6 +57,15 @@ export const BrowserToolbar: React.FC<{
 
     {/* View mode toggle: List vs Grid + 一键打标 + 多选 */}
     <div className="flex flex-wrap items-center gap-2.5 self-start sm:self-auto">
+      <button
+        type="button"
+        onClick={onAddManualItem}
+        className="px-4 py-2 rounded-2xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold shadow-sm inline-flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+        title="手动录入一条链接到收藏库"
+      >
+        <Link2 className="w-3.5 h-3.5" />
+        录入链接
+      </button>
       {selectionMode ? (
         <button
           type="button"

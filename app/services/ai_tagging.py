@@ -87,13 +87,19 @@ def _resolve_limit(params: dict) -> int:
     return max(0, min(int(raw), 2000))
 
 
+def _resolve_include_no_match(params: dict) -> bool:
+    """打标范围：true 时「已打标但无命中」（空标签数组）的内容也纳入重打。"""
+    return bool((params or {}).get("include_no_match"))
+
+
 async def _run_tagging_task(task_id: str, agent: dict, platform: str, params: dict) -> dict:
     limit = _resolve_limit(params)
+    include_no_match = _resolve_include_no_match(params)
     await data_store.update_task(task_id, status="running", started_at=now_iso())
 
     processed = tagged = 0
     try:
-        async for item in _tagging_stream(agent, platform, limit):
+        async for item in _tagging_stream(agent, platform, limit, include_no_match):
             processed += 1
             if item["tags"]:
                 tagged += 1
@@ -123,7 +129,7 @@ async def _run_tagging_task(task_id: str, agent: dict, platform: str, params: di
         }
 
 
-async def _tagging_stream(agent: dict, platform: str, limit: int):
+async def _tagging_stream(agent: dict, platform: str, limit: int, include_no_match: bool = False):
     """逐条产出打标结果 {content_id, title, tags}；无待打标内容时结束。
 
     jev：批内逐条两阶段判定（并发受 JEV_ITEM_CONCURRENCY 限制），先完成先写库先产出；
@@ -133,7 +139,7 @@ async def _tagging_stream(agent: dict, platform: str, limit: int):
     batch_no = 0
     while limit <= 0 or processed < limit:  # limit=0：不限制，直到无待打标内容
         size = BATCH_SIZE if limit <= 0 else min(BATCH_SIZE, limit - processed)
-        items = await _pending_contents(platform, size)
+        items = await _pending_contents(platform, size, include_no_match)
         if not items:
             if batch_no == 0:
                 logger.info("打标：平台=%s 无待打标内容", platform or "全部")
@@ -180,6 +186,7 @@ async def stream_tagging_events(agent: dict, platform: str, params: dict):
     （已入库的条目结果保留）。
     """
     limit = _resolve_limit(params)
+    include_no_match = _resolve_include_no_match(params)
     task_id = new_id("task")
     await data_store.create_task(task_id, "", platform or "", AI_TAG_ACTION, params or {})
     yield {"type": "task", "task_id": task_id, "limit": limit}
@@ -188,7 +195,7 @@ async def stream_tagging_events(agent: dict, platform: str, params: dict):
     try:
         await data_store.update_task(task_id, status="running", started_at=now_iso())
         processed = tagged = 0
-        async for item in _tagging_stream(agent, platform, limit):
+        async for item in _tagging_stream(agent, platform, limit, include_no_match):
             processed += 1
             if item["tags"]:
                 tagged += 1
@@ -223,8 +230,10 @@ async def stream_tagging_events(agent: dict, platform: str, params: dict):
             )
 
 
-async def _pending_contents(platform: str, limit: int) -> list[dict]:
-    where, params = "tags IS NULL", []
+async def _pending_contents(platform: str, limit: int, include_no_match: bool = False) -> list[dict]:
+    """待打标内容：默认仅 tags IS NULL；include_no_match 时也纳入「已打标但无命中」（空标签数组）重打。"""
+    where = "(tags IS NULL OR json_array_length(tags) = 0)" if include_no_match else "tags IS NULL"
+    params: list = []
     if platform:
         where += " AND platform = ?"
         params.append(platform)
@@ -402,6 +411,26 @@ SUGGEST_SYSTEM_PROMPT = (
     '{"groups": [{"name": "分组名", "tags": ["标签1", "标签2"]}]}'
 )
 
+SUGGEST_REFINE_PROMPT = (
+    "优化要求：{instruction}\n\n"
+    "请基于之前的建议调整（可增删分组、修改分组名与标签），"
+    "输出调整后的完整结果，格式与之前相同：只输出 JSON 对象。"
+)
+
+# 内存会话（智能创建的多轮优化上下文）：session_id -> {"messages": [...], "expires_at": float}
+# 进程重启即失效；TTL 过期 / 超上限淘汰
+_SUGGEST_SESSIONS: dict[str, dict] = {}
+SUGGEST_SESSION_TTL = 30 * 60
+SUGGEST_SESSION_MAX = 50
+
+
+def _cleanup_suggest_sessions() -> None:
+    now = time.time()
+    for sid in [k for k, v in _SUGGEST_SESSIONS.items() if v["expires_at"] < now]:
+        _SUGGEST_SESSIONS.pop(sid, None)
+    while len(_SUGGEST_SESSIONS) > SUGGEST_SESSION_MAX:
+        _SUGGEST_SESSIONS.pop(next(iter(_SUGGEST_SESSIONS)))
+
 
 def _extract_json_object(content: str) -> dict:
     text = content.strip()
@@ -417,24 +446,40 @@ def _extract_json_object(content: str) -> dict:
     return data
 
 
-async def suggest_groups(agent: dict, keyword: str, existing_groups: list[dict]) -> list[dict]:
-    """关键词 → AI 联想分组+标签建议；返回 [{name, tags}]，已过滤空值与库中已有标签。
+async def suggest_groups(
+    agent: dict, keyword: str, existing_groups: list[dict],
+    session_id: str | None = None, instruction: str | None = None,
+) -> tuple[list[dict], str]:
+    """关键词 → AI 联想分组+标签建议；返回 ([{name, tags}], session_id)。
 
+    带 session_id + instruction 时为「继续优化」：从内存会话的对话历史继续，
+    AI 基于上一版建议按指令调整。已过滤空值与库中已有标签。
     仅支持 OpenAI 兼容方式：Jev 为判定式模型，只能从给定候选中选择，不能生成新标签。
     """
     if agent.get("provider") == "jev":
         raise TaggingValidationError("智能创建标签仅支持 OpenAI 兼容方式的 Agent（Jev 为判定式模型）")
 
-    existing_tags = {t for g in existing_groups for t in g["tags"]}
-    pool = "\n".join(f"- {g['group']}：{'、'.join(g['tags'][:6])}" for g in existing_groups)
+    _cleanup_suggest_sessions()
+    refine = bool(session_id and instruction)
+    if refine:
+        sess = _SUGGEST_SESSIONS.get(session_id)
+        if sess is None:
+            raise TaggingValidationError("优化会话已过期（约 30 分钟），请点「重新生成」重新联想")
+        user_msg = {"role": "user", "content": SUGGEST_REFINE_PROMPT.format(instruction=instruction)}
+        messages = [*sess["messages"], user_msg]
+    else:
+        existing_tags = {t for g in existing_groups for t in g["tags"]}
+        pool = "\n".join(f"- {g['group']}：{'、'.join(g['tags'][:6])}" for g in existing_groups)
+        messages = [
+            {"role": "system", "content": SUGGEST_SYSTEM_PROMPT},
+            {"role": "user", "content": f"关键词：{keyword}\n\n现有标签体系（避免重复）：\n{pool or '（空）'}"},
+        ]
+
     payload = {
         "model": agent["model_id"],
         "temperature": 0.7,
         "response_format": {"type": "json_object"},
-        "messages": [
-            {"role": "system", "content": SUGGEST_SYSTEM_PROMPT},
-            {"role": "user", "content": f"关键词：{keyword}\n\n现有标签体系（避免重复）：\n{pool or '（空）'}"},
-        ],
+        "messages": messages,
     }
     body = await _chat_completions(agent, payload)
     content = ""
@@ -450,6 +495,7 @@ async def suggest_groups(agent: dict, keyword: str, existing_groups: list[dict])
     if not isinstance(raw_groups, list) or not raw_groups:
         raise RuntimeError(f"AI 返回结构不符（缺少 groups 数组）：{content[:200]}")
 
+    existing_tags = {t for g in existing_groups for t in g["tags"]}
     out: list[dict] = []
     for g in raw_groups:
         if not isinstance(g, dict):
@@ -463,8 +509,20 @@ async def suggest_groups(agent: dict, keyword: str, existing_groups: list[dict])
         if name and tags:
             out.append({"name": name, "tags": tags[:8]})
     if not out:
-        raise RuntimeError("AI 未给出可用的分组建议（可能与现有标签全部重复），请换个关键词重试")
-    return out
+        raise RuntimeError("AI 未给出可用的分组建议（可能与现有标签全部重复），请换个关键词或优化指令重试")
+
+    # 保存/续期会话：完整对话（含本轮 user 与 assistant 原始 JSON）供后续「继续优化」
+    messages.append({"role": "assistant", "content": content})
+    if refine and session_id in _SUGGEST_SESSIONS:
+        _SUGGEST_SESSIONS[session_id]["messages"] = messages
+        _SUGGEST_SESSIONS[session_id]["expires_at"] = time.time() + SUGGEST_SESSION_TTL
+    else:
+        session_id = session_id or new_id("sgs")
+        _SUGGEST_SESSIONS[session_id] = {
+            "messages": messages,
+            "expires_at": time.time() + SUGGEST_SESSION_TTL,
+        }
+    return out, session_id
 
 
 async def test_agent(agent: dict) -> dict:
