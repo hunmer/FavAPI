@@ -12,6 +12,10 @@ class GroupCreate(BaseModel):
     tags: list[str] = Field(default_factory=list)
 
 
+class GroupsBatch(BaseModel):
+    groups: list[GroupCreate] = Field(min_length=1)
+
+
 class GroupRename(BaseModel):
     name: str
 
@@ -41,6 +45,12 @@ async def create_group(body: GroupCreate):
         return await tag_store.create_group(body.name, body.tags)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/tag-groups/batch")
+async def batch_upsert_groups(body: GroupsBatch):
+    """批量合并分组（智能创建标签的一键应用）：不存在则创建，已存在则标签追加去重。"""
+    return await tag_store.upsert_groups([g.model_dump() for g in body.groups])
 
 
 @router.put("/tag-groups/{name}")

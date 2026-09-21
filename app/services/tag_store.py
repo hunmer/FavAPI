@@ -54,6 +54,43 @@ async def rename_group(old: str, new: str) -> dict:
     return {"group": new, "tags": json.loads(row["tags"] or "[]") if row else []}
 
 
+async def upsert_groups(groups: list[dict]) -> dict:
+    """批量合并分组（智能创建标签的一键应用）：分组不存在则创建，已存在则新标签追加到组尾。
+
+    返回汇总：created=新建分组数，merged=并入的已有分组数，added_tags=新增标签数。
+    """
+    created = merged = added_tags = 0
+    for g in groups:
+        name = str(g.get("group") or g.get("name") or "").strip()
+        tags: list[str] = []
+        for t in g.get("tags") or []:
+            t = str(t).strip().strip("#").strip()
+            if t and t not in tags:
+                tags.append(t)
+        if not name or not tags:
+            continue
+        row = await db.query_one("SELECT tags FROM tag_groups WHERE group_name = ?", (name,))
+        if row is None:
+            await db.execute(
+                "INSERT INTO tag_groups (group_name, tags) VALUES (?, ?)",
+                (name, json.dumps(tags, ensure_ascii=False)),
+            )
+            created += 1
+            added_tags += len(tags)
+        else:
+            existing = json.loads(row["tags"] or "[]")
+            fresh = [t for t in tags if t not in existing]
+            if fresh:
+                existing.extend(fresh)
+                await db.execute(
+                    "UPDATE tag_groups SET tags = ? WHERE group_name = ?",
+                    (json.dumps(existing, ensure_ascii=False), name),
+                )
+                merged += 1
+                added_tags += len(fresh)
+    return {"created": created, "merged": merged, "added_tags": added_tags}
+
+
 # ---------- 标签删除 ----------
 
 async def tag_usage(tag: str) -> int:

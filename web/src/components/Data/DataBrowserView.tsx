@@ -858,7 +858,7 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
         />
       )}
 
-      {/* 新建分组弹窗（可选归入「其他」组标签） */}
+      {/* 新建分组弹窗（手动创建 / 智能创建双 tab） */}
       {showGroupCreate && (
         <BrowserGroupCreateModal
           groups={tagGroups}
@@ -871,6 +871,14 @@ export const DataBrowserView: React.FC<DataBrowserViewProps> = ({
           saving={groupSaving}
           onClose={() => setShowGroupCreate(false)}
           onSubmit={submitGroupCreate}
+          agents={agents}
+          onApplied={(summary) => {
+            handleRefresh();
+            showToast?.(
+              `已添加 ${summary.added_tags} 个标签（新建 ${summary.created} 组、并入 ${summary.merged} 组）`,
+              'success'
+            );
+          }}
         />
       )}
 

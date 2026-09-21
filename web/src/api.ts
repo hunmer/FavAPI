@@ -777,6 +777,16 @@ export async function createTagGroup(name: string, tags: string[] = []): Promise
   return request('/tag-groups', { method: 'POST', body: JSON.stringify({ name, tags }) });
 }
 
+/** 智能创建标签：关键词 → AI 联想分组+标签建议（仅 OpenAI 兼容 Agent）。 */
+export async function suggestTagGroups(agentId: string, keyword: string): Promise<{ keyword: string; groups: Array<{ name: string; tags: string[] }> }> {
+  return request('/ai/tag/suggest', { method: 'POST', body: JSON.stringify({ agent_id: agentId, keyword }) });
+}
+
+/** 一键应用智能建议：分组不存在则创建，已存在则标签追加去重。 */
+export async function applyTagGroups(groups: Array<{ name: string; tags: string[] }>): Promise<{ created: number; merged: number; added_tags: number }> {
+  return request('/tag-groups/batch', { method: 'POST', body: JSON.stringify({ groups }) });
+}
+
 export async function renameTagGroup(oldName: string, newName: string): Promise<TagGroupRow> {
   return request(`/tag-groups/${encodeURIComponent(oldName)}`, {
     method: 'PUT',

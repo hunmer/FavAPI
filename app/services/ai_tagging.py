@@ -392,6 +392,81 @@ async def _tag_batch_jev_stream(agent: dict, items: list[dict]):
                 t.cancel()
 
 
+# ---------- 智能创建标签（关键词 → AI 联想分组与标签，仅 OpenAI 兼容方式） ----------
+
+SUGGEST_SYSTEM_PROMPT = (
+    "你是一名内容收藏标签体系设计师。根据用户给出的关键词，联想生成相关的标签分组建议。"
+    "生成 1~3 个相关分组，每个分组包含一个简短中文分组名和 4~8 个简短、通用的中文标签（主题词，不含标点和 #）。"
+    "分组名不要与现有分组名重复；标签尽量避免与现有标签重复。"
+    "只输出 JSON 对象，不要输出任何其他文字或代码块标记，格式："
+    '{"groups": [{"name": "分组名", "tags": ["标签1", "标签2"]}]}'
+)
+
+
+def _extract_json_object(content: str) -> dict:
+    text = content.strip()
+    start, end = text.find("{"), text.rfind("}")
+    if start < 0 or end <= start:
+        raise RuntimeError(f"AI 未返回 JSON：{text[:200]}")
+    try:
+        data = json.loads(text[start:end + 1])
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"AI 返回的 JSON 解析失败：{exc}；原文：{text[:200]}")
+    if not isinstance(data, dict):
+        raise RuntimeError(f"AI 返回结构不符（非 JSON 对象）：{text[:200]}")
+    return data
+
+
+async def suggest_groups(agent: dict, keyword: str, existing_groups: list[dict]) -> list[dict]:
+    """关键词 → AI 联想分组+标签建议；返回 [{name, tags}]，已过滤空值与库中已有标签。
+
+    仅支持 OpenAI 兼容方式：Jev 为判定式模型，只能从给定候选中选择，不能生成新标签。
+    """
+    if agent.get("provider") == "jev":
+        raise TaggingValidationError("智能创建标签仅支持 OpenAI 兼容方式的 Agent（Jev 为判定式模型）")
+
+    existing_tags = {t for g in existing_groups for t in g["tags"]}
+    pool = "\n".join(f"- {g['group']}：{'、'.join(g['tags'][:6])}" for g in existing_groups)
+    payload = {
+        "model": agent["model_id"],
+        "temperature": 0.7,
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {"role": "system", "content": SUGGEST_SYSTEM_PROMPT},
+            {"role": "user", "content": f"关键词：{keyword}\n\n现有标签体系（避免重复）：\n{pool or '（空）'}"},
+        ],
+    }
+    body = await _chat_completions(agent, payload)
+    content = ""
+    for choice in body.get("choices") or []:
+        content = ((choice.get("message") or {}).get("content") or "").strip()
+        if content:
+            break
+    if not content:
+        raise RuntimeError("AI 未返回内容")
+
+    data = _extract_json_object(content)
+    raw_groups = data.get("groups")
+    if not isinstance(raw_groups, list) or not raw_groups:
+        raise RuntimeError(f"AI 返回结构不符（缺少 groups 数组）：{content[:200]}")
+
+    out: list[dict] = []
+    for g in raw_groups:
+        if not isinstance(g, dict):
+            continue
+        name = str(g.get("name") or "").strip()
+        tags: list[str] = []
+        for t in g.get("tags") or []:
+            t = str(t).strip().lstrip("#").strip()
+            if t and t not in tags and t not in existing_tags:
+                tags.append(t)
+        if name and tags:
+            out.append({"name": name, "tags": tags[:8]})
+    if not out:
+        raise RuntimeError("AI 未给出可用的分组建议（可能与现有标签全部重复），请换个关键词重试")
+    return out
+
+
 async def test_agent(agent: dict) -> dict:
     """连通性测试：按打标方式发送最小请求验证 base_url / api_key。"""
     import time
