@@ -11,6 +11,7 @@ LISTCOLLECTION_API = "/aweme/v1/web/aweme/listcollection"
 
 # API 直连抓取用（POST，body 为 count/cursor；浏览器走页面时不需要）
 LISTCOLLECTION_URL = "https://www.douyin.com/aweme/v1/web/aweme/listcollection/"
+LISTCOLLECTION_URL_PATH = "/aweme/v1/web/aweme/listcollection/"
 API_PAGE_COUNT = 20          # API 直连每页条数（服务端单页上限 20）
 API_PAGE_INTERVAL_SEC = 0.8  # API 直连翻页间隔（防风控节流）
 
@@ -27,7 +28,9 @@ CANCEL_DIGG_MULTI_URL = "https://www.douyin.com/aweme/v1/web/cancel/item/digg/mu
 DIGG_URL_PATH = "/aweme/v1/web/commit/item/digg/"
 CANCEL_DIGG_MULTI_URL_PATH = "/aweme/v1/web/cancel/item/digg/multi/"
 # 喜欢(点赞) tab 列表，注意与收藏(listcollection)区分
+# 2026-10 起两接口启用 Argus 签名强校验（uifid/a_bogus），直连一律 403，仅页面 fetch 可用
 LIKE_LIST_URL = "https://www.douyin.com/aweme/v1/web/aweme/favorite/"
+LIKE_LIST_URL_PATH = "/aweme/v1/web/aweme/favorite/"
 # 观看历史（强校验接口，需活跃登录态）/ 稍后再看（offset 偏移分页）
 HISTORY_URL = "https://www.douyin.com/aweme/v1/web/history/read/"
 WATCHLATER_URL = "https://www.douyin.com/aweme/v1/web/watchlater/list/"

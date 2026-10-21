@@ -1,15 +1,16 @@
 """抖音收藏/喜欢列表 API 客户端。
 
 抖音按客户端 TLS/HTTP2 指纹拦截非浏览器请求（node/Go/原生 httpx 均返回空响应），
-读接口（listcollection / favorite）用 curl-impersonate（curl_cffi impersonate="chrome"）
-完整模拟 Chrome 指纹直连即可。
+无签名读接口（history / watchlater / following / post / detail 等）用
+curl-impersonate（curl_cffi impersonate="chrome"）完整模拟 Chrome 指纹直连即可。
 
-写接口（digg / cancel digg 等）2026-09 起启用 JS 签名强校验（a_bogus / bd-ticket-guard），
-curl_cffi 直连无论何种 cookie/指纹组合一律被拒；必须在真实浏览器页面上下文发请求，
-由页面 fetch hook 自动加签（*_via_browser 系列函数）。
+2026-09 起写接口（digg / cancel digg 等）、2026-10 起收藏与喜欢列表
+（listcollection / favorite）先后启用 JS 签名强校验（uifid / a_bogus /
+x-secsdk-web-signature，ArgusSecurityPlugin 拦截，直连一律 403）；
+必须在真实浏览器页面上下文发请求，由页面 fetch hook 自动加签（*_via_browser 系列函数）。
 
-登录态复用账号的浏览器 profile：起一次无头 Chromium 读出 cookies 后关闭，
-后续翻页全部走纯 HTTP。
+登录态复用账号的浏览器 profile：直连函数起一次无头 Chromium 读出 cookies 后关闭，
+后续翻页走纯 HTTP；页面版函数整个翻页过程共用一个无头页面。
 """
 import asyncio
 import json
@@ -115,6 +116,8 @@ def self_sec_uid(cookie_header: str) -> str | None:
 def fetch_listcollection_page(cookie_header: str, cursor: int = 0, count: int = 20) -> dict:
     """拉取一页收藏列表（同步阻塞，异步侧用 asyncio.to_thread 调用）。
 
+    ⚠️ 2026-10 起 listcollection 启用 Argus 签名强校验（uifid/a_bogus），
+    直连一律 403 "Uifid Not Found"，仅作保留，生产用 fetch_listcollection_via_browser。
     cursor 为上一页响应返回的游标（时间戳 token，首页传 0）；
     返回 parse_listcollection 的结果 {items, cursor, has_more, total}。
     """
@@ -149,6 +152,8 @@ async def fetch_listcollection(cookie_header: str, cursor: int, count: int, on_b
                                stop_before: "object | None" = None):
     """按服务端游标翻页直到取满 count（0=全部）或 has_more=false。
 
+    ⚠️ 2026-10 起直连 403（见 fetch_listcollection_page），仅作保留，
+    生产用 fetch_listcollection_via_browser。
     stop_before（aware datetime）：列表按真实收藏时间倒序且收藏时间 ≥ 发布时间，
     游标即本页最后一条的收藏时间 —— 游标早于下界时后续条目的发布时间也必然早于
     下界（collected_at 兜底发布时间也不会命中），提前终止零遗漏。
@@ -322,13 +327,8 @@ def fetch_aweme_detail(cookie_header: str, aweme_id: str) -> dict:
     }
 
 
-def fetch_like_page(cookie_header: str, sec_user_id: str, max_cursor: int = 0,
-                    count: int = 18) -> dict:
-    """拉取一页喜欢(点赞)列表（GET /aweme/v1/web/aweme/favorite/，同步阻塞）。
-
-    max_cursor 为上一页响应返回的游标（首页传 0）；
-    返回 parse_like_list 的结果 {items, cursor, has_more, total}。
-    """
+def _like_list_query(sec_user_id: str, max_cursor: int, count: int) -> str:
+    """favorite 列表接口公共 query（直连与页面 fetch 共用）。"""
     params = {
         **_QUERY_PARAMS,
         "sec_user_id": sec_user_id,
@@ -338,7 +338,19 @@ def fetch_like_page(cookie_header: str, sec_user_id: str, max_cursor: int = 0,
         "cut_version": 1,
         "count": count,
     }
-    url = constants.LIKE_LIST_URL + "?" + urlencode(params)
+    return urlencode(params)
+
+
+def fetch_like_page(cookie_header: str, sec_user_id: str, max_cursor: int = 0,
+                    count: int = 18) -> dict:
+    """拉取一页喜欢(点赞)列表（GET /aweme/v1/web/aweme/favorite/，同步阻塞）。
+
+    ⚠️ 2026-10 起 favorite 启用 Argus 签名强校验（uifid/a_bogus），
+    直连一律 403 "Uifid Not Found"，仅作保留，生产用 fetch_like_via_browser。
+    max_cursor 为上一页响应返回的游标（首页传 0）；
+    返回 parse_like_list 的结果 {items, cursor, has_more, total}。
+    """
+    url = constants.LIKE_LIST_URL + "?" + _like_list_query(sec_user_id, max_cursor, count)
     logger.info("fetch_like_page 请求：url=%s", url)
     response = requests.get(
         url,
@@ -355,6 +367,7 @@ def fetch_like_page(cookie_header: str, sec_user_id: str, max_cursor: int = 0,
 async def fetch_like(cookie_header: str, sec_user_id: str, count: int, on_batch=None):
     """按 max_cursor 游标翻页拉取喜欢(点赞)列表，直到取满 count（0=全部）或 has_more=false。
 
+    ⚠️ 2026-10 起直连 403（见 fetch_like_page），仅作保留，生产用 fetch_like_via_browser。
     返回 (全部 items, 最后一批的 has_more)。
     """
     cursor = 0
@@ -687,6 +700,106 @@ async def _page_fetch(page, path: str, method: str, body: str | None) -> dict:
     return data
 
 
+# ---------- 收藏 / 喜欢列表页面版（2026-10 起两接口直连 403，仅页面 fetch 可用） ----------
+
+async def _listcollection_page_via_browser(page, cursor: int, count: int) -> dict:
+    """页面上下文拉取一页收藏列表（POST，fetch 由站点 SDK 自动加签）。"""
+    data = await _page_fetch(
+        page,
+        constants.LISTCOLLECTION_URL_PATH + "?" + urlencode(_QUERY_PARAMS),
+        "POST", f"count={count}&cursor={cursor}",
+    )
+    return parse_listcollection(data)
+
+
+async def _like_page_via_browser(page, sec_user_id: str, max_cursor: int, count: int) -> dict:
+    """页面上下文拉取一页喜欢列表（GET，fetch 由站点 SDK 自动加签）。"""
+    data = await _page_fetch(
+        page,
+        constants.LIKE_LIST_URL_PATH + "?" + _like_list_query(sec_user_id, max_cursor, count),
+        "GET", None,
+    )
+    return parse_like_list(data)
+
+
+async def fetch_listcollection_via_browser(profile_path: str, cursor: int = 0, count: int = 0,
+                                           stop_before: "object | None" = None,
+                                           on_batch=None):
+    """收藏列表翻页（浏览器页面 fetch 自动加签），语义与 fetch_listcollection 一致。
+
+    整个翻页过程共用一个无头页面；stop_before 提前终止逻辑同 fetch_listcollection。
+    返回 (全部 items, 最后一批的 has_more)。
+    """
+    server_cursor = cursor
+    collected: list[dict] = []
+    page_no = 0
+    async with browser.session(profile_path, headless=True) as ctx:
+        page = await _open_api_page(ctx)
+        try:
+            while True:
+                batch = await _listcollection_page_via_browser(
+                    page, server_cursor, constants.API_PAGE_COUNT
+                )
+                page_no += 1
+                collected.extend(batch["items"])
+                logger.info(
+                    "listcollection(页面) 第 %d 页：%d 条，累计 %d，has_more=%s",
+                    page_no, len(batch["items"]), len(collected), batch["has_more"],
+                )
+                if on_batch and batch["items"]:
+                    await on_batch({"page": page_no, "items": batch["items"]})
+                if not batch["has_more"] or not batch["cursor"]:
+                    return collected, False
+                if count and len(collected) >= count:
+                    return collected, True
+                if stop_before is not None:
+                    scanned_until = _cursor_time(batch["cursor"])
+                    if scanned_until and scanned_until < stop_before:
+                        logger.info(
+                            "listcollection(页面) 第 %d 页游标(%s)早于下界，提前终止",
+                            page_no, scanned_until,
+                        )
+                        return collected, True
+                server_cursor = batch["cursor"]
+                await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
+        finally:
+            await page.close()
+
+
+async def fetch_like_via_browser(profile_path: str, sec_user_id: str, count: int,
+                                 on_batch=None):
+    """喜欢(点赞)列表翻页（浏览器页面 fetch 自动加签），语义与 fetch_like 一致。
+
+    返回 (全部 items, 最后一批的 has_more)。
+    """
+    cursor = 0
+    collected: list[dict] = []
+    page_no = 0
+    async with browser.session(profile_path, headless=True) as ctx:
+        page = await _open_api_page(ctx)
+        try:
+            while True:
+                batch = await _like_page_via_browser(
+                    page, sec_user_id, cursor, constants.API_PAGE_COUNT
+                )
+                page_no += 1
+                collected.extend(batch["items"])
+                logger.info(
+                    "like(页面) 第 %d 页：%d 条，累计 %d，has_more=%s",
+                    page_no, len(batch["items"]), len(collected), batch["has_more"],
+                )
+                if on_batch and batch["items"]:
+                    await on_batch({"page": page_no, "items": batch["items"]})
+                if not batch["has_more"] or not batch["cursor"]:
+                    return collected, False
+                if count and len(collected) >= count:
+                    return collected, True
+                cursor = batch["cursor"]
+                await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
+        finally:
+            await page.close()
+
+
 async def digg_item_via_browser(profile_path: str, aweme_id: str) -> dict:
     """点赞单个视频（浏览器页面 fetch，成功响应含 is_digg=1）。"""
     async with browser.session(profile_path, headless=True) as ctx:
@@ -750,13 +863,14 @@ async def cancel_digg_multi_via_browser(profile_path: str, aweme_ids: list[str],
     return {"total": len(aweme_ids), "batches": len(batches), "canceled": canceled_total}
 
 
-async def cancel_digg_by_window(profile_path: str, cookie_header: str, sec_user_id: str,
+async def cancel_digg_by_window(profile_path: str, sec_user_id: str,
                                 dt_from, dt_to, on_progress=None) -> dict:
     """完整扫描喜欢(点赞)列表，按条目时间（parser 的 collected_at，兜底视频发布时间）
     过滤后批量取消点赞（取消走浏览器页面通道）。
 
     喜欢列表按点赞时间倒序而非视频发布时间，无法用分页 cursor 提前停止；
     与取消收藏同策略：遍历到接口结束收集命中 ID，再统一分批取消。
+    2026-10 起 favorite 直连 403，扫描阶段也走浏览器页面 fetch。
     """
     from app.utils import filter_by_date_window
 
@@ -765,34 +879,39 @@ async def cancel_digg_by_window(profile_path: str, cookie_header: str, sec_user_
     total_fetched = 0
     matched_ids: list[str] = []
     matched_seen: set[str] = set()
-    while True:
-        batch = await asyncio.to_thread(
-            fetch_like_page, cookie_header, sec_user_id, cursor, constants.API_PAGE_COUNT
-        )
-        page += 1
-        items = batch["items"]
-        total_fetched += len(items)
-        matched = filter_by_date_window(items, dt_from, dt_to)
-        ids = [it["content_id"] for it in matched if it.get("content_id")]
-        for content_id in ids:
-            if content_id not in matched_seen:
-                matched_seen.add(content_id)
-                matched_ids.append(content_id)
+    async with browser.session(profile_path, headless=True) as ctx:
+        api_page = await _open_api_page(ctx)
+        try:
+            while True:
+                batch = await _like_page_via_browser(
+                    api_page, sec_user_id, cursor, constants.API_PAGE_COUNT
+                )
+                page += 1
+                items = batch["items"]
+                total_fetched += len(items)
+                matched = filter_by_date_window(items, dt_from, dt_to)
+                ids = [it["content_id"] for it in matched if it.get("content_id")]
+                for content_id in ids:
+                    if content_id not in matched_seen:
+                        matched_seen.add(content_id)
+                        matched_ids.append(content_id)
 
-        if on_progress:
-            await on_progress({
-                "type": "progress",
-                "page": page,
-                "fetched_this_page": len(items),
-                "matched_this_page": len(ids),
-                "canceled": 0,
-                "total_fetched": total_fetched,
-            })
+                if on_progress:
+                    await on_progress({
+                        "type": "progress",
+                        "page": page,
+                        "fetched_this_page": len(items),
+                        "matched_this_page": len(ids),
+                        "canceled": 0,
+                        "total_fetched": total_fetched,
+                    })
 
-        if not batch["has_more"] or not batch["cursor"]:
-            break
-        cursor = batch["cursor"]
-        await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
+                if not batch["has_more"] or not batch["cursor"]:
+                    break
+                cursor = batch["cursor"]
+                await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
+        finally:
+            await api_page.close()
 
     async def _cancel_progress(info: dict):
         if on_progress:
@@ -865,12 +984,15 @@ async def _cancel_collect_single_with_retry(cookie_header: str, aweme_id: str) -
             await asyncio.sleep(constants.CANCEL_COLLECT_INTERVAL_SEC * (2 ** attempt))
 
 
-async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progress=None) -> dict:
+async def cancel_collect_by_window(profile_path: str, cookie_header: str,
+                                   dt_from, dt_to, on_progress=None) -> dict:
     """完整扫描收藏列表，按视频上传时间（parser 的 collected_at）过滤并取消。
 
     抖音收藏列表接口不提供真实的加入收藏时间，不能使用分页 cursor 提前停止；
     必须遍历到接口结束，再用条目中的 collected_at（当前由视频 create_time 填充）
     匹配日期区间。
+    2026-10 起 listcollection 直连 403，扫描阶段走浏览器页面 fetch（自动加签）；
+    取消阶段仍为直连（cookie_header 仅此阶段使用）。
     """
     from app.utils import filter_by_date_window
 
@@ -880,38 +1002,44 @@ async def cancel_collect_by_window(cookie_header: str, dt_from, dt_to, on_progre
     matched_seen: set[str] = set()
     total_fetched = 0
     page = 0
-    while True:
-        batch = await asyncio.to_thread(
-            fetch_listcollection_page, cookie_header, server_cursor, constants.API_PAGE_COUNT
-        )
-        page += 1
-        items = batch["items"]
-        total_fetched += len(items)
-        page_lo = _cursor_time(batch["cursor"])
-        matched = filter_by_date_window(items, dt_from, dt_to)
-        ids = [it["content_id"] for it in matched if it.get("content_id")]
-        for content_id in ids:
-            if content_id not in matched_seen:
-                matched_seen.add(content_id)
-                matched_ids.append(content_id)
+    page_lo = None
+    async with browser.session(profile_path, headless=True) as ctx:
+        api_page = await _open_api_page(ctx)
+        try:
+            while True:
+                batch = await _listcollection_page_via_browser(
+                    api_page, server_cursor, constants.API_PAGE_COUNT
+                )
+                page += 1
+                items = batch["items"]
+                total_fetched += len(items)
+                page_lo = _cursor_time(batch["cursor"])
+                matched = filter_by_date_window(items, dt_from, dt_to)
+                ids = [it["content_id"] for it in matched if it.get("content_id")]
+                for content_id in ids:
+                    if content_id not in matched_seen:
+                        matched_seen.add(content_id)
+                        matched_ids.append(content_id)
 
-        if on_progress:
-            await on_progress({
-                "type": "progress",
-                "page": page,
-                "oldest_collected_at": page_lo.isoformat(timespec="seconds") if page_lo else None,
-                "fetched_this_page": len(items),
-                "matched_this_page": len(ids),
-                "canceled": canceled_total,
-                "total_fetched": total_fetched,
-            })
+                if on_progress:
+                    await on_progress({
+                        "type": "progress",
+                        "page": page,
+                        "oldest_collected_at": page_lo.isoformat(timespec="seconds") if page_lo else None,
+                        "fetched_this_page": len(items),
+                        "matched_this_page": len(ids),
+                        "canceled": canceled_total,
+                        "total_fetched": total_fetched,
+                    })
 
-        if not batch["has_more"]:
-            break
-        if not batch["cursor"]:
-            raise RuntimeError("收藏分页中断：接口仍有更多数据但未返回 cursor")
-        server_cursor = batch["cursor"]
-        await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
+                if not batch["has_more"]:
+                    break
+                if not batch["cursor"]:
+                    raise RuntimeError("收藏分页中断：接口仍有更多数据但未返回 cursor")
+                server_cursor = batch["cursor"]
+                await asyncio.sleep(constants.API_PAGE_INTERVAL_SEC)
+        finally:
+            await api_page.close()
 
     # 必须等收藏列表完整扫描结束后再删除，避免删除当前页改变 cursor 导致漏扫。
     # 扫描完成后按较小批次取消，降低接口返回“参数不合法”的概率。

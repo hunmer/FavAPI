@@ -302,8 +302,8 @@ class DouyinAdapter(BasePlatformAdapter):
                     "page": batch.get("page"), "total_fetched": len(batch.get("items") or []),
                 })
 
-        collected, has_more = await api_client.fetch_like(
-            cookie_header, sec_uid, count, on_batch=_collect_progress
+        collected, has_more = await api_client.fetch_like_via_browser(
+            account.profile_path, sec_uid, count, on_batch=_collect_progress
         )
         matched = filter_by_date_window(collected, dt_from, dt_to)
         summaries = [
@@ -502,7 +502,7 @@ class DouyinAdapter(BasePlatformAdapter):
             logger.info("[%s] 扫描喜欢列表取消点赞（先扫描后取消）：区间=%s~%s",
                         account.account_id, dt_from or "不限", dt_to or "不限")
             result = await api_client.cancel_digg_by_window(
-                account.profile_path, cookie_header, sec_uid, dt_from, dt_to, on_progress=_progress
+                account.profile_path, sec_uid, dt_from, dt_to, on_progress=_progress
             )
             if result["canceled"] == 0:
                 result["note"] = "没有匹配的点赞，未执行取消"
@@ -535,9 +535,9 @@ class DouyinAdapter(BasePlatformAdapter):
                     "page": batch.get("page"), "total_fetched": len(batch.get("items") or []),
                 })
 
-        cookie_header = await api_client.profile_cookie_header(account.profile_path)
-        collected, has_more = await api_client.fetch_listcollection(
-            cookie_header, cursor=0, count=count, stop_before=dt_from, on_batch=_collect_progress
+        collected, has_more = await api_client.fetch_listcollection_via_browser(
+            account.profile_path, cursor=0, count=count, stop_before=dt_from,
+            on_batch=_collect_progress,
         )
         matched = filter_by_date_window(collected, dt_from, dt_to)
         summaries = [
@@ -580,7 +580,7 @@ class DouyinAdapter(BasePlatformAdapter):
             logger.info("[%s] 按日期区间取消收藏（边拉边取消）：%s ~ %s",
                         account.account_id, dt_from, dt_to)
             result = await api_client.cancel_collect_by_window(
-                cookie_header, dt_from, dt_to, on_progress=_progress
+                account.profile_path, cookie_header, dt_from, dt_to, on_progress=_progress
             )
             if result["canceled"] == 0:
                 result["note"] = "该日期区间内没有匹配的收藏，未执行取消"
@@ -730,8 +730,8 @@ class DouyinAdapter(BasePlatformAdapter):
             raise ValueError("无法从登录态提取 sec_user_id，请在参数中手动填写（喜欢页 URL 中可见）")
         logger.info("[%s] API 直连抓取喜欢列表：count=%s cursor=%d",
                     account.account_id, count or "全部", skip)
-        collected, last_has_more = await api_client.fetch_like(
-            cookie_header, sec_uid, (count + skip) if count else 0, on_batch=on_batch
+        collected, last_has_more = await api_client.fetch_like_via_browser(
+            account.profile_path, sec_uid, (count + skip) if count else 0, on_batch=on_batch
         )
         window = collected[skip:] if not count else collected[skip: skip + count]
         logger.info("[%s] 喜欢列表抓取完成：共 %d 条，返回 [%d:%d] %d 条",
@@ -781,9 +781,8 @@ class DouyinAdapter(BasePlatformAdapter):
             "[%s] API 直连抓取收藏：count=%s cursor=%d", account.account_id, count or "全部", skip
         )
 
-        cookie_header = await api_client.profile_cookie_header(account.profile_path)
-        collected, last_has_more = await api_client.fetch_listcollection(
-            cookie_header, cursor=0, count=(count + skip) if count else 0, on_batch=on_batch
+        collected, last_has_more = await api_client.fetch_listcollection_via_browser(
+            account.profile_path, cursor=0, count=(count + skip) if count else 0, on_batch=on_batch
         )
         window = collected[skip:] if not count else collected[skip: skip + count]
         logger.info(

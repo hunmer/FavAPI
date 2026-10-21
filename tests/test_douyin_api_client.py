@@ -10,6 +10,23 @@ def _cursor(value: str) -> int:
     return int(datetime.fromisoformat(value).timestamp() * 1_000_000)
 
 
+class _FakeCtx:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+class _FakePage:
+    async def close(self):
+        pass
+
+
+async def _fake_open_api_page(ctx):
+    return _FakePage()
+
+
 class CancelDiggWindowTest(unittest.TestCase):
     def test_scans_like_list_then_cancels_matched(self):
         responses = iter([
@@ -21,7 +38,7 @@ class CancelDiggWindowTest(unittest.TestCase):
         ])
         fetch_calls = []
 
-        def fake_fetch_like_page(cookie_header, sec_user_id, cursor=0, count=20):
+        async def fake_like_page(page, sec_user_id, cursor=0, count=20):
             fetch_calls.append((sec_user_id, cursor, count))
             return next(responses)
 
@@ -29,12 +46,14 @@ class CancelDiggWindowTest(unittest.TestCase):
             return {"total": len(aweme_ids), "batches": 1, "canceled": len(aweme_ids)}
 
         with (
-            patch.object(api_client, "fetch_like_page", fake_fetch_like_page),
+            patch.object(api_client, "_like_page_via_browser", fake_like_page),
             patch.object(api_client, "cancel_digg_multi_via_browser", fake_cancel_digg_multi),
             patch.object(api_client.constants, "API_PAGE_INTERVAL_SEC", 0),
+            patch.object(api_client.browser, "session", lambda *a, **k: _FakeCtx()),
+            patch.object(api_client, "_open_api_page", _fake_open_api_page),
         ):
             result = asyncio.run(api_client.cancel_digg_by_window(
-                "profile", "cookie", "sec-uid",
+                "profile", "sec-uid",
                 datetime.fromisoformat("2021-01-01T00:00:00+08:00"),
                 datetime.fromisoformat("2026-01-01T00:00:00+08:00"),
             ))
@@ -55,16 +74,18 @@ class CancelDiggWindowTest(unittest.TestCase):
             canceled_calls.append(list(aweme_ids))
             return {"total": 0, "batches": 0, "canceled": 0}
 
+        async def fake_like_page(page, sec_user_id, cursor=0, count=20):
+            return next(responses)
+
         with (
-            patch.object(
-                api_client, "fetch_like_page",
-                lambda *args, **kwargs: next(responses),
-            ),
+            patch.object(api_client, "_like_page_via_browser", fake_like_page),
             patch.object(api_client, "cancel_digg_multi_via_browser", fake_cancel_digg_multi),
             patch.object(api_client.constants, "API_PAGE_INTERVAL_SEC", 0),
+            patch.object(api_client.browser, "session", lambda *a, **k: _FakeCtx()),
+            patch.object(api_client, "_open_api_page", _fake_open_api_page),
         ):
             result = asyncio.run(api_client.cancel_digg_by_window(
-                "profile", "cookie", "sec-uid",
+                "profile", "sec-uid",
                 datetime.fromisoformat("2021-01-01T00:00:00+08:00"),
                 datetime.fromisoformat("2026-01-01T00:00:00+08:00"),
             ))
@@ -143,7 +164,7 @@ class CancelCollectWindowTest(unittest.TestCase):
         ])
         calls = []
 
-        def fake_fetch(cookie_header, cursor=0, count=20):
+        async def fake_fetch(page, cursor=0, count=20):
             return next(responses)
 
         def fake_cancel_single(cookie_header, aweme_id):
@@ -152,12 +173,14 @@ class CancelCollectWindowTest(unittest.TestCase):
             return {"status_code": 0, "collects_flag": False}
 
         with (
-            patch.object(api_client, "fetch_listcollection_page", fake_fetch),
+            patch.object(api_client, "_listcollection_page_via_browser", fake_fetch),
             patch.object(api_client, "cancel_collect_single", fake_cancel_single),
             patch.object(api_client.constants, "API_PAGE_INTERVAL_SEC", 0),
+            patch.object(api_client.browser, "session", lambda *a, **k: _FakeCtx()),
+            patch.object(api_client, "_open_api_page", _fake_open_api_page),
         ):
             result = asyncio.run(api_client.cancel_collect_by_window(
-                "cookie", datetime.fromisoformat("2021-01-01T00:00:00+08:00"),
+                "profile", "cookie", datetime.fromisoformat("2021-01-01T00:00:00+08:00"),
                 datetime.fromisoformat("2026-01-01T00:00:00+08:00"),
             ))
 
@@ -174,21 +197,23 @@ class CancelCollectWindowTest(unittest.TestCase):
             {"items": [{"content_id": "target", "collected_at": "2021-06-01T00:00:00+08:00"}], "cursor": cursor_old, "has_more": False},
         ])
 
-        def fake_fetch(cookie_header, cursor=0, count=20):
+        async def fake_fetch(page, cursor=0, count=20):
             calls.append((cursor, count))
             return next(responses)
 
         canceled = []
         with (
-            patch.object(api_client, "fetch_listcollection_page", fake_fetch),
+            patch.object(api_client, "_listcollection_page_via_browser", fake_fetch),
             patch.object(
                 api_client, "cancel_collect_single",
                 lambda _cookie, aweme_id: canceled.append(aweme_id) or {"status_code": 0, "collects_flag": False},
             ),
             patch.object(api_client.constants, "API_PAGE_INTERVAL_SEC", 0),
+            patch.object(api_client.browser, "session", lambda *a, **k: _FakeCtx()),
+            patch.object(api_client, "_open_api_page", _fake_open_api_page),
         ):
             result = asyncio.run(api_client.cancel_collect_by_window(
-                "cookie",
+                "profile", "cookie",
                 datetime.fromisoformat("2021-01-01T00:00:00+08:00"),
                 datetime.fromisoformat("2026-01-01T23:59:59+08:00"),
             ))
@@ -203,11 +228,17 @@ class CancelCollectWindowTest(unittest.TestCase):
             {"items": [], "cursor": _cursor("2024-01-01T00:00:00+08:00"), "has_more": True},
             {"items": [], "cursor": _cursor("2023-01-01T00:00:00+08:00"), "has_more": False},
         ])
+
+        async def fake_fetch(page, cursor=0, count=20):
+            return next(responses)
+
         with (
-            patch.object(api_client, "fetch_listcollection_page", lambda *args, **kwargs: next(responses)),
+            patch.object(api_client, "_listcollection_page_via_browser", fake_fetch),
             patch.object(api_client.constants, "API_PAGE_INTERVAL_SEC", 0),
+            patch.object(api_client.browser, "session", lambda *a, **k: _FakeCtx()),
+            patch.object(api_client, "_open_api_page", _fake_open_api_page),
         ):
-            result = asyncio.run(api_client.cancel_collect_by_window("cookie", None, None))
+            result = asyncio.run(api_client.cancel_collect_by_window("profile", "cookie", None, None))
         self.assertEqual(result["pages"], 2)
         self.assertEqual(result["matched"], 0)
 
