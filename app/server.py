@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from app.api import accounts, agents, ai_tag, covers, downloads, fetch, follows, notifications, queries, schedules, settings, tags
 from app.database import db
 from app.services import aria2_service, cover_worker, download_store, download_worker, scheduler, data_store
+from app.services.account_manager import migrate_profile_paths
 from app.web.router import mount_web
 
 # 让 favapi.* 调试日志输出到 stderr（procm 会同时采集 stdout/stderr）
@@ -16,6 +17,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await db.connect()
+    # 重装/搬盘后数据库残留旧盘符 profile 路径，先归位再对外服务
+    migrated = await migrate_profile_paths()
+    if migrated:
+        logging.getLogger("favapi").info("启动迁移：%d 个账号 profile 路径已指向当前 data/profiles", migrated)
     # 清理上次进程残留的运行态（重启/崩溃后无人执行，且会卡住调度器防重入与下载队列）
     stale_tasks = await data_store.interrupt_stale_tasks()
     stale_downloads = await download_store.requeue_stale_running()

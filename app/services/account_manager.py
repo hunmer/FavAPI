@@ -113,6 +113,54 @@ def to_context(row: dict) -> AccountContext:
     )
 
 
+async def migrate_profile_paths() -> int:
+    """把 profile_path 不在当前 PROFILES_DIR 下的账号重映射到新位置。
+
+    系统重装/项目搬盘后数据库残留旧盘符绝对路径（如 G:\\），浏览器会话打不开；
+    data 目录整体迁移时 profile 目录已在新位置，直接改回路径即可，
+    旧目录仍存在且新目录缺失时先搬移目录。顺带修正 settings.json 里的 profiles 根目录。
+    """
+    from app.services.app_settings import load_settings, save_settings
+
+    root = config.PROFILES_DIR.resolve()
+    rows = await db.query_all("SELECT account_id, profile_path FROM accounts")
+    moved = 0
+    for row in rows:
+        old = (row.get("profile_path") or "").strip()
+        if not old:
+            continue
+        old_path = Path(old)
+        try:
+            stale = root not in old_path.resolve().parents
+        except OSError:  # 盘符已不存在等无法解析的情况
+            stale = True
+        if not stale:
+            continue
+        new_path = config.PROFILES_DIR / old_path.name
+        if old_path.exists() and not new_path.exists():
+            new_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(old_path), str(new_path))
+        await db.execute(
+            "UPDATE accounts SET profile_path = ? WHERE account_id = ?",
+            (str(new_path), row["account_id"]),
+        )
+        moved += 1
+        logger.info("账号 %s profile 路径迁移：%s -> %s", row["account_id"], old, new_path)
+
+    settings = load_settings()
+    old_root = (settings.get("profile_path") or "").strip()
+    if old_root and old_root != str(config.PROFILES_DIR):
+        try:
+            stale = Path(old_root).resolve() != root
+        except OSError:
+            stale = True
+        if stale:
+            settings["profile_path"] = str(config.PROFILES_DIR)
+            save_settings(settings)
+            logger.info("settings.json profiles 根目录迁移：%s -> %s", old_root, config.PROFILES_DIR)
+    return moved
+
+
 async def create_account(platform: str, name: str, extra: dict | None = None) -> dict:
     info = registry.get_platform_info(platform)
     if info is None:
